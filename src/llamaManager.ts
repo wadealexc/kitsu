@@ -50,6 +50,7 @@ export class LlamaManager {
     private llamaServerIP: string;
     private llamaServerPort: string;
     private llamaServerURL: string;
+    private llamaServerVerboseLogs: boolean;
     
     private defaultModelName: string;
     private models: Map<string, string>;
@@ -65,7 +66,7 @@ export class LlamaManager {
     private logFilePrefix: string;
 
     constructor(params: {
-        llamaServerIP: string, llamaServerPort: number,
+        llamaServerIP: string, llamaServerPort: number, llamaServerVerbose: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
         modelFiles: string[], defaultModelName: string,
@@ -73,6 +74,7 @@ export class LlamaManager {
         this.llamaServerIP = params.llamaServerIP;
         this.llamaServerPort = params.llamaServerPort.toString();
         this.llamaServerURL = `http://${params.llamaServerIP}:${params.llamaServerPort}`;
+        this.llamaServerVerboseLogs = params.llamaServerVerbose;
         
         if (!params.modelFiles.find(model => utils.modelNameFromPath(model) === params.defaultModelName))
             throw new Error(`did not find requested default model: ${params.defaultModelName}`);
@@ -281,7 +283,15 @@ export class LlamaManager {
             '--ctx-size', '0',
             '--jinja',
             '-fa', '1',
+            '--no-webui',                   // turn off webui, since the auto-shutdown feature makes this unreliable                 
         ];
+
+        // log verbosity ("messages with a higher verbosity will be ignored")
+        // this gets _really_ verbose so we only want it enabled sometimes
+        if (this.llamaServerVerboseLogs) {
+            console.log(chalk.dim(` - verbose logging enabled`));
+            args.push('-lv', '999');
+        }
 
         // Spawn llama-server as a detached process, making it the leader of a new
         // process group. This means that we can send a kill signal to `-pid` to also
@@ -363,7 +373,12 @@ export class LlamaManager {
 
                 let success = false;
                 try {
-                    const res = await fetch(this.llamaServerURL, { signal: reqCtrl.signal });
+                    // What we want: to return success when the model is loaded.
+                    //
+                    // From `server.cpp#main - middleware_server_state`, querying `/models`, or `/v1/models`
+                    // will return 200 OK, even if the model is loading. `/v1/health` will error until
+                    // the model is loaded, so we use that.
+                    const res = await fetch(`${this.llamaServerURL}/v1/health`, { signal: reqCtrl.signal });
                     success = res.ok;
                 } catch {
                     // swallow err - we expect failure while the server is still booting up

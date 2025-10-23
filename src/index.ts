@@ -39,6 +39,9 @@ const HOST_IP = utils.getLanIPv4();             // Our ip address
 const LLAMA_SERVER_URL = `http://${HOST_IP}:${INTERNAL_PORT}`; // URL for underlying llama.cpp server
 const LLAMA_SHIM_URL = `http://${HOST_IP}:${EXTERNAL_PORT}`;   // URL we expose to frontend
 
+// Check for 'verbose' option for llama-server verbosity
+const LLAMA_SERVER_VERBOSITY = process.argv.slice(2).includes('-vb');
+
 const CONFIG_PATH = './shim-config.json';
 const cfg = readConfig(CONFIG_PATH);
 
@@ -73,7 +76,7 @@ app.listen(EXTERNAL_PORT, () => {
 
 // Start llama-server
 const llama = new LlamaManager({
-    llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT,
+    llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
     logDirectory: cfg.LOG_DIR, logFilePrefix: logFilePrefix,
     sleepAfterXSeconds: cfg.SLEEP_AFTER_X_SECONDS,
     modelFiles: MODELS, defaultModelName: cfg.DEFAULT_MODEL,
@@ -115,18 +118,10 @@ app.all('/{*splat}', async (req, res) => {
     // Convert request body to JSON
     if (Buffer.isBuffer(body) && req.headers['content-type']?.includes('application/json')) {
         try {
-            const text = body.toString('utf8');
-            body = JSON.parse(text);
-            chatLog.request = body.messages as {
-                content: string | any[],
-                role: string
-            }[] | undefined;
-
-            if (!chatLog.request) {
-                console.error(`body.messages used unexpected type: ${body.messages}`);
-            }
+            body = JSON.parse(body.toString('utf8'));
+            chatLog.request = body;
         } catch (e) {
-            console.warn('Failed to parse JSON body:', e);
+            console.warn('Failed to parse request body:', e);
         }
     }
 
@@ -246,6 +241,7 @@ app.all('/{*splat}', async (req, res) => {
         console.log(`${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(len))})`);
         if (!llamaResponse) {
             console.log(chalk.dim.red(` -> failed before request made to llama-server`));
+            console.log(chalk.dim.red(` -> request: \n${JSON.stringify(chatLog.request, null, 2)}`));
         } else if (llamaResponse.status === 200) {
             console.log(chalk.dim.green(` -> llama-server responds success (200)`));
         } else {
