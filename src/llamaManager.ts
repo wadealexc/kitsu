@@ -8,10 +8,10 @@ import chalk from 'chalk';
 import * as utils from './utils.js';
 import type { IncomingHttpHeaders } from 'node:http';
 
-// Command to start llama‑server
+// Command to start llama‑server if not using llama.cpp submodule
 //
 // In order for this to work, `llama-server` needs to be in your $PATH
-const LLM_COMMAND = 'llama-server';
+const DEFAULT_LLM_COMMAND = 'llama-server';
 
 // How long to wait for a graceful shutdown before sending SIGKILL
 const SHUTDOWN_GRACE_MS = 5000;
@@ -47,6 +47,7 @@ type ModelInfo = {
 
 export class LlamaManager {
 
+    private llamaServerCommand: string;
     private llamaServerIP: string;
     private llamaServerPort: string;
     private llamaServerURL: string;
@@ -67,10 +68,12 @@ export class LlamaManager {
 
     constructor(params: {
         llamaServerIP: string, llamaServerPort: number, llamaServerVerbose: boolean,
+        useSubmodule: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
         modelFiles: string[], defaultModelName: string,
     }) {
+        this.llamaServerCommand = params.useSubmodule ? './llama.cpp/build/bin/llama-server' : DEFAULT_LLM_COMMAND;
         this.llamaServerIP = params.llamaServerIP;
         this.llamaServerPort = params.llamaServerPort.toString();
         this.llamaServerURL = `http://${params.llamaServerIP}:${params.llamaServerPort}`;
@@ -273,6 +276,7 @@ export class LlamaManager {
         // Open log file for child process stdout/stderr
         console.log(`\n[Run: ${this.runCounter}] starting llama-server with model: ${chalk.magenta(model.name)}`);
         console.log(chalk.dim(` - using log file: ${logPath}`));
+        console.log(chalk.dim(` - llama server command: ${this.llamaServerCommand}`));
         const out = fs.openSync(logPath, 'a');
         const err = fs.openSync(logPath, 'a');
 
@@ -296,7 +300,7 @@ export class LlamaManager {
         // Spawn llama-server as a detached process, making it the leader of a new
         // process group. This means that we can send a kill signal to `-pid` to also
         // send a signal to any child processes it spawns.
-        const proc = spawn(LLM_COMMAND, args, {
+        const proc = spawn(this.llamaServerCommand, args, {
             stdio: ['ignore', out, err],
             detached: true,
         });

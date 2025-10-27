@@ -59,6 +59,7 @@ app.listen(EXTERNAL_PORT, () => {
 // Start llama-server
 const llama = new LlamaManager({
     llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+    useSubmodule: cfg.LLAMA_SERVER.USE_SUBMODULE,
     logDirectory: cfg.LOG_DIR, logFilePrefix: logFilePrefix,
     sleepAfterXSeconds: cfg.SLEEP_AFTER_X_SECONDS,
     modelFiles: MODELS, defaultModelName: cfg.DEFAULT_MODEL,

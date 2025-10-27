@@ -2,5 +2,8 @@
     "defaultModelName": "gpt-oss-20b-mxfp4",
     "models": "./models",
     "logs": "./logs",
-    "sleepAfterXSeconds": 600
+    "sleepAfterXSeconds": 600,
+    "llamaServer": {
+        "useSubmodule": true
+    }
 }

@@ -1,38 +1,68 @@
 ## llama-shim
 
-`llama-shim` is a lightweight proxy that sits between llama.cpp's `llama-server` and any consumer of OpenAI-compatible APIs.
+`llama-shim` is a lightweight proxy that sits between Open WebUI (OWU) and llama.cpp's `llama-server`. `llama-shim` provides an "OpenAI-compatible API" to OWU, while extending the capabilities of llama.cpp to provide several features:
+* **Model Swapping**
+    * `llama-shim` tells OWU about any model located in the `/models` folder, and manages llama.cpp instances to serve each model when requested. This allows integration with the native model swapping already built into OWU.
+* **Inactivity Timeout**
+    * If the current model hasn't been used in the last 10 minutes, `llama-shim` kills its process to save energy.
+* **Logging and Debugging**
+    * `llama-shim` keeps chat logs and llama.cpp server logs to help with debugging
 
-`llama-shim` wraps `llama-server` to provide a way to use model-swapping capabilities like those built into Open WebUI.
+WIP features:
+* **Version Management**
+    * Keep submodules for llama.cpp and OWU to ensure `llama-shim` can easily update/roll back to compatible versions of both.
+* **Tool Server**
+    * Expose an OpenAPI tool server to use with OWU. Implement some basic tools (like web search)
+    * Caching: adapt @aldehir's `gpt-oss-adapter` to manage CoT reasoning [link](github.com/aldehir/gpt-oss-adapter)
+
+Misc backlog:
+* Add to shim-config:
+    * config server ports
+    * chat logs on/off
+
+
+### Important
+
+This is a hobby project, use at your own risk. This codebase makes a lot of assumptions that pertain to my personal setup:
+* Ubuntu Server 24
+* Open WebUI frontend
+* gpt-oss-20b
+
+`llama-shim` may not work perfectly for all models - specifically, I haven't tried any image/file/multimodal features; I'm purely doing text. I am using the `ggml-org` GGUF: https://huggingface.co/ggml-org/gpt-oss-20b-GGUF.
+
+---
 
 ### Prerequisites
 
 * Typescript/Node/NVM
-* Have `llama-server` in your `$PATH`
 * Open WebUI
 
-### Making models visible
+#### Build Llama.cpp submodule
 
-Move any models you want the shim to use into `llama-shim/models/`. ggufs will be pulled recursively, so it's okay to have them in subfolders.
+cd into the `llama.cpp` submodule and build from source, following the instructions here: [ggml-org/llama.cpp/docs/build.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md).
 
-### Attach to Open WebUI
+If you want `llama-shim` to use an already-built binary:
+* Make sure `llama-server` is in your `$PATH`
+* Edit `shim-config.json`: `llamaServer.useSubmodule: false`
+* For systemd, also edit `./run.sh` to place `llama-server` in your `$PATH`
 
-`llama-shim` starts a server on port `8081` - if you have already been attaching OWU to `llama-server`, just switch that connection to port `8081` and you should be good to go.
+---
 
-### How to run
+### Connect to Open WebUI
 
-```
-git clone https://github.com/wadealexc/llama-shim
+Follow OWU's instructions for connecting to `llama-server`: https://docs.openwebui.com/getting-started/quick-start/starting-with-llama-cpp, but connect to your `llama-shim` instance, instead. `llama-shim` runs on port `8081`.
 
-cd llama-shim
+#### Making models visible to OWU
 
-npm run dev
-```
+Move any GGUFs you want the shim to use into `llama-shim/models/`. You may use subfolders. The current config assumes you have `gpt-oss-20b-mxfp4.gguf` in the models folder already. If you use something different, update `defaultModelName` in `shim-config.json`.
 
-#### Running via systemd
+---
+
+### Running in the background (systemd)
 
 `node/nvm` are designed to run in a TTY, so typically they'll close out if you exit your SSH session. To keep this running in the background, we need to create a systemd service. Follow these steps:
 
-##### 1. Define the service
+#### 1. Define the service
 
 1. `sudo nano /etc/systemd/system/llama-shim.service`
 
@@ -55,11 +85,11 @@ User=fox
 WorkingDirectory=/home/fox/llama-shim
 ExecStart=/home/fox/llama-shim/run.sh
 
-# Shutdown behavior - ensure child processes are terminated
-# alongside parent
+# Shutdown behavior - kill parent process only
+# (llama-shim will take care of child processes)
 TimeoutStopSec=20
 KillSignal=SIGINT
-KillMode=control-group
+KillMode=process
 
 # Restart policy
 Restart=on-failure
@@ -86,14 +116,18 @@ WantedBy=multi-user.target
 
 3. Ensure `run.sh` points to your `nvm` directory and includes `llama-server` in your `PATH`.
 
-##### 2. Reload systemctl and start the service
+4. Build `llama-shim` so it can be run by node: `npm run build`
+
+(Note, also make sure you've built the `llama.cpp` submodule if you're using that!)
+
+#### 2. Reload systemctl and start the service
 
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now llama-shim
 ```
 
-##### 3. View logs/status/shut down service
+#### 3. View logs/status/shut down service
 
 ```sh
 # check whether service is running
