@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { networkInterfaces } from "os";
-import path, { basename } from 'path';
+import path from 'path';
 
 // File extension for local models
 const MODEL_FILE_EXT = '.gguf';                 

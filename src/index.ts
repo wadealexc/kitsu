@@ -1,11 +1,10 @@
 import * as fs from 'fs';
 import { PassThrough } from 'stream';
-import path, { basename } from 'path';
-import { spawn, ChildProcess } from 'child_process';
-import fetch, { type RequestInit, Response } from 'node-fetch';
+import path from 'path';
+import { type Response } from 'node-fetch';
 
 import express from 'express';
-import chalk, { type ChalkInstance } from 'chalk';
+import chalk from 'chalk';
 import bytes from 'bytes';
 
 import * as utils from './utils.js';
