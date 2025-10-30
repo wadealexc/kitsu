@@ -2,11 +2,11 @@ import path from 'path';
 import * as fs from 'node:fs';
 import { spawn, ChildProcess } from 'child_process';
 import fetch, { type RequestInit, Response } from 'node-fetch';
+import type { IncomingHttpHeaders } from 'node:http';
 
 import chalk from 'chalk';
 
 import * as utils from './utils.js';
-import type { IncomingHttpHeaders } from 'node:http';
 
 // Command to start llama‑server if not using llama.cpp submodule
 //
@@ -40,10 +40,7 @@ type ActiveProcess = {
     exited: Promise<void>,
 };
 
-type ModelInfo = {
-    name: string,
-    path: string,
-};
+type ModelInfo = utils.BaseModel | utils.OCRModel;
 
 export class LlamaManager {
 
@@ -52,11 +49,9 @@ export class LlamaManager {
     private llamaServerPort: string;
     private llamaServerURL: string;
     private llamaServerVerboseLogs: boolean;
-    
-    private defaultModelName: string;
-    private models: Map<string, string>;
 
     private llama: ActiveProcess | null = null;
+    private models: Map<string, ModelInfo>;
 
     private runCounter = 0;
     private activeRequests = 0;
@@ -71,22 +66,22 @@ export class LlamaManager {
         useSubmodule: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
-        modelFiles: string[], defaultModelName: string,
+        models: utils.ModelInfos,
     }) {
         this.llamaServerCommand = params.useSubmodule ? './llama.cpp/build/bin/llama-server' : DEFAULT_LLM_COMMAND;
         this.llamaServerIP = params.llamaServerIP;
         this.llamaServerPort = params.llamaServerPort.toString();
         this.llamaServerURL = `http://${params.llamaServerIP}:${params.llamaServerPort}`;
         this.llamaServerVerboseLogs = params.llamaServerVerbose;
-        
-        if (!params.modelFiles.find(model => utils.modelNameFromPath(model) === params.defaultModelName))
-            throw new Error(`did not find requested default model: ${params.defaultModelName}`);
 
-        // Map all models s.t. (key == modelName, value == modelFile)
-        this.defaultModelName = params.defaultModelName;
-        this.models = new Map(params.modelFiles.map((file) => [
-            utils.modelNameFromPath(file),
-            file
+        // Map models s.t. (key == model name, value == model info)
+        this.models = new Map([
+            params.models.base.default,
+            ...params.models.base.alts,
+            params.models.ocr,
+        ].map(model => [
+            model.name,
+            model,
         ]));
 
         this.sleepAfterMs = params.sleepAfterXSeconds * 1000;
@@ -95,7 +90,7 @@ export class LlamaManager {
         this.logFilePrefix = params.logFilePrefix;
 
         // Start llama-server with default model
-        this.ready(this.defaultModelName);
+        this.ready(params.models.base.default.name);
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
@@ -121,7 +116,6 @@ export class LlamaManager {
         // If we have any outstanding requests, throw (TODO - wait here)
         if (this.activeRequests !== 0) throw new Error(`LlamaManager.ready: attempted restart while requests active`);
 
-        const model: ModelInfo = { name: modelName, path: this.models.get(modelName)! }
         // We need to start a new llama-server process for the model, and maybe
         // shut down an existing process. Create a promise that will be resolved
         // when this is complete.
@@ -129,7 +123,7 @@ export class LlamaManager {
         this.restartInProgress = new Promise<void>(async (resolve) => {
             try {
                 await this.stopServer();
-                await this.#startServer(model);
+                await this.#startServer(this.models.get(modelName)!);
                 await this.#pollServer();
             } finally {
                 this.restartInProgress = null;
@@ -280,8 +274,7 @@ export class LlamaManager {
         const out = fs.openSync(logPath, 'a');
         const err = fs.openSync(logPath, 'a');
 
-        const args = [
-            '-m', model.path,
+        let args = [
             '--host', this.llamaServerIP,
             '--port', this.llamaServerPort,
             '--ctx-size', '0',
@@ -289,6 +282,19 @@ export class LlamaManager {
             '-fa', '1',
             '--no-webui',                   // turn off webui, since the auto-shutdown feature makes this unreliable                 
         ];
+
+        if (model.type === 'ocr') {
+            args = [
+                '-m', model.path,
+                '--mmproj', model.mmprojPath,
+                ...args,
+            ];
+        } else {
+            args = [
+                '-m', model.path,
+                ...args,
+            ];
+        }
 
         // log verbosity ("messages with a higher verbosity will be ignored")
         // this gets _really_ verbose so we only want it enabled sometimes
@@ -412,12 +418,12 @@ export class LlamaManager {
         });
     }
 
-    #newSleepTimer(delayMs: number): { 
+    #newSleepTimer(delayMs: number): {
         reset: () => void,
         clear: () => void,
     } {
         let timer: NodeJS.Timeout | null = null;
-        
+
         const start = () => {
             timer = setTimeout(async () => {
                 await this.#sleep();
@@ -464,5 +470,15 @@ export class LlamaManager {
 
         console.log(`no activity after${minutesStr}${secondsStr}; going to sleep...`);
         await this.stopServer();
+    }
+
+    /* -------------------- GETTERS -------------------- */
+
+    getBaseModels(): string[] {
+        return [
+            ...this.models.values()
+                .filter(v => v.type === 'base')
+                .map(model => model.name)
+        ];
     }
 }

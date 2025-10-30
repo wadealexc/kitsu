@@ -22,19 +22,19 @@ type Message = BasicMessage | AssistantMessage | ToolMessage;
 
 type BasicMessage = {
     role: "user" | "system" | "developer",
-    content: string,
+    content: string | any[],
     name?: string,
 }
 
 type ToolMessage = {
     role: "tool",
     tool_call_id: string,
-    content: string,
+    content: string | any[],
 };
 
 type AssistantMessage = {
     role: "assistant",
-    content?: string,
+    content?: string | any[],
     reasoning_content?: string,        // Not in OAI API docs, but Aldehir's adapter uses it
     name?: string,
     refusal?: string,

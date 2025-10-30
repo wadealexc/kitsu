@@ -1,9 +1,19 @@
 {
-    "defaultModelName": "gpt-oss-20b-mxfp4",
-    "models": "./models",
-    "logs": "./logs",
+    "logPath": "./logs",
     "sleepAfterXSeconds": 600,
     "llamaServer": {
         "useSubmodule": true
+    },
+    "models": {
+        "path": "./models",
+        "base": {
+            "name": "gpt-oss-20b-mxfp4",
+            "url": "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+        },
+        "ocr": {
+            "name": "Nanonets-OCR-s-BF16",
+            "url": "https://huggingface.co/unsloth/Nanonets-OCR-s-GGUF/resolve/main/Nanonets-OCR-s-BF16.gguf",
+            "mmprojUrl": "https://huggingface.co/unsloth/Nanonets-OCR-s-GGUF/resolve/main/mmproj-F32.gguf"
+        }
     }
 }

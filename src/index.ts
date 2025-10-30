@@ -26,15 +26,11 @@ const LLAMA_SERVER_VERBOSITY = process.argv.slice(2).includes('-vb');
 const CONFIG_PATH = './shim-config.json';
 const cfg = readConfig(CONFIG_PATH);
 
-// Find all models recursively in MODEL_FILES_PATH and check for the default model
-const MODELS = utils.findModels(cfg.MODEL_FILES_PATH);
-if (MODELS.length === 0) {
-    console.error('No local GGUF models found in the working directory.');
-    process.exit(1);
-}
+// Ensure we have models locally
+const MODELS = await utils.fetchModels(cfg.models);
 
 // ensure log directory exists
-try { fs.mkdirSync(cfg.LOG_DIR, { recursive: true }); } catch (e) {
+try { fs.mkdirSync(cfg.logPath, { recursive: true }); } catch (e) {
     console.error('Failed to create log dir', e);
     process.exit(1);
 }
@@ -42,7 +38,7 @@ try { fs.mkdirSync(cfg.LOG_DIR, { recursive: true }); } catch (e) {
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const logFilePrefix = `llama-${timestamp}`
 
-const chatPath = path.join(cfg.LOG_DIR, `${logFilePrefix}.chat.json`);
+const chatPath = path.join(cfg.logPath, `${logFilePrefix}.chat.json`);
 const chatLogs: any[] = [];
 const chatStream: fs.WriteStream = fs.createWriteStream(chatPath, { flags: 'a' });
 
@@ -58,10 +54,10 @@ app.listen(EXTERNAL_PORT, () => {
 // Start llama-server
 const llama = new LlamaManager({
     llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-    useSubmodule: cfg.LLAMA_SERVER.USE_SUBMODULE,
-    logDirectory: cfg.LOG_DIR, logFilePrefix: logFilePrefix,
-    sleepAfterXSeconds: cfg.SLEEP_AFTER_X_SECONDS,
-    modelFiles: MODELS, defaultModelName: cfg.DEFAULT_MODEL,
+    useSubmodule: cfg.llamaServer.useSubmodule,
+    logDirectory: cfg.logPath, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.sleepAfterXSeconds,
+    models: MODELS,
 });
 
 /* -------------------- ROUTES -------------------- */
@@ -73,8 +69,8 @@ const llama = new LlamaManager({
  */
 app.get('/v1/models', async (_req, res) => {
     try {
-        const data = MODELS.map(p => ({
-            id: utils.modelNameFromPath(p),
+        const data = llama.getBaseModels().map(name => ({
+            id: name,
             object: 'model',
             owned_by: 'llamacpp',
         }));
