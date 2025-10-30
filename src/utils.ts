@@ -35,6 +35,7 @@ export type ModelInfos = {
 
 // Check for models locally as specified by config, or fetch from supplied
 // URLs if not found
+// TODO - parallel fetch if needed
 export async function fetchModels(cfg: ModelConfig): Promise<ModelInfos> {
     const baseModelPath = path.join(cfg.path, '/base', cfg.base.name) + '.gguf';
     const ocrModelPath = path.join(cfg.path, '/ocr', cfg.ocr.name) + '.gguf';

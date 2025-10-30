@@ -64,7 +64,6 @@ const llama = new LlamaManager({
 
 /**
  * /v1/models – return list of local models
- * TODO - use llamaManager instead
  * TODO - return richer info
  */
 app.get('/v1/models', async (_req, res) => {
