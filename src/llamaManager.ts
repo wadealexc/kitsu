@@ -119,9 +119,16 @@ export class LlamaManager {
         if (this.restartInProgress) await this.restartInProgress;
 
         // If we need vision, switch the requested modelName for our vision model
-        if (useVision) {
-            modelName = this.getVisionModels().at(0)
-                ?? (() => { throw new Error(`vision model requested, but none loaded`) })();
+        if (modelName === 'auto') {
+            if (useVision) {
+                modelName = this.getVisionModels().at(0)
+                    ?? (() => { throw new Error(`vision model auto-requested, but none loaded`) })();
+            } else {
+                modelName = this.getBaseModels().at(0)
+                    ?? (() => { throw new Error(`base model auto-requested, but none loaded`) })();
+            }
+
+            console.log(chalk.dim(`(auto) routing request to model: ${modelName}`));
         }
 
         if (this.llama?.currentModel.name === modelName) return; // no work needed
@@ -486,6 +493,14 @@ export class LlamaManager {
     }
 
     /* -------------------- GETTERS -------------------- */
+
+    getFrontendModels(): string[] {
+        return [
+            'auto',
+            ...this.getBaseModels(),
+            ...this.getVisionModels(),
+        ]
+    }
 
     getBaseModels(): string[] {
         return [

@@ -68,7 +68,7 @@ const llama = new LlamaManager({
  */
 app.get('/v1/models', async (_req, res) => {
     try {
-        const data = llama.getBaseModels().map(name => ({
+        const data = llama.getFrontendModels().map(name => ({
             id: name,
             object: 'model',
             owned_by: 'llamacpp',
