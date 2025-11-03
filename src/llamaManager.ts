@@ -42,6 +42,12 @@ type ActiveProcess = {
 
 type ModelInfo = utils.BaseModel | utils.OCRModel;
 
+/**
+ * LlamaManager manages llamas.
+ * 
+ * This thing is basically "in charge" of a single llama.cpp process. It creates the process,
+ * handles prompts while the process is alive, and tears down the process when requested.
+ */
 export class LlamaManager {
 
     private llamaServerCommand: string;
@@ -109,10 +115,16 @@ export class LlamaManager {
      * 
      * @param modelName The name of the model for which we should have a corresponding GGUF
      */
-    async ready(modelName: string) {
+    async ready(modelName: string, useVision?: boolean) {
         if (this.restartInProgress) await this.restartInProgress;
-        if (this.llama?.currentModel.name === modelName) return; // no work needed
 
+        // If we need vision, switch the requested modelName for our vision model
+        if (useVision) {
+            modelName = this.getVisionModels().at(0)
+                ?? (() => { throw new Error(`vision model requested, but none loaded`) })();
+        }
+
+        if (this.llama?.currentModel.name === modelName) return; // no work needed
         // If we have any outstanding requests, throw (TODO - wait here)
         if (this.activeRequests !== 0) throw new Error(`LlamaManager.ready: attempted restart while requests active`);
 
@@ -277,7 +289,6 @@ export class LlamaManager {
         let args = [
             '--host', this.llamaServerIP,
             '--port', this.llamaServerPort,
-            '--ctx-size', '0',
             '--jinja',
             '-fa', '1',
             '--no-webui',                   // turn off webui, since the auto-shutdown feature makes this unreliable                 
@@ -287,11 +298,13 @@ export class LlamaManager {
             args = [
                 '-m', model.path,
                 '--mmproj', model.mmprojPath,
+                '--ctx-size', `${model.ctxSize}`,
                 ...args,
             ];
         } else {
             args = [
                 '-m', model.path,
+                '--ctx-size', `${model.ctxSize}`,
                 ...args,
             ];
         }
@@ -478,6 +491,14 @@ export class LlamaManager {
         return [
             ...this.models.values()
                 .filter(v => v.type === 'base')
+                .map(model => model.name)
+        ];
+    }
+
+    getVisionModels(): string[] {
+        return [
+            ...this.models.values()
+                .filter(v => v.type === 'ocr')
                 .map(model => model.name)
         ];
     }

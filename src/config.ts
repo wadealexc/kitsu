@@ -5,11 +5,13 @@ export type ModelConfig = {
     base: {
         name: string,
         url: string,
+        ctxSize: number,
     },
     ocr: {
         name: string,
         url: string,
         mmprojUrl: string,
+        ctxSize: number,
     }
 }
 
@@ -24,5 +26,10 @@ export type ConfigBase = {
 
 // TODO - default values if unset
 export function readConfig(path: string): ConfigBase {
-    return JSON.parse(fs.readFileSync(path, 'utf-8')) as ConfigBase;
+    let cfg = JSON.parse(fs.readFileSync(path, 'utf-8')) as ConfigBase;
+    
+    if (!(cfg.models.base.ctxSize as any)) cfg.models.base.ctxSize = 0;
+    if (!(cfg.models.ocr.ctxSize as any)) cfg.models.ocr.ctxSize = 0;
+
+    return cfg;
 }

@@ -11,9 +11,10 @@
             "url": "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
         },
         "ocr": {
-            "name": "Nanonets-OCR-s-BF16",
-            "url": "https://huggingface.co/unsloth/Nanonets-OCR-s-GGUF/resolve/main/Nanonets-OCR-s-BF16.gguf",
-            "mmprojUrl": "https://huggingface.co/unsloth/Nanonets-OCR-s-GGUF/resolve/main/mmproj-F32.gguf"
+            "name": "Qwen3-VL-30B-A3B-Thinking",
+            "url": "https://huggingface.co/unsloth/Qwen3-VL-30B-A3B-Thinking-GGUF/resolve/main/Qwen3-VL-30B-A3B-Thinking-Q6_K.gguf",
+            "mmprojUrl": "https://huggingface.co/unsloth/Qwen3-VL-30B-A3B-Thinking-GGUF/resolve/main/mmproj-BF16.gguf",
+            "ctxSize": 32768
         }
     }
 }

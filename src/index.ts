@@ -95,6 +95,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (Buffer.isBuffer(req.body) && req.headers['content-type']?.includes('application/json')) {
         try {
             request = JSON.parse(req.body.toString('utf8'));
+            // console.log(`request: \n${JSON.stringify(request, null, 2)}`);
         } catch (e) {
             throw new Error(`failed to parse request body: ${e}`);
         }
@@ -102,8 +103,14 @@ app.post('/v1/chat/completions', async (req, res) => {
         throw new Error(`/v1/chat/completions: unexpected input for request: ${JSON.stringify(req.body, null, 2)}`);
     }
 
+    // Swap to vision model if the message stream has any images
+    const useVision = request.messages.findIndex(msg => {
+        if (typeof msg.content === 'string') return false;
+        return msg.content.find(part => part.type === 'image_url');
+    }) !== -1;
+
     // Wait for our requested model to be ready
-    try { await llama.ready(request.model) } catch (err: any) {
+    try { await llama.ready(request.model, useVision) } catch (err: any) {
         console.log(requestInfo);
         console.log(chalk.dim.red(` -> failed while waiting for requested model`));
         console.log(chalk.dim.red(` -> request: \n${JSON.stringify(request, null, 2)}`));

@@ -9,7 +9,7 @@ export type CompletionRequest = {
 
 // Top-level tool definition provided to assistant
 type ToolDefinition = {
-    type: "function",
+    type: 'function',
     function: {
         name: string,
         description?: string,
@@ -21,20 +21,20 @@ type ToolDefinition = {
 type Message = BasicMessage | AssistantMessage | ToolMessage;
 
 type BasicMessage = {
-    role: "user" | "system" | "developer",
-    content: string | any[],
+    role: 'user' | 'system' | 'developer',
+    content: string | ContentPart[],
     name?: string,
 }
 
 type ToolMessage = {
-    role: "tool",
+    role: 'tool',
     tool_call_id: string,
-    content: string | any[],
+    content: string | ContentPart[],
 };
 
 type AssistantMessage = {
-    role: "assistant",
-    content?: string | any[],
+    role: 'assistant',
+    content: string | ContentPart[],
     reasoning_content?: string,        // Not in OAI API docs, but Aldehir's adapter uses it
     name?: string,
     refusal?: string,
@@ -44,11 +44,26 @@ type AssistantMessage = {
 type AssistantToolCall = {
     index?: number,                    // Not in OAI API docs, but OWU supplies it
     id: string,
-    type: "function",
+    type: 'function',
     function: {
         name: string,
         arguments: string,
     }
+};
+
+type ContentPart = TextContentPart | ImageContentPart;
+
+type TextContentPart = {
+    type: 'text',
+    text: string,
+};
+
+type ImageContentPart = {
+    type: 'image_url',
+    image_url: {
+        url: string,
+        detail?: string,
+    },
 };
 
 export type CompletionResponse = {

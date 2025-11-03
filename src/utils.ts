@@ -16,6 +16,7 @@ export type BaseModel = {
     type: 'base',
     name: string,
     path: string,
+    ctxSize: number,
 };
 
 export type OCRModel = {
@@ -23,6 +24,7 @@ export type OCRModel = {
     name: string,
     path: string,
     mmprojPath: string,
+    ctxSize: number,
 };
 
 export type ModelInfos = {
@@ -71,6 +73,7 @@ export async function fetchModels(cfg: ModelConfig): Promise<ModelInfos> {
                 type: 'base',
                 name: cfg.base.name,
                 path: baseModelPath,
+                ctxSize: cfg.base.ctxSize,
             },
             alts: [],
         },
@@ -79,6 +82,7 @@ export async function fetchModels(cfg: ModelConfig): Promise<ModelInfos> {
             name: cfg.ocr.name,
             path: ocrModelPath,
             mmprojPath: ocrMMProjPath,
+            ctxSize: cfg.ocr.ctxSize,
         }
     };
 }
