@@ -139,3 +139,7 @@ journalctl -u llama-shim -f -o cat
 # shut down service
 sudo systemctl stop llama-shim
 ```
+
+```sh
+sudo docker logs -f <container id>
+```

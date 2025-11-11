@@ -153,7 +153,27 @@ app.post('/v1/chat/completions', async (req, res) => {
     // Log request + status
     if (llamaResponse.status !== 200) {
         console.log(requestInfo);
-        console.log(chalk.dim.yellow(` -> llama-server responds with (${llamaResponse.status}: ${llamaResponse.statusText}; content: ${contentType})`));
+
+        // Try to decode the error
+        let internalMessage: string;
+        try {
+            const chunks = [];
+            for await (const chunk of llamaResponse.body!) {
+                chunks.push(chunk);
+            }
+
+            // `chunks` can contain Buffers or strings. concat expects buffer, so ensure
+            // chunks are buffers before calling concat.
+            const buffer = Buffer.concat(chunks.map(c => (Buffer.isBuffer(c) ? c : Buffer.from(c))));
+            const body = buffer.toString('utf8');
+
+            internalMessage = JSON.parse(body).error?.message as string;
+        } catch (e: any) {
+            internalMessage = 'could not decode error';
+        }
+
+        console.log(chalk.dim.yellow(` -> llama-server responds with (${llamaResponse.status}: ${internalMessage})`));
+        res.status(500).json({ error: 'llama-server error: ' + internalMessage });
         return;
     } else {
         console.log(requestInfo);
@@ -190,7 +210,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         } catch (err: any) {
             console.error(`error handling llama-server response: ${err}`);
         }
-        
+
         finish(response);
     });
 
@@ -206,6 +226,40 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     // Stream response to client (as well as our logging/caching system)
     llamaResponse.body?.pipe(passThrough).pipe(res);
+});
+
+app.put('/pdf-extract/process', async (req, res) => {
+    console.log(`got pdf extract request (${req.originalUrl})`);
+    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`method: ${req.method}`);
+    console.log(`body size: ${req.body?.length}`);
+
+    // Format originally from: https://github.com/open-webui/open-webui/discussions/17621
+    // (backend/open_webui/retrieval/loaders/external_document.py)
+    let result = [
+        {
+            "page_content": "hello world",
+            "metadata": {
+                "source": "bingus",
+                "page": 1,
+                "extraction_method": "dummy thicc",
+                "total_pages": 1,
+                "ocr_language": "bongus",
+            }
+        }
+    ]
+
+    res.send(result);
+});
+
+app.all('/{*splat}', async (req, res) => {
+    console.log(`got unknown request to: ${req.originalUrl}`);
+    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`method: ${req.method}`);
+    // console.log(`body: ${req.body}`);
+    // console.log(`${JSON.stringify(req, null, 2)}`);
+
+    res.send('result text');
 });
 
 function handleStaticResponse(responseString: string): proto.CompletionResponse {
