@@ -16,6 +16,7 @@ export type ModelConfig = {
 }
 
 export type ConfigBase = {
+    braveAPIKey: string,
     logPath: string,
     sleepAfterXSeconds: number,
     llamaServer: {

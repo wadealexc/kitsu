@@ -1,4 +1,5 @@
 {
+    "braveAPIKey": "",
     "logPath": "./logs",
     "sleepAfterXSeconds": 600,
     "llamaServer": {

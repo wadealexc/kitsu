@@ -23,7 +23,7 @@ const LLAMA_SHIM_URL = `http://${HOST_IP}:${EXTERNAL_PORT}`;   // URL we expose 
 // Check for 'verbose' option for llama-server verbosity
 const LLAMA_SERVER_VERBOSITY = process.argv.slice(2).includes('-vb');
 
-const CONFIG_PATH = './shim-config.json';
+const CONFIG_PATH = './config.json';
 const cfg = readConfig(CONFIG_PATH);
 
 // Ensure we have models locally
@@ -228,7 +228,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     llamaResponse.body?.pipe(passThrough).pipe(res);
 });
 
-app.put('/pdf-extract/process', async (req, res) => {
+app.put('/pdf/process', async (req, res) => {
     console.log(`got pdf extract request (${req.originalUrl})`);
     console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
     console.log(`method: ${req.method}`);
@@ -250,6 +250,74 @@ app.put('/pdf-extract/process', async (req, res) => {
     ]
 
     res.send(result);
+});
+
+type SearchRequest = {
+    query: string,
+    count: number,
+};
+
+type SearchResponse = {
+    link: string,
+    title: string,
+    snippet: string,
+};
+
+const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
+
+type BraveSearchResult = {
+    title: string,
+    url: string,
+    description: string,
+}
+
+app.post('/web/search', async (req, res) => {
+    // Basic request info for logging
+    const requestLen = req.headers['content-length'] ?? '0';
+    const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
+
+    // Convert request body to JSON
+    let request: SearchRequest;
+    if (Buffer.isBuffer(req.body) && req.headers['content-type']?.includes('application/json')) {
+        try {
+            request = JSON.parse(req.body.toString('utf8'));
+        } catch (e) {
+            throw new Error(`failed to parse request body: ${e}`);
+        }
+    } else {
+        throw new Error(`/web/search: unexpected input for request: ${JSON.stringify(req.body, null, 2)}`);
+    }
+
+    // Search via brave search api
+    const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(request.query)}&count=${request.count}`;
+    const response = await fetch(url, {
+        method: 'get',
+        headers: {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip',
+            'X-Subscription-Token': cfg.braveAPIKey,
+        }
+    });
+
+    if (!response.ok) {
+        const errorMsg = await response.text();
+        throw new Error(`Brave API error: ${response.status}: ${errorMsg}`);
+    }
+
+    const results = await response.json();
+    const searchResponses: SearchResponse[] = [];
+    for (const item of (results.web?.results as BraveSearchResult[])) {
+        searchResponses.push({ 
+            link: item.url,
+            title: item.title,
+            snippet: item.description,
+        });
+    }
+
+    // Log results from brave API and return
+    console.log(requestInfo);
+    console.log(chalk.dim(` -> "${request.query}" (got ${searchResponses.length} results)`));
+    res.send(searchResponses);
 });
 
 app.all('/{*splat}', async (req, res) => {
