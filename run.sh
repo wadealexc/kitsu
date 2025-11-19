@@ -16,4 +16,8 @@ source "$HOME/.nvm/nvm.sh"
 ##
 # export PATH="$HOME/llama.cpp/build/bin:$PATH"
 
+# https://pptr.dev/troubleshooting#using-setuid-sandbox
+# export CHROME_DEVEL_SANDBOX env variable
+export CHROME_DEVEL_SANDBOX=/usr/local/sbin/chrome-devel-sandbox
+
 exec node dist/index.js

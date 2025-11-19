@@ -9,6 +9,7 @@ import bytes from 'bytes';
 
 import * as utils from './utils.js';
 import { LlamaManager } from './llamaManager.js';
+import { browserInit, type SearchRequest, type SearchResponse } from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 
@@ -50,6 +51,9 @@ app.use(express.raw({ type: (() => true), limit: '50mb' }));
 app.listen(EXTERNAL_PORT, () => {
     console.log(`llama-shim listening on ${chalk.cyan(LLAMA_SHIM_URL)}`);
 });
+
+// Start web browser/search manager
+const browser = await browserInit(cfg.braveAPIKey);
 
 // Start llama-server
 const llama = new LlamaManager({
@@ -252,25 +256,6 @@ app.put('/pdf/process', async (req, res) => {
     res.send(result);
 });
 
-type SearchRequest = {
-    query: string,
-    count: number,
-};
-
-type SearchResponse = {
-    link: string,
-    title: string,
-    snippet: string,
-};
-
-const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
-
-type BraveSearchResult = {
-    title: string,
-    url: string,
-    description: string,
-}
-
 app.post('/web/search', async (req, res) => {
     // Basic request info for logging
     const requestLen = req.headers['content-length'] ?? '0';
@@ -278,46 +263,25 @@ app.post('/web/search', async (req, res) => {
 
     // Convert request body to JSON
     let request: SearchRequest;
-    if (Buffer.isBuffer(req.body) && req.headers['content-type']?.includes('application/json')) {
-        try {
-            request = JSON.parse(req.body.toString('utf8'));
-        } catch (e) {
-            throw new Error(`failed to parse request body: ${e}`);
-        }
-    } else {
-        throw new Error(`/web/search: unexpected input for request: ${JSON.stringify(req.body, null, 2)}`);
+    try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
+        console.log(`failed to parse request body: ${e}`);
+        res.status(500).json({ error: `/web/search error: malformed request body` });
+        return;
     }
 
-    // Search via brave search api
-    const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(request.query)}&count=${request.count}`;
-    const response = await fetch(url, {
-        method: 'get',
-        headers: {
-            'Accept': 'application/json',
-            'Accept-Encoding': 'gzip',
-            'X-Subscription-Token': cfg.braveAPIKey,
-        }
-    });
-
-    if (!response.ok) {
-        const errorMsg = await response.text();
-        throw new Error(`Brave API error: ${response.status}: ${errorMsg}`);
-    }
-
-    const results = await response.json();
-    const searchResponses: SearchResponse[] = [];
-    for (const item of (results.web?.results as BraveSearchResult[])) {
-        searchResponses.push({ 
-            link: item.url,
-            title: item.title,
-            snippet: item.description,
-        });
+    // Perform web search and start loading pages in background
+    let response: SearchResponse[];
+    try { response = await browser.search(request) } catch (err: any) {
+        console.log(`/web/search: search failed: ${err}`);
+        res.status(500).json({ error: `/web/search: search failed: ${err}` });
+        return;
     }
 
     // Log results from brave API and return
     console.log(requestInfo);
-    console.log(chalk.dim(` -> "${request.query}" (got ${searchResponses.length} results)`));
-    res.send(searchResponses);
+    console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
+
+    res.send(response);
 });
 
 app.all('/{*splat}', async (req, res) => {
@@ -341,11 +305,7 @@ function handleStaticResponse(responseString: string): proto.CompletionResponse 
 function handleStreamedResponse(responseString: string): proto.CompletionResponse {
     // This should give us an array of JSON strings representing various streamed tokens
     let responseDeltas = responseString.split('data: ').reduce<proto.CompletionResponse[]>((accum, event) => {
-        try {
-            accum.push(JSON.parse(event.trim()));
-        } catch {
-
-        }
+        try { accum.push(JSON.parse(event.trim())) } catch { }
 
         return accum;
     }, []);
@@ -405,12 +365,21 @@ async function shutdown(signal: string) {
     await Promise.allSettled([
         // 1. Kill llama-server if it's running
         new Promise<void>(async (resolve) => {
+            // console.log(`llama.stopServer`)
             try { await llama.stopServer() }
             catch (err) { console.error(`shutdown: llama.stopServer failed: `, err) }
             finally { resolve() }
         }),
-        // 2. Write chat logs to file
+        // 2. Close browser if it's running
         new Promise<void>(async (resolve) => {
+            // console.log(`browser.shutdown`)
+            try { await browser.shutdown() }
+            catch (err) { console.error(`shutdown: browser.shutdown failed: `, err) }
+            finally { resolve() }
+        }),
+        // 3. Write chat logs to file
+        new Promise<void>(async (resolve) => {
+            // console.log(`chatStream.write`)
             chatStream.once('finish', resolve);
             chatStream.once('error', (err) => {
                 console.error(`shutdown: error writing logs to file: `, err);
