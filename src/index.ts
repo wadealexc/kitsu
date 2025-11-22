@@ -271,7 +271,7 @@ app.post('/web/search', async (req, res) => {
 
     // Perform web search and start loading pages in background
     let response: SearchResponse[];
-    try { response = await browser.search(request) } catch (err: any) {
+    try { response = await browser.search(request, true) } catch (err: any) {
         console.log(`/web/search: search failed: ${err}`);
         res.status(500).json({ error: `/web/search: search failed: ${err}` });
         return;

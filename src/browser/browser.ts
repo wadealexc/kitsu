@@ -75,7 +75,11 @@ class Browser {
     //   rate limiting for a minute. After a minute, the task will be removed from `tasks.complete`.
     private documents: Map<URL, Document> = new Map();
     private tasks = new Task.TaskManager<Document>(MAX_CONCURRENT_PAGE_LOADS);
-    private taskInterval: NodeJS.Timeout | undefined = undefined;
+    private taskLoop: {
+        interval: NodeJS.Timeout,
+        successes: number,
+        total: number,
+    } | undefined = undefined;
 
     // If we specifically get HTTP 429 - Too Many Requests, the host is added
     // to a blacklist so that we don't try to load it again until I can investigate
@@ -144,7 +148,7 @@ class Browser {
         }
 
         // Start background jobs if requested
-        if (loadPages) this.fetchContent(...urls);
+        if (loadPages)  try { this.fetchContent(...urls) } catch { };
         return searchResponses;
     }
 
@@ -190,19 +194,28 @@ class Browser {
      * Does nothing if an interval is already present.
      */
     #startTaskLoop() {
-        if (this.taskInterval) {
+        if (this.taskLoop) {
             return;
         }
 
-        console.log(`Browser.#startTaskLoop`);
-        this.taskInterval = setInterval(() => {
-            this.processTasks();
-        }, PROCESS_TASKS_INTERVAL_MS).unref();
+        console.log(chalk.dim.green(`Browser: working on fetch requests...`));
+        this.taskLoop = {
+            interval: setInterval(() => {
+                this.processTasks();
+            }, PROCESS_TASKS_INTERVAL_MS).unref(),
+            successes: 0,
+            total: 0,
+        };
     }
 
     #stopTaskLoop() {
-        clearTimeout(this.taskInterval);
-        this.taskInterval = undefined;
+        if (!this.taskLoop) {
+            return;
+        }
+
+        console.log(chalk.dim.green(`Browser: all outstanding work done; stopping task loop (success: ${this.taskLoop.successes} of ${this.taskLoop.total})`));
+        clearTimeout(this.taskLoop.interval);
+        this.taskLoop = undefined;
     }
 
     /**
@@ -215,8 +228,7 @@ class Browser {
 
         // For each expired task, decrease the corresponding rate limit
         this.tasks.forEachExpired((task: Task.Expiry<Document>) => this.decRateLimit(task.url));
-
-        this.printStatus();
+        // this.tasks.printInfo();
 
         while (this.tasks.hasWorker() && this.tasks.hasNext()) {
             const task = this.tasks.getNext()!;
@@ -235,11 +247,15 @@ class Browser {
             // Update rate limit and page load attempts
             task.loadAttempts++;
             this.incRateLimit(task.url);
+            if (this.taskLoop) this.taskLoop.total++;
 
             // Start task. If the task fails, defer it to be retried later.
             this.tasks.start(task);
             this.#loadPage(task.url)
-                .then((result: Document) => this.tasks.finish(task, result))
+                .then((result: Document) => {
+                    if (this.taskLoop) this.taskLoop.successes++;
+                    this.tasks.finish(task, result);
+                })
                 .catch((reason: any) => {
                     console.log(`loading page failed for url ${task.url}. reason: ${reason}`);
 
@@ -252,19 +268,14 @@ class Browser {
                     }
                 })
                 .finally(() => {
-                    this.printStatus();
-
                     // If we have no pending and no active tasks, cancel the task loop interval
                     // ... it will restart if we push anything to `this.tasks.active`
                     if (this.tasks.allFinished()) {
-                        console.log(chalk.dim.green(`Browser.processLoop: all outstanding work completed, waiting...`));
                         this.#stopTaskLoop();
                         this.emitter.emit('done');
                     }
                 });
         }
-
-        console.log(chalk.dim(`Browser.processTasks: loop finished`));
     }
 
     /**
@@ -291,16 +302,15 @@ class Browser {
                         .querySelectorAll('nav, header, footer, aside')
                         .forEach(element => element.remove());
                 });
-            
+
                 // This is pretty close to the text you'd get from "Ctrl+A"
                 const text = await page.evaluate(() => {
                     return document.body.innerText ?? '';
                 });
 
+                await page.screenshot({ path: `${url.hostname}_${Date.now()}.png` });
                 // Cleanup!
-                await page.screenshot({ path: `${url.hostname}_${Date.now()}_TRIMMED.png` });
                 await page.close();
-                console.log(`Closed page for: (${url})`);
 
                 // We're done - create a document with the fetched content
                 const result: Document = {
@@ -315,7 +325,6 @@ class Browser {
             } catch (err: any) {
                 // Cleanup!
                 await page.close();
-                console.log(`Closed page for: (${url})`);
 
                 reject(err);
             }
@@ -323,8 +332,6 @@ class Browser {
     }
 
     async #gotoPage(page: puppeteer.Page, url: URL): Promise<void> {
-        console.log(chalk.dim(`requesting page: ${url.toString()}`));
-
         const response = await page.goto(url.toString(), {
             timeout: PAGE_LOAD_TIMEOUT_MS,
             waitUntil: 'networkidle2', // wait until we there are no more than 2 network requests for 500 ms
@@ -333,13 +340,9 @@ class Browser {
         });
 
         if (!response) throw new Error(`null response from page.goto`);
-        if (response.ok()) {
-            console.log(chalk.green.dim(` - got ${response.status()} from host: ${url.hostname}`));
-        } else {
+        if (!response.ok()) {
             const code = response.status();
             const errText = await response?.text();
-
-            console.log(chalk.yellow.dim(` - got ${response.status()} from host: ${url.hostname}. message:\n\t${errText}`))
 
             // TODO - handle other 400-level codes
             if (code === 429) this.hostBlacklist.add(url.hostname);
@@ -349,11 +352,11 @@ class Browser {
 
     async printStatus() {
         const pages = await this.browser.pages();
-
         this.tasks.printInfo();
+
         console.log(chalk.dim(` - pages open: ${pages.length}`));
         // if (pages.length !== 0) console.log(JSON.stringify(pages.map(page => page.url()), null, 2));
-        
+
         const rateLimitStr = `[\n  ${Array.from(this.rateLimits)
             .map(([key, value]) => `  { "${key}": ${value} }`)
             .join(",\n  ")}\n]`;
