@@ -43,7 +43,7 @@ const PAGE_LOAD_TIMEOUT_MS = 30000;
 // How often we check for outstanding work
 const PROCESS_TASKS_INTERVAL_MS = 100;
 
-type Document = {
+export type Document = {
     content: string,
     metadata: {
         source: URL
@@ -308,7 +308,7 @@ class Browser {
                     return document.body.innerText ?? '';
                 });
 
-                await page.screenshot({ path: `${url.hostname}_${Date.now()}.png` });
+                await page.screenshot({ path: `./screenshots/${url.hostname}_${Date.now()}.png` });
                 // Cleanup!
                 await page.close();
 
