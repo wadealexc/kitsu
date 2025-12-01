@@ -1,0 +1,38 @@
+[Unit]
+# start after network is up
+Description=llama shim
+After=network.target
+
+[Service]
+# Runs the `run.sh` script in the project root, which
+# ensures our environment is correct when run by systemd
+#
+# TODO: Change these options to use your username, and to
+#       reference the directory in which you placed llama-shim
+User=YOUR_USER_HERE
+WorkingDirectory=/home/YOUR_USER_HERE/llama-shim
+ExecStart=/home/YOUR_USER_HERE/llama-shim/run.sh
+
+# Shutdown behavior - kill parent process only
+# (llama-shim will take care of child processes)
+TimeoutStopSec=20
+KillSignal=SIGINT
+KillMode=process
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Send output to journal
+#
+# check status:
+# systemctl status llama-shim
+#
+# view logs:
+# journalctl -u llama-shim -f
+StandardInput=null
+#StandardOutput=append:/var/log/llama-shim.log
+#StandardError=append:/var/log/llama-shim.err.log
+
+[Install]
+WantedBy=multi-user.target

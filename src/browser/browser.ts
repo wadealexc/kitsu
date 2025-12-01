@@ -57,7 +57,7 @@ type BrowserEvents = {
 /**
  * `Browser` handles web search, page loading, and text extraction
  */
-class Browser {
+export class Browser {
 
     private emitter = new EventEmitter();
 
@@ -86,9 +86,16 @@ class Browser {
     // and figure out why we're triggering host-side ratelimiting.
     private hostBlacklist: Set<string> = new Set();
 
-    constructor(browser: puppeteer.Browser, braveAPIKey: string) {
+    private screenshotWebpages: boolean;
+
+    constructor(
+        browser: puppeteer.Browser,
+        braveAPIKey: string,
+        screenshotWebpages: boolean,
+    ) {
         this.browser = browser;
         this.braveAPIKey = braveAPIKey;
+        this.screenshotWebpages = screenshotWebpages;
 
         // When we receive a new task, spawn a worker if possible
         this.tasks.on('newTask', () => this.#startTaskLoop());
@@ -148,7 +155,7 @@ class Browser {
         }
 
         // Start background jobs if requested
-        if (loadPages)  try { this.fetchContent(...urls) } catch { };
+        if (loadPages) try { this.fetchContent(...urls) } catch { };
         return searchResponses;
     }
 
@@ -308,7 +315,10 @@ class Browser {
                     return document.body.innerText ?? '';
                 });
 
-                await page.screenshot({ path: `./screenshots/${url.hostname}_${Date.now()}.png` });
+                if (this.screenshotWebpages) {
+                    await page.screenshot({ path: `./screenshots/${url.hostname}_${Date.now()}.png` });
+                }
+
                 // Cleanup!
                 await page.close();
 
@@ -425,17 +435,37 @@ class Browser {
 // wants to try out the project without extra effort
 //
 // ... then again, if i just dockerize this, that should fix it
-export async function browserInit(braveAPIKey: string): Promise<Browser> {
-    process.stdout.write(`Starting web browser...`);
-    const puppet = await puppeteer.launch({
-        handleSIGINT: false,
-        handleSIGTERM: false,
-        handleSIGHUP: false,
-        args: [
-            '--disable-http2',
-        ]
-    });
-    process.stdout.write(chalk.green(`done!\n`));
+export async function browserInit(
+    braveAPIKey: string,
+    runDangerouslyWithoutSandbox: boolean,
+    screenshotWebpages: boolean,
+): Promise<Browser> {
+    let puppet: puppeteer.Browser;
+    if (runDangerouslyWithoutSandbox) {
+        console.log(chalk.red(`Browser.browserInit: warning - starting browser process without sandbox`));
 
-    return new Browser(puppet, braveAPIKey);
+        puppet = await puppeteer.launch({
+            handleSIGINT: false,
+            handleSIGTERM: false,
+            handleSIGHUP: false,
+            args: [
+                '--disable-http2',
+                '--no-sandbox'
+            ]
+        });
+    } else {
+        console.log(`Browser.browserInit: starting browser...`);
+
+        puppet = await puppeteer.launch({
+            handleSIGINT: false,
+            handleSIGTERM: false,
+            handleSIGHUP: false,
+            args: [
+                '--disable-http2',
+            ]
+        });
+    }
+
+    process.stdout.write(chalk.dim.green(`web browser running!\n`));
+    return new Browser(puppet, braveAPIKey, screenshotWebpages);
 }

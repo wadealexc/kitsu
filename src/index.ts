@@ -9,7 +9,7 @@ import bytes from 'bytes';
 
 import * as utils from './utils.js';
 import { LlamaManager } from './llamaManager.js';
-import { browserInit, type SearchRequest, type SearchResponse } from './browser/browser.js';
+import { browserInit, type Browser, type SearchRequest, type SearchResponse } from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 
@@ -25,13 +25,10 @@ const LLAMA_SHIM_URL = `http://${HOST_IP}:${EXTERNAL_PORT}`;   // URL we expose 
 const LLAMA_SERVER_VERBOSITY = process.argv.slice(2).includes('-vb');
 
 const CONFIG_PATH = './config.json';
-const cfg = readConfig(CONFIG_PATH);
-
-// Ensure we have models locally
-const MODELS = await utils.fetchModels(cfg.models);
+const cfg = await readConfig(CONFIG_PATH);
 
 // ensure log directory exists
-try { fs.mkdirSync(cfg.logPath, { recursive: true }); } catch (e) {
+try { fs.mkdirSync(cfg.logs.path, { recursive: true }); } catch (e) {
     console.error('Failed to create log dir', e);
     process.exit(1);
 }
@@ -39,9 +36,18 @@ try { fs.mkdirSync(cfg.logPath, { recursive: true }); } catch (e) {
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const logFilePrefix = `llama-${timestamp}`
 
-const chatPath = path.join(cfg.logPath, `${logFilePrefix}.chat.json`);
-const chatLogs: any[] = [];
-const chatStream: fs.WriteStream = fs.createWriteStream(chatPath, { flags: 'a' });
+const chatPath = path.join(cfg.logs.path, `${logFilePrefix}.chat.json`);
+let logger: {
+    logs: any[],
+    stream: fs.WriteStream,
+} | undefined = undefined;
+
+if (cfg.logs.enable) {
+    logger = {
+        logs: [],
+        stream: fs.createWriteStream(chatPath, { flags: 'a' }),
+    };
+}
 
 /* -------------------- INIT LLAMA AND EXPRESS -------------------- */
 
@@ -52,16 +58,12 @@ app.listen(EXTERNAL_PORT, () => {
     console.log(`llama-shim listening on ${chalk.cyan(LLAMA_SHIM_URL)}`);
 });
 
-// Start web browser/search manager
-const browser = await browserInit(cfg.braveAPIKey);
-
 // Start llama-server
 const llama = new LlamaManager({
     llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-    useSubmodule: cfg.llamaServer.useSubmodule,
-    logDirectory: cfg.logPath, logFilePrefix: logFilePrefix,
-    sleepAfterXSeconds: cfg.sleepAfterXSeconds,
-    models: MODELS,
+    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+    models: cfg.models,
 });
 
 /* -------------------- ROUTES -------------------- */
@@ -186,7 +188,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     // Write logs and clean up after response is finished
     const finish = ((response?: proto.CompletionResponse) => {
-        chatLogs.push({
+        logger?.logs.push({
             request: request,
             response: response
         });
@@ -232,57 +234,67 @@ app.post('/v1/chat/completions', async (req, res) => {
     llamaResponse.body?.pipe(passThrough).pipe(res);
 });
 
-app.put('/pdf/process', async (req, res) => {
-    console.log(`got pdf extract request (${req.originalUrl})`);
-    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
-    console.log(`method: ${req.method}`);
-    console.log(`body size: ${req.body?.length}`);
+// app.put('/pdf/process', async (req, res) => {
+//     console.log(`got pdf extract request (${req.originalUrl})`);
+//     console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+//     console.log(`method: ${req.method}`);
+//     console.log(`body size: ${req.body?.length}`);
 
-    // Format originally from: https://github.com/open-webui/open-webui/discussions/17621
-    // (backend/open_webui/retrieval/loaders/external_document.py)
-    let result = [
-        {
-            "page_content": "hello world",
-            "metadata": {
-                "source": "bingus",
-                "page": 1,
-                "extraction_method": "dummy thicc",
-                "total_pages": 1,
-                "ocr_language": "bongus",
-            }
+//     // Format originally from: https://github.com/open-webui/open-webui/discussions/17621
+//     // (backend/open_webui/retrieval/loaders/external_document.py)
+//     let result = [
+//         {
+//             "page_content": "hello world",
+//             "metadata": {
+//                 "source": "bingus",
+//                 "page": 1,
+//                 "extraction_method": "dummy thicc",
+//                 "total_pages": 1,
+//                 "ocr_language": "bongus",
+//             }
+//         }
+//     ]
+
+//     res.send(result);
+// });
+
+// If web browser is enabled, start it and define an endpoint
+let browser: Browser | undefined = undefined;
+if (cfg.web.enable) {
+    browser = await browserInit(
+        cfg.web.braveAPIKey,
+        cfg.web.runDangerouslyWithoutSandbox,
+        cfg.web.screenshotWebpages,
+    );
+
+    app.post('/web/search', async (req, res) => {
+        // Basic request info for logging
+        const requestLen = req.headers['content-length'] ?? '0';
+        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
+
+        // Convert request body to JSON
+        let request: SearchRequest;
+        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
+            console.log(`failed to parse request body: ${e}`);
+            res.status(500).json({ error: `/web/search error: malformed request body` });
+            return;
         }
-    ]
 
-    res.send(result);
-});
+        // Perform web search and start loading pages in background
+        let response: SearchResponse[];
+        try { response = await browser!.search(request, true) } catch (err: any) {
+            console.log(`/web/search: search failed: ${err}`);
+            res.status(500).json({ error: `/web/search: search failed: ${err}` });
+            return;
+        }
 
-app.post('/web/search', async (req, res) => {
-    // Basic request info for logging
-    const requestLen = req.headers['content-length'] ?? '0';
-    const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
+        // Log results from brave API and return
+        console.log(requestInfo);
+        console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
 
-    // Convert request body to JSON
-    let request: SearchRequest;
-    try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
-        console.log(`failed to parse request body: ${e}`);
-        res.status(500).json({ error: `/web/search error: malformed request body` });
-        return;
-    }
-
-    // Perform web search and start loading pages in background
-    let response: SearchResponse[];
-    try { response = await browser.search(request, true) } catch (err: any) {
-        console.log(`/web/search: search failed: ${err}`);
-        res.status(500).json({ error: `/web/search: search failed: ${err}` });
-        return;
-    }
-
-    // Log results from brave API and return
-    console.log(requestInfo);
-    console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
-
-    res.send(response);
-});
+        res.send(response);
+    });
+}
 
 app.all('/{*splat}', async (req, res) => {
     console.log(`got unknown request to: ${req.originalUrl}`);
@@ -365,30 +377,32 @@ async function shutdown(signal: string) {
     await Promise.allSettled([
         // 1. Kill llama-server if it's running
         new Promise<void>(async (resolve) => {
-            // console.log(`llama.stopServer`)
             try { await llama.stopServer() }
             catch (err) { console.error(`shutdown: llama.stopServer failed: `, err) }
             finally { resolve() }
         }),
         // 2. Close browser if it's running
         new Promise<void>(async (resolve) => {
-            // console.log(`browser.shutdown`)
-            try { await browser.shutdown() }
+            try { if (browser) await browser.shutdown() }
             catch (err) { console.error(`shutdown: browser.shutdown failed: `, err) }
             finally { resolve() }
         }),
         // 3. Write chat logs to file
         new Promise<void>(async (resolve) => {
-            // console.log(`chatStream.write`)
-            chatStream.once('finish', resolve);
-            chatStream.once('error', (err) => {
+            if (!logger) {
+                resolve();
+                return;
+            }
+
+            logger.stream.once('finish', resolve);
+            logger.stream.once('error', (err) => {
                 console.error(`shutdown: error writing logs to file: `, err);
                 resolve();
             });
 
             // Actually do the write, then close the file
-            chatStream.write(JSON.stringify(chatLogs, null, 2));
-            chatStream.end();
+            logger.stream.write(JSON.stringify(logger.logs, null, 2));
+            logger.stream.end();
         })
     ]);
 

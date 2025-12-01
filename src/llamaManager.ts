@@ -7,11 +7,10 @@ import type { IncomingHttpHeaders } from 'node:http';
 import chalk from 'chalk';
 
 import * as utils from './utils.js';
+import { type ModelConfig, type ModelInfo } from './config.js';
 
-// Command to start llama‑server if not using llama.cpp submodule
-//
-// In order for this to work, `llama-server` needs to be in your $PATH
-const DEFAULT_LLM_COMMAND = 'llama-server';
+// Command to start llama‑server via submodule
+const DEFAULT_LLM_COMMAND = './llama.cpp/build/bin/llama-server';
 
 // How long to wait for a graceful shutdown before sending SIGKILL
 const SHUTDOWN_GRACE_MS = 5000;
@@ -40,8 +39,6 @@ type ActiveProcess = {
     exited: Promise<void>,
 };
 
-type ModelInfo = utils.BaseModel | utils.OCRModel;
-
 /**
  * LlamaManager manages llamas.
  * 
@@ -57,6 +54,7 @@ export class LlamaManager {
     private llamaServerVerboseLogs: boolean;
 
     private llama: ActiveProcess | null = null;
+    private defaultModel: string;
     private models: Map<string, ModelInfo>;
 
     private runCounter = 0;
@@ -69,26 +67,26 @@ export class LlamaManager {
 
     constructor(params: {
         llamaServerIP: string, llamaServerPort: number, llamaServerVerbose: boolean,
-        useSubmodule: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
-        models: utils.ModelInfos,
+        models: ModelConfig,
     }) {
-        this.llamaServerCommand = params.useSubmodule ? './llama.cpp/build/bin/llama-server' : DEFAULT_LLM_COMMAND;
+        this.llamaServerCommand = DEFAULT_LLM_COMMAND;
         this.llamaServerIP = params.llamaServerIP;
         this.llamaServerPort = params.llamaServerPort.toString();
         this.llamaServerURL = `http://${params.llamaServerIP}:${params.llamaServerPort}`;
         this.llamaServerVerboseLogs = params.llamaServerVerbose;
 
         // Map models s.t. (key == model name, value == model info)
-        this.models = new Map([
-            params.models.base.default,
-            ...params.models.base.alts,
-            params.models.ocr,
-        ].map(model => [
+        this.defaultModel = params.models.onStart;
+        this.models = new Map(params.models.infos.map(model => [
             model.name,
             model,
         ]));
+
+        if (!this.models.has(this.defaultModel)) {
+            throw new Error(`LlamaManager.constructor: onStart model not found ${this.defaultModel}`);
+        }
 
         this.sleepAfterMs = params.sleepAfterXSeconds * 1000;
 
@@ -96,7 +94,7 @@ export class LlamaManager {
         this.logFilePrefix = params.logFilePrefix;
 
         // Start llama-server with default model
-        this.ready(params.models.base.default.name);
+        this.ready(params.models.onStart);
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
@@ -124,8 +122,7 @@ export class LlamaManager {
                 modelName = this.getVisionModels().at(0)
                     ?? (() => { throw new Error(`vision model auto-requested, but none loaded`) })();
             } else {
-                modelName = this.getBaseModels().at(0)
-                    ?? (() => { throw new Error(`base model auto-requested, but none loaded`) })();
+                modelName = this.defaultModel;
             }
 
             console.log(chalk.dim(`(auto) routing request to model: ${modelName}`));
@@ -298,22 +295,18 @@ export class LlamaManager {
             '--port', this.llamaServerPort,
             '--jinja',
             '-fa', '1',
-            '--no-webui',                   // turn off webui, since the auto-shutdown feature makes this unreliable                 
+            '--no-webui',                   // turn off webui, since the auto-shutdown feature makes this unreliable                             
+            '-m', model.path,
         ];
 
-        if (model.type === 'ocr') {
-            args = [
-                '-m', model.path,
-                '--mmproj', model.mmprojPath,
-                '--ctx-size', `${model.ctxSize}`,
-                ...args,
-            ];
-        } else {
-            args = [
-                '-m', model.path,
-                '--ctx-size', `${model.ctxSize}`,
-                ...args,
-            ];
+        // If we have an mmproj, add to args
+        if (model.mmprojPath) {
+            args = [...args, '--mmproj', model.mmprojPath];
+        }
+
+        // Add any extra params
+        if (model.params) {
+            args = [...args, ...model.params];
         }
 
         // log verbosity ("messages with a higher verbosity will be ignored")
@@ -505,7 +498,7 @@ export class LlamaManager {
     getBaseModels(): string[] {
         return [
             ...this.models.values()
-                .filter(v => v.type === 'base')
+                .filter(v => v.mmprojPath === undefined)
                 .map(model => model.name)
         ];
     }
@@ -513,7 +506,7 @@ export class LlamaManager {
     getVisionModels(): string[] {
         return [
             ...this.models.values()
-                .filter(v => v.type === 'ocr')
+                .filter(v => typeof v.mmprojPath === 'string')
                 .map(model => model.name)
         ];
     }

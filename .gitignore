@@ -3,11 +3,16 @@
 *.tsbuildinfo
 package-lock.json
 
-/models/*
-/logs/*
-/screenshots/*
-/src/scratch.ts
-
 config.json
+docker-compose.yml
 
-nohup.out
+/models/*
+!/models/.gitkeep
+
+/logs/*
+!/logs/.gitkeep
+
+/screenshots/*
+!/screenshots/.gitkeep
+
+/src/scratch.ts

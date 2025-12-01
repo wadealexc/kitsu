@@ -1,91 +1,11 @@
 import * as fs from 'fs';
-import { access, constants } from 'node:fs/promises';
 import { networkInterfaces } from "os";
 import path from 'path';
 import * as https from "https";
 import * as http from "http";
 
-import chalk from 'chalk';
-
-import { type ModelConfig } from './config.js';
-
 // File extension for local models
 const MODEL_FILE_EXT = '.gguf';
-
-export type BaseModel = {
-    type: 'base',
-    name: string,
-    path: string,
-    ctxSize: number,
-};
-
-export type OCRModel = {
-    type: 'ocr',
-    name: string,
-    path: string,
-    mmprojPath: string,
-    ctxSize: number,
-};
-
-export type ModelInfos = {
-    base: {
-        default: BaseModel,
-        alts: BaseModel[]
-    },
-    ocr: OCRModel,
-};
-
-// Check for models locally as specified by config, or fetch from supplied
-// URLs if not found
-// TODO - parallel fetch if needed
-export async function fetchModels(cfg: ModelConfig): Promise<ModelInfos> {
-    const baseModelPath = path.join(cfg.path, '/base', cfg.base.name) + '.gguf';
-    const ocrModelPath = path.join(cfg.path, '/ocr', cfg.ocr.name) + '.gguf';
-    const ocrMMProjPath = path.join(cfg.path, '/ocr', cfg.ocr.name) + '.mmproj.gguf';
-
-    try {
-        await access(baseModelPath, constants.R_OK | constants.W_OK);
-    } catch {
-        process.stdout.write(chalk.dim(`Base model ${cfg.base.name} not found locally, downloading...`));
-        await downloadModel(cfg.base.url, baseModelPath);
-        process.stdout.write(chalk.green('done!\n'));
-    }
-
-    try {
-        await access(ocrModelPath, constants.R_OK | constants.W_OK);
-    } catch {
-        process.stdout.write(chalk.dim(`OCR model ${cfg.ocr.name} not found locally, downloading...`));
-        await downloadModel(cfg.ocr.url, ocrModelPath);
-        process.stdout.write(chalk.green('done!\n'));
-    }
-
-    try {
-        await access(ocrMMProjPath, constants.R_OK | constants.W_OK);
-    } catch {
-        process.stdout.write(chalk.dim(`OCR MMProj for model ${cfg.ocr.name} not found locally, downloading...`));
-        await downloadModel(cfg.ocr.mmprojUrl, ocrMMProjPath);
-        process.stdout.write(chalk.green('done!\n'));
-    }
-
-    return {
-        base: {
-            default: {
-                type: 'base',
-                name: cfg.base.name,
-                path: baseModelPath,
-                ctxSize: cfg.base.ctxSize,
-            },
-            alts: [],
-        },
-        ocr: {
-            type: 'ocr',
-            name: cfg.ocr.name,
-            path: ocrModelPath,
-            mmprojPath: ocrMMProjPath,
-            ctxSize: cfg.ocr.ctxSize,
-        }
-    };
-}
 
 async function downloadModel(
     url: string,
