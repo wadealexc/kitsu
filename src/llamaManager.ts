@@ -108,7 +108,6 @@ export class LlamaManager {
      * 
      * This method will throw if:
      * - we have an active `forwardRequest` (TODO - have it wait?)
-     * - we're currently 
      * - we don't have a GGUF corresponding to `modelName`
      * 
      * @param modelName The name of the model for which we should have a corresponding GGUF
@@ -227,38 +226,33 @@ export class LlamaManager {
 
         if (!this.llama) throw new Error(`LlamaManager.forwardRequest: no llama process found!`);
 
-        // Increment active requests, preventing calls to `restartServer` until this request is processed
+        // Convert IncomingHttpHeaders to HeadersInit
+        const llamaURL = this.llamaServerURL + req.originalURL;
+        const headers: HeadersInit = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') headers[key] = value;
+            else if (Array.isArray(value)) headers[key] = value.join(', ');
+        }
+
+        // ensure Host header matches target and construct request
+        headers["host"] = this.llamaServerURL;
+        const init: RequestInit = {
+            method: req.method,
+            headers,
+            body: !(req.method === 'GET' || req.method === 'HEAD') ? req.body : undefined,
+        };
+
+        // Increment active requests, preventing calls to `ready` until this request is processed
         // Note: this does NOT prevent direct calls to `stopServer` or `forceStopServer`, as we don't want
         // to block shutdown.
         this.activeRequests++;
         this.llama.sleepTimer.reset();
 
-        try {
-            const llamaURL = this.llamaServerURL + req.originalURL;
-
-            // Convert IncomingHttpHeaders to HeadersInit
-            const headers: HeadersInit = {};
-            for (const [key, value] of Object.entries(req.headers)) {
-                if (typeof value === 'string') headers[key] = value;
-                else if (Array.isArray(value)) headers[key] = value.join(', ');
-            }
-
-            // ensure Host header matches target
-            headers["host"] = this.llamaServerURL;
-
-            // Construct request
-            const init: RequestInit = {
-                method: req.method,
-                headers,
-                body: !(req.method === 'GET' || req.method === 'HEAD') ? req.body : undefined,
-            };
-
-            // TODO - wrap with a promise that decrements activeRequests when it ends
-            // (currently the finally branch runs while the stream is still ongoing)
-            return fetch(llamaURL, init);
-        } finally {
+        // Decrement `activeRequests` only once the fetch is settled
+        // TODO - this does not handle streams properly; we need to decrement once the stream is complete
+        return fetch(llamaURL, init).finally(() => {
             this.activeRequests--;
-        }
+        });
     }
 
     /* -------------------- PRIVATE METHODS -------------------- */
