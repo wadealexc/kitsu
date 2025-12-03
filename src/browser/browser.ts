@@ -155,7 +155,7 @@ export class Browser {
         }
 
         // Start background jobs if requested
-        if (loadPages) try { this.fetchContent(...urls) } catch { };
+        if (loadPages) this.fetchContent(...urls).forEach(promise => promise.catch(() => {}));
         return searchResponses;
     }
 
@@ -171,22 +171,16 @@ export class Browser {
             if (this.isHostBlacklisted(url)) {
                 results.push(Promise.reject(`err: url is on host blacklist: ${url}`));
             } else {
-                results.push(new Promise<Document>((resolve, reject) => {
-                    // 1. If we already have this content, resolve immediately
-                    // 2. If we're currently fetching this content, resolve when we fetch it
-                    // 3. Otherwise, create a new task and resolve when it's complete
-                    if (this.documents.has(url)) {
-                        resolve(this.documents.get(url)!);
-                    } else if (this.tasks.has(url)) {
-                        this.tasks.get(url)!.promise
-                            .then((d: Document) => resolve(d))
-                            .catch((err: any) => reject(err));
-                    } else {
-                        this.tasks.create(url).promise
-                            .then((d: Document) => resolve(d))
-                            .catch((err: any) => reject(err));
-                    }
-                }));
+                // 1. If we already have this content, resolve immediately
+                // 2. If we're currently fetching this content, resolve when we fetch it
+                // 3. Otherwise, create a new task and resolve when it's complete
+                if (this.documents.has(url)) {
+                    results.push(Promise.resolve(this.documents.get(url)!));
+                } else if (this.tasks.has(url)) {
+                    results.push(this.tasks.get(url)!.promise);
+                } else {
+                    results.push(this.tasks.create(url).promise);
+                }
             }
         }
 
