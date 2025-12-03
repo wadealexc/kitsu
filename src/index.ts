@@ -9,7 +9,7 @@ import bytes from 'bytes';
 
 import * as utils from './utils.js';
 import { LlamaManager } from './llamaManager.js';
-import { browserInit, type Browser, type SearchRequest, type SearchResponse } from './browser/browser.js';
+import * as Browser from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 
@@ -234,6 +234,108 @@ app.post('/v1/chat/completions', async (req, res) => {
     llamaResponse.body?.pipe(passThrough).pipe(res);
 });
 
+// If web browser is enabled, start it and define an endpoint
+let browser: Browser.Browser | undefined = undefined;
+if (cfg.web.enable) {
+    browser = await Browser.init(
+        cfg.web.braveAPIKey,
+        cfg.web.runDangerouslyWithoutSandbox,
+        cfg.web.screenshotWebpages,
+    );
+
+    app.post('/web/search', async (req, res) => {
+        // Basic request info for logging
+        const requestLen = req.headers['content-length'] ?? '0';
+        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
+
+        // Convert request body to JSON
+        let request: Browser.SearchRequest;
+        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
+            console.log(`failed to parse request body: ${e}`);
+            res.status(500).json({ error: `/web/search error: malformed request body` });
+            return;
+        }
+
+        // Perform web search and start loading pages in background
+        let response: Browser.SearchResponse[];
+        try { response = await browser!.search(request, true) } catch (err: any) {
+            console.log(`/web/search: search failed: ${err}`);
+            res.status(500).json({ error: `/web/search: search failed: ${err}` });
+            return;
+        }
+
+        // Log results from brave API and return
+        console.log(requestInfo);
+        console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
+
+        res.send(response);
+    });
+
+    app.post('/web/load', async (req, res) => {
+        // Basic request info for logging
+        const requestLen = req.headers['content-length'] ?? '0';
+        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
+
+        // Convert request body to JSON
+        let request: Browser.LoadRequest;
+        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
+            console.log(`/web/load: failed to parse request body: ${e}`);
+            res.status(500).json({ error: `/web/load error: malformed request body` });
+            return;
+        }
+
+        // Convert input url strings to URLs
+        let urls: URL[];
+        try { urls = request.urls.map(url => new URL(url)) } catch (e) {
+            console.log(`/web/load: request contained malformed urls: ${e}`);
+            res.status(500).json({ error: `/web/load error: request contained malformed urls` });
+            return;
+        }
+
+        // Should never hit this but it satisfies TS typechecker
+        if (!browser) throw new Error(`/web/load: no browser instance`);
+
+        // Wait for the browser to finish loading pages from a prior /web/search
+        // (fetchContent(true, ...) tells the browser the task must have been created already)
+        const results = await Promise.allSettled(browser.fetchContent(false, ...urls));
+        const response: Browser.LoadResponse[] = [];
+        
+        for (const result of results) {
+            if (result.status === 'fulfilled') {
+                response.push({
+                    page_content: result.value.content,
+                    metadata: result.value.metadata,
+                });
+            } else {
+                console.log(`/web/load: rejected promise: ${result.reason}`);
+            }
+        }
+
+        if (response.length === 0) {
+            // Log results from brave API and return
+            console.log(requestInfo);
+            console.log(chalk.dim.red(` -> load ${request.urls.length} urls: (got ${response.length} results)`));
+            throw new Error(`/web/load: returned 0 successful results`);
+        }
+
+        // Log results from brave API and return
+        console.log(requestInfo);
+        console.log(chalk.dim.green(` -> load ${request.urls.length} urls: (got ${response.length} results)`));
+        res.send(response);
+    });
+}
+
+app.all('/{*splat}', async (req, res) => {
+    console.log(`got unknown request to: ${req.originalUrl}`);
+    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`method: ${req.method}`);
+    // console.log(`body: ${req.body}`);
+
+    console.log(`${JSON.stringify(JSON.parse(req.body.toString('utf8')), null, 2)}`);
+
+    res.send('result text');
+});
+
 // app.put('/pdf/process', async (req, res) => {
 //     console.log(`got pdf extract request (${req.originalUrl})`);
 //     console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
@@ -257,54 +359,6 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 //     res.send(result);
 // });
-
-// If web browser is enabled, start it and define an endpoint
-let browser: Browser | undefined = undefined;
-if (cfg.web.enable) {
-    browser = await browserInit(
-        cfg.web.braveAPIKey,
-        cfg.web.runDangerouslyWithoutSandbox,
-        cfg.web.screenshotWebpages,
-    );
-
-    app.post('/web/search', async (req, res) => {
-        // Basic request info for logging
-        const requestLen = req.headers['content-length'] ?? '0';
-        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
-
-        // Convert request body to JSON
-        let request: SearchRequest;
-        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
-            console.log(`failed to parse request body: ${e}`);
-            res.status(500).json({ error: `/web/search error: malformed request body` });
-            return;
-        }
-
-        // Perform web search and start loading pages in background
-        let response: SearchResponse[];
-        try { response = await browser!.search(request, true) } catch (err: any) {
-            console.log(`/web/search: search failed: ${err}`);
-            res.status(500).json({ error: `/web/search: search failed: ${err}` });
-            return;
-        }
-
-        // Log results from brave API and return
-        console.log(requestInfo);
-        console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
-
-        res.send(response);
-    });
-}
-
-app.all('/{*splat}', async (req, res) => {
-    console.log(`got unknown request to: ${req.originalUrl}`);
-    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
-    console.log(`method: ${req.method}`);
-    // console.log(`body: ${req.body}`);
-    // console.log(`${JSON.stringify(req, null, 2)}`);
-
-    res.send('result text');
-});
 
 function handleStaticResponse(responseString: string): proto.CompletionResponse {
     try { return JSON.parse(responseString) } catch (err: any) {

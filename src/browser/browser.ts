@@ -4,6 +4,8 @@ import puppeteer from 'puppeteer';
 import EventEmitter from 'events';
 import * as Task from './taskManager.js';
 
+// from: open_webui/retrieval/web/external.py
+// NOTE: supports optional ChatID input, could use to link requests with other tasks
 export type SearchRequest = {
     query: string,
     count: number,
@@ -19,6 +21,16 @@ export type SearchResponse = {
     link: string,
     title: string,
     snippet: string,
+};
+
+// from: open_webui/retrieval/loaders/external_web.py
+export type LoadRequest = {
+    urls: string[],
+};
+
+export type LoadResponse = {
+    page_content: string,
+    metadata: {},
 };
 
 const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
@@ -155,7 +167,7 @@ export class Browser {
         }
 
         // Start background jobs if requested
-        if (loadPages) this.fetchContent(...urls).forEach(promise => promise.catch(() => {}));
+        if (loadPages) this.fetchContent(false, ...urls).forEach(promise => promise.catch(() => {}));
         return searchResponses;
     }
 
@@ -164,7 +176,7 @@ export class Browser {
      * 
      * @returns a list of promises that resolve to each page's content
      */
-    fetchContent(...urls: URL[]): Promise<Document>[] {
+    fetchContent(mustHaveTask: boolean, ...urls: URL[]): Promise<Document>[] {
         const results: Promise<Document>[] = [];
 
         for (const url of urls) {
@@ -179,7 +191,11 @@ export class Browser {
                 } else if (this.tasks.has(url)) {
                     results.push(this.tasks.get(url)!.promise);
                 } else {
-                    results.push(this.tasks.create(url).promise);
+                    if (mustHaveTask) {
+                        results.push(Promise.reject(`required task did not exist for url: ${url}`));
+                    } else {
+                        results.push(this.tasks.create(url).promise);
+                    }
                 }
             }
         }
@@ -429,7 +445,7 @@ export class Browser {
 // wants to try out the project without extra effort
 //
 // ... then again, if i just dockerize this, that should fix it
-export async function browserInit(
+export async function init(
     braveAPIKey: string,
     runDangerouslyWithoutSandbox: boolean,
     screenshotWebpages: boolean,
