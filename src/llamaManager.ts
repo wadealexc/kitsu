@@ -6,7 +6,6 @@ import type { IncomingHttpHeaders } from 'node:http';
 
 import chalk from 'chalk';
 
-import * as utils from './utils.js';
 import { type ModelConfig, type ModelInfo } from './config.js';
 
 // Command to start llama‑server via submodule
@@ -59,6 +58,7 @@ export class LlamaManager {
 
     private runCounter = 0;
     private activeRequests = 0;
+    
     private restartInProgress: Promise<void> | null = null;
     private sleepAfterMs: number;
 
@@ -94,7 +94,7 @@ export class LlamaManager {
         this.logFilePrefix = params.logFilePrefix;
 
         // Start llama-server with default model
-        this.ready(params.models.onStart);
+        this.prepareModel(params.models.onStart);
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
@@ -112,7 +112,7 @@ export class LlamaManager {
      * 
      * @param modelName The name of the model for which we should have a corresponding GGUF
      */
-    async ready(modelName: string, useVision?: boolean) {
+    async prepareModel(modelName: string, useVision?: boolean) {
         if (this.restartInProgress) await this.restartInProgress;
 
         // If we need vision, switch the requested modelName for our vision model
@@ -127,9 +127,11 @@ export class LlamaManager {
             console.log(chalk.dim(`(auto) routing request to model: ${modelName}`));
         }
 
-        if (this.llama?.currentModel.name === modelName) return; // no work needed
-        // If we have any outstanding requests, throw (TODO - wait here)
-        if (this.activeRequests !== 0) throw new Error(`LlamaManager.ready: attempted restart while requests active`);
+        // No work needed
+        if (this.llama?.currentModel.name === modelName) return;
+
+        // if (this.requestsInProgress) await this.requestsInProgress;
+        if (this.activeRequests !== 0) throw new Error(`LlamaManager.prepareModel: attempted restart while requests active`);
 
         // We need to start a new llama-server process for the model, and maybe
         // shut down an existing process. Create a promise that will be resolved
@@ -147,6 +149,51 @@ export class LlamaManager {
         });
 
         await this.restartInProgress;
+    }
+
+    async forwardRequest(req: {
+        originalURL: string,
+        headers: IncomingHttpHeaders,
+        method: string,
+        body: any,
+    }, onSuccess: (response: Response) => Promise<void>): Promise<void> {
+        // If the llama-server process is being restarted, wait for it to complete before continuing
+        if (this.restartInProgress) {
+            console.log(`LlamaManager.forwardRequest: restart in progress, waiting...`);
+            await this.restartInProgress;
+        }
+
+        if (!this.llama) throw new Error(`LlamaManager.forwardRequest: no llama process found!`);
+
+        // Convert IncomingHttpHeaders to HeadersInit
+        const llamaURL = this.llamaServerURL + req.originalURL;
+        const headers: HeadersInit = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') headers[key] = value;
+            else if (Array.isArray(value)) headers[key] = value.join(', ');
+        }
+
+        // ensure Host header matches target and construct request
+        headers["host"] = this.llamaServerURL;
+        const init: RequestInit = {
+            method: req.method,
+            headers,
+            body: !(req.method === 'GET' || req.method === 'HEAD') ? req.body : undefined,
+        };
+
+        // Increment active requests, preventing calls to `prepareModel` until this request is processed
+        // Note: this does NOT prevent direct calls to `stopServer` or `forceStopServer`, as we don't want
+        // to block shutdown.
+        this.activeRequests++;
+        this.llama.sleepTimer.reset();
+        
+        console.log(`starting request; cur active requests: ${this.activeRequests}`);
+        // Decrement `activeRequests` only once the fetch is settled and any streams are closed
+        const response = await fetch(llamaURL, init);
+        onSuccess(response).finally(() => {
+            this.activeRequests--;
+            console.log(`finished request; cur active requests: ${this.activeRequests}`);
+        });
     }
 
     /**
@@ -209,50 +256,6 @@ export class LlamaManager {
         // we need an immediate exit, show no mercy
         console.log(chalk.dim(`killing llama-server process (pid ${pid}) (${chalk.yellow('SIGKILL')})...`));
         try { process.kill(-pid, 'SIGKILL') } catch { };
-    }
-
-    async forwardRequest(req: {
-        originalURL: string,
-        headers: IncomingHttpHeaders,
-        method: string,
-        body: any,
-    }): Promise<Response> {
-        // If the llama-server process is being restarted, wait for it to complete before continuing
-        if (this.restartInProgress) {
-            console.log(`LlamaManager.forwardRequest: restart in progress, waiting...`);
-            try { await this.restartInProgress }
-            catch (err) { console.error(`LlamaManager.forwardRequest: restart failed: ${err}, continuing with model: ${this.llama?.currentModel.name}`) }
-        }
-
-        if (!this.llama) throw new Error(`LlamaManager.forwardRequest: no llama process found!`);
-
-        // Convert IncomingHttpHeaders to HeadersInit
-        const llamaURL = this.llamaServerURL + req.originalURL;
-        const headers: HeadersInit = {};
-        for (const [key, value] of Object.entries(req.headers)) {
-            if (typeof value === 'string') headers[key] = value;
-            else if (Array.isArray(value)) headers[key] = value.join(', ');
-        }
-
-        // ensure Host header matches target and construct request
-        headers["host"] = this.llamaServerURL;
-        const init: RequestInit = {
-            method: req.method,
-            headers,
-            body: !(req.method === 'GET' || req.method === 'HEAD') ? req.body : undefined,
-        };
-
-        // Increment active requests, preventing calls to `ready` until this request is processed
-        // Note: this does NOT prevent direct calls to `stopServer` or `forceStopServer`, as we don't want
-        // to block shutdown.
-        this.activeRequests++;
-        this.llama.sleepTimer.reset();
-
-        // Decrement `activeRequests` only once the fetch is settled
-        // TODO - this does not handle streams properly; we need to decrement once the stream is complete
-        return fetch(llamaURL, init).finally(() => {
-            this.activeRequests--;
-        });
     }
 
     /* -------------------- PRIVATE METHODS -------------------- */

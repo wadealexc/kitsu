@@ -116,122 +116,99 @@ app.post('/v1/chat/completions', async (req, res) => {
     }) !== -1;
 
     // Wait for our requested model to be ready
-    try { await llama.ready(request.model, useVision) } catch (err: any) {
+    try { await llama.prepareModel(request.model, useVision) } catch (err: any) {
         console.log(requestInfo);
         console.log(chalk.dim.red(` -> failed while waiting for requested model`));
         console.log(chalk.dim.red(` -> request: \n${JSON.stringify(request, null, 2)}`));
         console.log(chalk.dim.red(` -> error: ${err}`));
 
-        res.status(502).json({ error: err.message || `unknown error while waiting for model: ${request.model}` });
+        res.status(500).json({ error: err.message || `unknown error while waiting for model: ${request.model}` });
         return;
     }
 
-    // Forward request to llama-server
-    let llamaResponse: Response | null = null;
-    let contentType: string | null = null;
     try {
-        llamaResponse = await llama.forwardRequest({
+        await llama.forwardRequest({
             originalURL: req.originalUrl,
             headers: req.headers,
             method: req.method,
             body: req.body
-        });
+        }, async (llamaResponse: Response): Promise<void> => {
+            // copy headers from upstream
+            llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
+            const contentType = llamaResponse.headers.get("content-type");
 
-        contentType = llamaResponse.headers.get("content-type");
-        // copy headers and status from upstream
-        res.status(llamaResponse.status);
-        llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
+            if (!llamaResponse.ok) {
+                const errText = await llamaResponse.text();
+                throw new Error(errText);
+            } else if (contentType === null) {
+                throw new Error(`llama-server did not return header: content-type`);
+            } else if (llamaResponse.body === null) {
+                throw new Error(`llama-server did not return response body`);
+            }
+
+            console.log(requestInfo);
+            console.log(chalk.dim.green(` -> llama-server response ok (${llamaResponse.status}); content: ${contentType}`));
+
+            res.status(llamaResponse.status);
+
+            return new Promise<void>((resolve) => {
+                // Write logs and clean up after response is finished
+                const finish = ((response?: proto.CompletionResponse) => {
+                    logger?.logs.push({
+                        request: request,
+                        response: response
+                    });
+
+                    passThrough.end();
+                    res.end();
+                    resolve();
+                });
+
+                // As the response comes back from llama-server, we'll collect it
+                // here so we can log it without getting in the way of the shim response.
+                const passThrough = new PassThrough();
+                const chunks: Buffer<any>[] = [];
+                passThrough.on('data', chunk => chunks.push(Buffer.from(chunk)));
+                passThrough.once('end', () => {
+                    const responseString = Buffer.concat(chunks).toString('utf8');
+
+                    // Handle streamed vs static response
+                    let response: proto.CompletionResponse | undefined;
+                    try {
+                        if (contentType.includes("text/event-stream")) {
+                            response = handleStreamedResponse(responseString);
+                        } else {
+                            response = handleStaticResponse(responseString);
+                        }
+                    } catch (err: any) {
+                        console.error(`error handling llama-server response: ${err}`);
+                    }
+
+                    finish(response);
+                });
+
+                passThrough.once('error', err => {
+                    console.error('passThrough error', err);
+                    finish();
+                });
+
+                llamaResponse.body?.once('error', err => {
+                    console.error('upstream body error', err);
+                    finish();
+                });
+
+                // Stream response to client (as well as our logging/caching system)
+                llamaResponse.body?.pipe(passThrough).pipe(res);
+            });
+        });
     } catch (err: any) {
         console.log(requestInfo);
-        console.log(chalk.dim.red(` -> failed when forwarding request to llama-server`));
+        console.log(chalk.dim.red(` -> llama-server error: ${err}`));
         console.log(chalk.dim.red(` -> request: \n${JSON.stringify(request, null, 2)}`));
-        console.log(chalk.dim.red(` -> error: ${err}`));
 
-        res.status(502).json({ error: err.message || `unknown error forwarding request to llama-server` });
+        res.status(500).json({ error: `llama-server error: ${err}` });
         return;
     }
-
-    // Should not be reachable
-    if (llamaResponse === null || contentType === null) {
-        throw new Error(`unknown error; null llamaResponse or contentType`);
-    }
-
-    // Log request + status
-    if (llamaResponse.status !== 200) {
-        console.log(requestInfo);
-
-        // Try to decode the error
-        let internalMessage: string;
-        try {
-            const chunks = [];
-            for await (const chunk of llamaResponse.body!) {
-                chunks.push(chunk);
-            }
-
-            // `chunks` can contain Buffers or strings. concat expects buffer, so ensure
-            // chunks are buffers before calling concat.
-            const buffer = Buffer.concat(chunks.map(c => (Buffer.isBuffer(c) ? c : Buffer.from(c))));
-            const body = buffer.toString('utf8');
-
-            internalMessage = JSON.parse(body).error?.message as string;
-        } catch (e: any) {
-            internalMessage = 'could not decode error';
-        }
-
-        console.log(chalk.dim.yellow(` -> llama-server responds with (${llamaResponse.status}: ${internalMessage})`));
-        res.status(500).json({ error: 'llama-server error: ' + internalMessage });
-        return;
-    } else {
-        console.log(requestInfo);
-        console.log(chalk.dim.green(` -> llama-server responds success (200); content: ${contentType}`));
-    }
-
-    // Write logs and clean up after response is finished
-    const finish = ((response?: proto.CompletionResponse) => {
-        logger?.logs.push({
-            request: request,
-            response: response
-        });
-
-        passThrough.end();
-        res.end();
-    });
-
-    // As the response comes back from llama-server, we'll collect it
-    // here so we can log it without getting in the way of the shim response.
-    const passThrough = new PassThrough();
-    const chunks: Buffer<any>[] = [];
-    passThrough.on('data', chunk => chunks.push(Buffer.from(chunk)));
-    passThrough.once('end', () => {
-        const responseString = Buffer.concat(chunks).toString('utf8');
-
-        // Handle streamed vs static response
-        let response: proto.CompletionResponse | undefined;
-        try {
-            if (contentType.includes("text/event-stream")) {
-                response = handleStreamedResponse(responseString);
-            } else {
-                response = handleStaticResponse(responseString);
-            }
-        } catch (err: any) {
-            console.error(`error handling llama-server response: ${err}`);
-        }
-
-        finish(response);
-    });
-
-    passThrough.once('error', err => {
-        console.error('passThrough error', err);
-        finish();
-    });
-
-    llamaResponse.body?.once('error', err => {
-        console.error('upstream body error', err);
-        finish();
-    });
-
-    // Stream response to client (as well as our logging/caching system)
-    llamaResponse.body?.pipe(passThrough).pipe(res);
 });
 
 // If web browser is enabled, start it and define an endpoint
@@ -299,7 +276,7 @@ if (cfg.web.enable) {
         // (fetchContent(true, ...) tells the browser the task must have been created already)
         const results = await Promise.allSettled(browser.fetchContent(false, ...urls));
         const response: Browser.LoadResponse[] = [];
-        
+
         for (const result of results) {
             if (result.status === 'fulfilled') {
                 response.push({
