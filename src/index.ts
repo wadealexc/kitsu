@@ -13,7 +13,27 @@ import * as Browser from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 
+/* -------------------- EXPRESS TYPINGS -------------------- */
+
+type RequestBody<T> = express.Request<{}, any, T>;
+
+type LlamaStatus = {
+    status: number,
+    contentType: string,
+};
+
+type SearchStatus = {
+    query: string,
+    results: number,
+};
+
+type LoadStatus = {
+    successful: number,
+    total: number,
+};
+
 /* -------------------- CONFIGURATION -------------------- */
+
 const EXTERNAL_PORT = 8081;                     // Port the proxy listens on
 const INTERNAL_PORT = 8080;                     // Port llama‑server runs on
 const HOST_IP = utils.getLanIPv4();             // Our ip address
@@ -52,7 +72,68 @@ if (cfg.logs.enable) {
 /* -------------------- INIT LLAMA AND EXPRESS -------------------- */
 
 const app = express();
-app.use(express.raw({ type: (() => true), limit: '50mb' }));
+
+// Per-request logging
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const start = process.hrtime.bigint();
+    
+    // TODO - correlate logs/requests via ID
+    // res.locals.logContext = {
+    //     requestId: crypto.randomUUID(), 
+    // };
+
+    // Fire logs for non-GET requests once the response is 100% complete
+    if (req.method !== 'GET') {
+        res.once('finish', () => {
+            const end = process.hrtime.bigint();
+            const durationSec = Number(end - start) / 1_000_000_000;
+            const durationStr = `${durationSec.toFixed(3)} sec`;
+
+            // Pretty-print request info, e.g:
+            // POST: /v1/chat/completions (request: 1.13KB) (elapsed: 1.3 sec)
+            //
+            // TODO - add response size? output in tokens?
+            const requestLen = req.headers['content-length'] ?? '0';
+            const requestInfo =
+                `${req.method}: ${chalk.yellow(req.originalUrl)}`
+                + ` (request: ${bytes(Number(requestLen))})`
+                + ` (elapsed: ${durationStr})`;
+
+            console.log(requestInfo);
+
+            // TODO - better typing instead of if/else hell
+            if (res.locals.error) {
+                const err = res.locals.error?.message;
+                console.error(chalk.dim.red(` -> error: ${err}`));
+                console.error(chalk.dim.red(` -> request:\n${JSON.stringify(req, null, 2)}`));
+            } else if (res.locals.llama) {
+                const llama = res.locals.llama as LlamaStatus;
+                console.log(chalk.dim.green(` -> llama response ok (code: ${llama?.status}); (content-type: ${llama?.contentType})`));
+            } else if (res.locals.search) {
+                const search = res.locals.search as SearchStatus;
+                console.log(chalk.dim(` -> got ${search?.results} results for query ${search?.query}`));
+            } else if (res.locals.load) {
+                const load = res.locals.load as LoadStatus;
+                console.log(chalk.dim(` -> loaded ${load?.successful} of ${load?.total} pages`));
+            }
+        });
+    }
+
+    next();
+});
+
+app.use(express.json({ type: (() => true), limit: '50mb' }));
+
+// Error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    res.locals.error = {
+        message: err?.message,
+    };
+
+    if (res.headersSent) return next(err);
+
+    res.status(500).json({ error: `error: ${err?.message || 'unknown error'}` });
+});
 
 app.listen(EXTERNAL_PORT, () => {
     console.log(`llama-shim listening on ${chalk.cyan(LLAMA_SHIM_URL)}`);
@@ -72,42 +153,26 @@ const llama = new LlamaManager({
  * /v1/models – return list of local models
  * TODO - return richer info
  */
-app.get('/v1/models', async (_req, res) => {
+app.get('/v1/models', async (_req, res, next) => {
     try {
         const data = llama.getFrontendModels().map(name => ({
             id: name,
             object: 'model',
             owned_by: 'llamacpp',
         }));
+
         res.json({ object: 'list', data });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to list models' });
+        return next(new Error(`failed to list models: ${err}`));
     }
 });
 
-app.post('/v1/chat/completions', async (req, res) => {
-    let request: proto.CompletionRequest;
-
-    // Basic request info for logging
-    const requestLen = req.headers['content-length'] ?? '0';
-    const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
-
-    // Convert request body to JSON. Typically this is automatically done by middleware like
-    // app.use(express.json()), but in our case we want express.raw() so that we can pass
-    // the request through to llama-server (mostly) untouched.
-    //
-    // However, we do still need to use/validate the request, so we do some conversion here.
-    if (Buffer.isBuffer(req.body) && req.headers['content-type']?.includes('application/json')) {
-        try {
-            request = JSON.parse(req.body.toString('utf8'));
-            // console.log(`request: \n${JSON.stringify(request, null, 2)}`);
-        } catch (e) {
-            throw new Error(`failed to parse request body: ${e}`);
-        }
-    } else {
-        throw new Error(`/v1/chat/completions: unexpected input for request: ${JSON.stringify(req.body, null, 2)}`);
-    }
+app.post('/v1/chat/completions', async (
+    req: RequestBody<proto.CompletionRequest>,
+    res,
+    next
+) => {
+    const request: proto.CompletionRequest = req.body;
 
     // Swap to vision model if the message stream has any images
     const useVision = request.messages.findIndex(msg => {
@@ -117,13 +182,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     // Wait for our requested model to be ready
     try { await llama.prepareModel(request.model, useVision) } catch (err: any) {
-        console.log(requestInfo);
-        console.log(chalk.dim.red(` -> failed while waiting for requested model`));
-        console.log(chalk.dim.red(` -> request: \n${JSON.stringify(request, null, 2)}`));
-        console.log(chalk.dim.red(` -> error: ${err}`));
-
-        res.status(500).json({ error: err.message || `unknown error while waiting for model: ${request.model}` });
-        return;
+        return next(new Error(`error when preparing model: ${err?.message}`));
     }
 
     try {
@@ -146,9 +205,11 @@ app.post('/v1/chat/completions', async (req, res) => {
                 throw new Error(`llama-server did not return response body`);
             }
 
-            console.log(requestInfo);
-            console.log(chalk.dim.green(` -> llama-server response ok (${llamaResponse.status}); content: ${contentType}`));
-
+            const llamaStatus: LlamaStatus = {
+                status: llamaResponse.status,
+                contentType: contentType
+            };
+            res.locals.llama = llamaStatus;
             res.status(llamaResponse.status);
 
             return new Promise<void>((resolve) => {
@@ -181,7 +242,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                             response = handleStaticResponse(responseString);
                         }
                     } catch (err: any) {
-                        console.error(`error handling llama-server response: ${err}`);
+                        console.error(`error handling llama-server response: ${err} | responseString: ${responseString}`);
                     }
 
                     finish(response);
@@ -202,12 +263,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             });
         });
     } catch (err: any) {
-        console.log(requestInfo);
-        console.log(chalk.dim.red(` -> llama-server error: ${err}`));
-        console.log(chalk.dim.red(` -> request: \n${JSON.stringify(request, null, 2)}`));
-
-        res.status(500).json({ error: `llama-server error: ${err}` });
-        return;
+        return next(new Error(`llama-server error: ${err}`));
     }
 });
 
@@ -220,64 +276,49 @@ if (cfg.web.enable) {
         cfg.web.screenshotWebpages,
     );
 
-    app.post('/web/search', async (req, res) => {
-        // Basic request info for logging
-        const requestLen = req.headers['content-length'] ?? '0';
-        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
-
-        // Convert request body to JSON
-        let request: Browser.SearchRequest;
-        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
-            console.log(`failed to parse request body: ${e}`);
-            res.status(500).json({ error: `/web/search error: malformed request body` });
-            return;
-        }
+    app.post('/web/search', async (
+        req: RequestBody<Browser.SearchRequest>,
+        res,
+        next
+    ) => {
+        const request: Browser.SearchRequest = req.body;
 
         // Perform web search and start loading pages in background
         let response: Browser.SearchResponse[];
         try { response = await browser!.search(request, true) } catch (err: any) {
-            console.log(`/web/search: search failed: ${err}`);
-            res.status(500).json({ error: `/web/search: search failed: ${err}` });
-            return;
+            return next(new Error(`/web/search failed: ${err}`));
         }
 
-        // Log results from brave API and return
-        console.log(requestInfo);
-        console.log(chalk.dim(` -> "${request.query}" (got ${response.length} results)`));
-
+        const searchStatus: SearchStatus = {
+            query: request.query,
+            results: response.length,
+        };
+        res.locals.search = searchStatus;
         res.send(response);
     });
 
-    app.post('/web/load', async (req, res) => {
-        // Basic request info for logging
-        const requestLen = req.headers['content-length'] ?? '0';
-        const requestInfo = `${req.method}: ${chalk.yellow(req.originalUrl)} (req len: ${bytes(Number(requestLen))})`;
-
-        // Convert request body to JSON
-        let request: Browser.LoadRequest;
-        try { request = JSON.parse(req.body.toString('utf8')) } catch (e) {
-            console.log(`/web/load: failed to parse request body: ${e}`);
-            res.status(500).json({ error: `/web/load error: malformed request body` });
-            return;
-        }
+    app.post('/web/load', async (
+        req: RequestBody<Browser.LoadRequest>,
+        res,
+        next
+    ) => {
+        const request: Browser.LoadRequest = req.body;
 
         // Convert input url strings to URLs
-        let urls: URL[];
-        try { urls = request.urls.map(url => new URL(url)) } catch (e) {
-            console.log(`/web/load: request contained malformed urls: ${e}`);
-            res.status(500).json({ error: `/web/load error: request contained malformed urls` });
-            return;
-        }
+        const urls: URL[] = [];
+        request.urls.forEach(url => {
+            try { urls.push(new URL(url)) } catch (err: any) {
+                console.log(`/web/load: malformed url ${url}; skipping`);
+            }
+        });
 
         // Should never hit this but it satisfies TS typechecker
-        if (!browser) throw new Error(`/web/load: no browser instance`);
+        if (!browser) return next(new Error(`no existing browser instance`));
 
         // Wait for the browser to finish loading pages from a prior /web/search
         // (fetchContent(true, ...) tells the browser the task must have been created already)
-        const results = await Promise.allSettled(browser.fetchContent(false, ...urls));
         const response: Browser.LoadResponse[] = [];
-
-        for (const result of results) {
+        (await Promise.allSettled(browser.fetchContent(false, ...urls))).forEach(result => {
             if (result.status === 'fulfilled') {
                 response.push({
                     page_content: result.value.content,
@@ -286,18 +327,17 @@ if (cfg.web.enable) {
             } else {
                 console.log(`/web/load: rejected promise: ${result.reason}`);
             }
-        }
+        });
 
         if (response.length === 0) {
-            // Log results from brave API and return
-            console.log(requestInfo);
-            console.log(chalk.dim.red(` -> load ${request.urls.length} urls: (got ${response.length} results)`));
-            throw new Error(`/web/load: returned 0 successful results`);
+            return next(new Error(`returned 0 successful results`));
         }
 
-        // Log results from brave API and return
-        console.log(requestInfo);
-        console.log(chalk.dim.green(` -> load ${request.urls.length} urls: (got ${response.length} results)`));
+        const loadStatus: LoadStatus = {
+            successful: response.length,
+            total: request.urls.length,
+        };
+        res.locals.load = loadStatus;
         res.send(response);
     });
 }

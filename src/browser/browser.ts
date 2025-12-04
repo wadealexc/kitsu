@@ -215,7 +215,6 @@ export class Browser {
             return;
         }
 
-        console.log(chalk.dim.green(`Browser: working on fetch requests...`));
         this.taskLoop = {
             interval: setInterval(() => {
                 this.processTasks();
@@ -230,7 +229,6 @@ export class Browser {
             return;
         }
 
-        console.log(chalk.dim.green(`Browser: all outstanding work done; stopping task loop (success: ${this.taskLoop.successes} of ${this.taskLoop.total})`));
         clearTimeout(this.taskLoop.interval);
         this.taskLoop = undefined;
     }

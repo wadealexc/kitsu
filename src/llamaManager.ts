@@ -7,6 +7,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import chalk from 'chalk';
 
 import { type ModelConfig, type ModelInfo } from './config.js';
+import * as proto from './protocol.js';
 
 // Command to start llama‑server via submodule
 const DEFAULT_LLM_COMMAND = './llama.cpp/build/bin/llama-server';
@@ -155,7 +156,7 @@ export class LlamaManager {
         originalURL: string,
         headers: IncomingHttpHeaders,
         method: string,
-        body: any,
+        body: proto.CompletionRequest,
     }, onSuccess: (response: Response) => Promise<void>): Promise<void> {
         // If the llama-server process is being restarted, wait for it to complete before continuing
         if (this.restartInProgress) {
@@ -164,6 +165,9 @@ export class LlamaManager {
         }
 
         if (!this.llama) throw new Error(`LlamaManager.forwardRequest: no llama process found!`);
+
+        // Serialize request body back into buffer form
+        const bodyRaw = Buffer.from(JSON.stringify(req.body), 'utf8');
 
         // Convert IncomingHttpHeaders to HeadersInit
         const llamaURL = this.llamaServerURL + req.originalURL;
@@ -178,7 +182,7 @@ export class LlamaManager {
         const init: RequestInit = {
             method: req.method,
             headers,
-            body: !(req.method === 'GET' || req.method === 'HEAD') ? req.body : undefined,
+            body: !(req.method === 'GET' || req.method === 'HEAD') ? bodyRaw : null,
         };
 
         // Increment active requests, preventing calls to `prepareModel` until this request is processed
