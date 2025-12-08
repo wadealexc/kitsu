@@ -6,7 +6,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 
 import chalk from 'chalk';
 
-import { type ModelConfig, type ModelInfo } from '../config.js';
+import { type ModelConfig } from '../config.js';
 import * as proto from '../protocol.js';
 import LlamaStream from './llamaStream.js';
 
@@ -28,7 +28,7 @@ const POLL_INTERVAL_MS = 500;
 const NUM_RETRIES = 40;
 
 type Llama = {
-    model: ModelInfo,
+    model: proto.ModelInfo,
     pending: PendingJob[],
     active: {
         requests: number,
@@ -394,7 +394,7 @@ export class LlamaManager {
     #start(llama: Llama) {
         if (this.activeLlama) throw new Error(`LlamaManager.#startLlama: llama process already running!`);
 
-        const model: ModelInfo = llama.model;
+        const model: proto.ModelInfo = llama.model;
 
         // Open log file for `llama-server` stdout/stderr
         // File name example: `llama-{timestamp}_r0_gpt-oss-20b.log`

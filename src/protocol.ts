@@ -1,3 +1,10 @@
+export interface ModelInfo {
+    name: string;
+    path: string;                        // required: non-mmproj .gguf
+    mmprojPath: string | undefined;      // optional: mmproj-*.gguf
+    params: string[];                    // optional: model.json.params
+}
+
 // https://platform.openai.com/docs/api-reference/chat/create
 // (only tracking the fields we care about)
 export type CompletionRequest = {
@@ -8,7 +15,7 @@ export type CompletionRequest = {
 };
 
 // Top-level tool definition provided to assistant
-type ToolDefinition = {
+export type ToolDefinition = {
     type: 'function',
     function: {
         name: string,

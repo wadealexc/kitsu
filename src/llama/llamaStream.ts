@@ -2,6 +2,7 @@ import { type Response } from 'node-fetch';
 import { PassThrough } from 'stream';
 
 import * as proto from '../protocol.js';
+import { Router } from 'express';
 
 type LlamaStreamEvents = {
     response: (response: Response) => void,

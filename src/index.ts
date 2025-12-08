@@ -13,6 +13,7 @@ import * as Browser from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 import type LlamaStream from './llama/llamaStream.js';
+import { ToolServer } from './tools/toolServer.js';
 
 /* -------------------- EXPRESS TYPINGS -------------------- */
 
@@ -137,18 +138,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     if (res.headersSent) return next(err);
 
     res.status(500).json({ error: `error: ${err?.message || 'unknown error'}` });
-});
-
-app.listen(EXTERNAL_PORT, () => {
-    console.log(`llama-shim listening on ${chalk.cyan(LLAMA_SHIM_URL)}`);
-});
-
-// Start llama-server
-const llama = new LlamaManager({
-    llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-    models: cfg.models,
 });
 
 /* -------------------- ROUTES -------------------- */
@@ -280,7 +269,7 @@ if (cfg.web.enable) {
         // Wait for the browser to finish loading pages from a prior /web/search
         // (fetchContent(true, ...) tells the browser the task must have been created already)
         const response: Browser.LoadResponse[] = [];
-        (await Promise.allSettled(browser.fetchContent(false, ...urls))).forEach(result => {
+        (await Promise.allSettled(browser.fetchContent(true, ...urls))).forEach(result => {
             if (result.status === 'fulfilled') {
                 response.push({
                     page_content: result.value.content,
@@ -303,17 +292,6 @@ if (cfg.web.enable) {
         res.send(response);
     });
 }
-
-app.all('/{*splat}', async (req, res) => {
-    console.log(`got unknown request to: ${req.originalUrl}`);
-    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
-    console.log(`method: ${req.method}`);
-    // console.log(`body: ${req.body}`);
-
-    console.log(`${JSON.stringify(JSON.parse(req.body.toString('utf8')), null, 2)}`);
-
-    res.send('result text');
-});
 
 // app.put('/pdf/process', async (req, res) => {
 //     console.log(`got pdf extract request (${req.originalUrl})`);
@@ -338,6 +316,32 @@ app.all('/{*splat}', async (req, res) => {
 
 //     res.send(result);
 // });
+
+const tools = new ToolServer(app, { browser: browser });
+await tools.serve();
+
+// Start llama-server
+const llama = new LlamaManager({
+    llamaServerIP: HOST_IP, llamaServerPort: INTERNAL_PORT, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+    models: cfg.models,
+});
+
+app.listen(EXTERNAL_PORT, () => {
+    console.log(`llama-shim listening on ${chalk.cyan(LLAMA_SHIM_URL)}`);
+});
+
+app.all('/{*splat}', async (req, res) => {
+    console.log(`got unknown request to: ${req.originalUrl}`);
+    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`method: ${req.method}`);
+    // console.log(`body: ${req.body}`);
+
+    console.log(`${JSON.stringify(JSON.parse(req.body.toString('utf8')), null, 2)}`);
+
+    res.send('result text');
+});
 
 /* -------------------- STOP SERVER -------------------- */
 

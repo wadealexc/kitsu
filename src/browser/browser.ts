@@ -171,6 +171,21 @@ export class Browser {
         return searchResponses;
     }
 
+    async searchMulti(queries: string[], count: number, loadPages: boolean): Promise<SearchResponse[]> {
+        const responses: SearchResponse[] = [];
+        
+        for (const query of queries) {
+            try {
+                const response = await this.search({query, count}, loadPages);
+                responses.push(...response);
+            } catch (err: any) {
+                console.log(`skipping failed search for query: ${query}; err: ${err}`);
+            }
+        }
+
+        return responses;
+    }
+
     /**
      * Start background jobs to load each page, assuming the url is eligible to be loaded
      * 
