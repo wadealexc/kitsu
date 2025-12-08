@@ -1,17 +1,18 @@
 import * as fs from 'fs';
 import { PassThrough } from 'stream';
 import path from 'path';
-import { type Response } from 'node-fetch';
+import { type Response, Headers } from 'node-fetch';
 
 import express from 'express';
 import chalk from 'chalk';
 import bytes from 'bytes';
 
 import * as utils from './utils.js';
-import { LlamaManager } from './llamaManager.js';
+import { LlamaManager, type LlamaResponse } from './llama/llamaManager.js';
 import * as Browser from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
+import type LlamaStream from './llama/llamaStream.js';
 
 /* -------------------- EXPRESS TYPINGS -------------------- */
 
@@ -19,7 +20,7 @@ type RequestBody<T> = express.Request<{}, any, T>;
 
 type LlamaStatus = {
     status: number,
-    contentType: string,
+    headers: Headers,
 };
 
 type SearchStatus = {
@@ -76,7 +77,7 @@ const app = express();
 // Per-request logging
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     const start = process.hrtime.bigint();
-    
+
     // TODO - correlate logs/requests via ID
     // res.locals.logContext = {
     //     requestId: crypto.randomUUID(), 
@@ -108,7 +109,10 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
                 console.error(chalk.dim.red(` -> request:\n${JSON.stringify(req, null, 2)}`));
             } else if (res.locals.llama) {
                 const llama = res.locals.llama as LlamaStatus;
-                console.log(chalk.dim.green(` -> llama response ok (code: ${llama?.status}); (content-type: ${llama?.contentType})`));
+                console.log(chalk.dim.green(` -> llama response ok (code: ${llama?.status}); (content-type: ${llama?.headers.get('content-type')})`));
+
+                // console.log('llama-server response headers:')
+                // llama?.headers.forEach((v, k) => console.log(` -> ${k}: ${v}`))
             } else if (res.locals.search) {
                 const search = res.locals.search as SearchStatus;
                 console.log(chalk.dim(` -> got ${search?.results} results for query ${search?.query}`));
@@ -155,7 +159,7 @@ const llama = new LlamaManager({
  */
 app.get('/v1/models', async (_req, res, next) => {
     try {
-        const data = llama.getFrontendModels().map(name => ({
+        const data = llama.getAllModelNames().map(name => ({
             id: name,
             object: 'model',
             owned_by: 'llamacpp',
@@ -173,97 +177,55 @@ app.post('/v1/chat/completions', async (
     next
 ) => {
     const request: proto.CompletionRequest = req.body;
+    const ctrl = new AbortController();
 
-    // Swap to vision model if the message stream has any images
-    const useVision = request.messages.findIndex(msg => {
-        if (typeof msg.content === 'string') return false;
-        return msg.content.find(part => part.type === 'image_url');
-    }) !== -1;
+    req.once('aborted', () => {
+        console.log(chalk.dim.yellow(`client aborted request`));
+        ctrl.abort();
+    });
 
-    // Wait for our requested model to be ready
-    try { await llama.prepareModel(request.model, useVision) } catch (err: any) {
-        return next(new Error(`error when preparing model: ${err?.message}`));
-    }
+    res.once('close', () => ctrl.abort());
 
     try {
-        await llama.forwardRequest({
+        // Forward request to llama-server
+        const llamaResponse: LlamaResponse = await llama.completions({
             originalURL: req.originalUrl,
             headers: req.headers,
             method: req.method,
-            body: req.body
-        }, async (llamaResponse: Response): Promise<void> => {
-            // copy headers from upstream
-            llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
-            const contentType = llamaResponse.headers.get("content-type");
-
-            if (!llamaResponse.ok) {
-                const errText = await llamaResponse.text();
-                throw new Error(errText);
-            } else if (contentType === null) {
-                throw new Error(`llama-server did not return header: content-type`);
-            } else if (llamaResponse.body === null) {
-                throw new Error(`llama-server did not return response body`);
-            }
-
-            const llamaStatus: LlamaStatus = {
-                status: llamaResponse.status,
-                contentType: contentType
-            };
-            res.locals.llama = llamaStatus;
-            res.status(llamaResponse.status);
-
-            return new Promise<void>((resolve) => {
-                // Write logs and clean up after response is finished
-                const finish = ((response?: proto.CompletionResponse) => {
-                    logger?.logs.push({
-                        request: request,
-                        response: response
-                    });
-
-                    passThrough.end();
-                    res.end();
-                    resolve();
-                });
-
-                // As the response comes back from llama-server, we'll collect it
-                // here so we can log it without getting in the way of the shim response.
-                const passThrough = new PassThrough();
-                const chunks: Buffer<any>[] = [];
-                passThrough.on('data', chunk => chunks.push(Buffer.from(chunk)));
-                passThrough.once('end', () => {
-                    const responseString = Buffer.concat(chunks).toString('utf8');
-
-                    // Handle streamed vs static response
-                    let response: proto.CompletionResponse | undefined;
-                    try {
-                        if (contentType.includes("text/event-stream")) {
-                            response = handleStreamedResponse(responseString);
-                        } else {
-                            response = handleStaticResponse(responseString);
-                        }
-                    } catch (err: any) {
-                        console.error(`error handling llama-server response: ${err} | responseString: ${responseString}`);
-                    }
-
-                    finish(response);
-                });
-
-                passThrough.once('error', err => {
-                    console.error('passThrough error', err);
-                    finish();
-                });
-
-                llamaResponse.body?.once('error', err => {
-                    console.error('upstream body error', err);
-                    finish();
-                });
-
-                // Stream response to client (as well as our logging/caching system)
-                llamaResponse.body?.pipe(passThrough).pipe(res);
-            });
+            body: req.body,
+            signal: ctrl.signal,
         });
+
+        const llamaStatus: LlamaStatus = {
+            status: llamaResponse.status,
+            headers: llamaResponse.headers,
+        };
+        res.locals.llama = llamaStatus;
+
+        // Copy headers and status for client
+        llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
+        res.status(llamaStatus.status);
+
+        const stream = llamaResponse.stream;
+
+        // This listener is triggered when llama-server is done streaming, or when the
+        // stream is cancelled prematurely due to:
+        // - client disconnects
+        // - llama-server errors
+        stream.once('stop', (result: proto.Result<proto.CompletionResponse, Error>) => {
+            logger?.logs.push({
+                request: request,
+                response: result.ok ? result.value : result.value.message
+            });
+
+            // Call Express error handler or end response
+            if (!result.ok) next(result.value);
+            else res.end();
+        });
+
+        stream.pipe(res);
     } catch (err: any) {
-        return next(new Error(`llama-server error: ${err}`));
+        return next(err);
     }
 });
 
@@ -376,69 +338,6 @@ app.all('/{*splat}', async (req, res) => {
 
 //     res.send(result);
 // });
-
-function handleStaticResponse(responseString: string): proto.CompletionResponse {
-    try { return JSON.parse(responseString) } catch (err: any) {
-        throw new Error(`handleStaticResponse: error decoding response: ${err}`);
-    }
-}
-
-// When streamed, the response is formatted as SSE (server-sent events).
-// https://platform.openai.com/docs/api-reference/chat-streaming
-function handleStreamedResponse(responseString: string): proto.CompletionResponse {
-    // This should give us an array of JSON strings representing various streamed tokens
-    let responseDeltas = responseString.split('data: ').reduce<proto.CompletionResponse[]>((accum, event) => {
-        try { accum.push(JSON.parse(event.trim())) } catch { }
-
-        return accum;
-    }, []);
-
-    let finalResponse: proto.CompletionResponse | null = null;
-    let finalDelta: proto.ChatDelta = {
-        role: "",
-        content: "",
-        reasoning_content: "",
-    };
-
-    // Combine streamed CompletionResponse deltas into a single CompletionResponse
-    responseDeltas.forEach(responseDelta => {
-        const choice = responseDelta.choices.at(0)!;
-
-        if (choice.delta.role) {
-            finalDelta.role = choice.delta.role;
-        }
-
-        if (choice.delta.content) {
-            finalDelta.content += choice.delta.content;
-        }
-
-        if (choice.delta.reasoning_content) {
-            finalDelta.reasoning_content += choice.delta.reasoning_content;
-        }
-
-        if (choice.delta.refusal) {
-            finalDelta.refusal = choice.delta.refusal;
-        }
-
-        if (choice.delta.tool_calls) {
-            finalDelta.tool_calls = choice.delta.tool_calls;
-        }
-
-        finalResponse = {
-            ...responseDelta,
-            choices: [{
-                ...choice,
-                delta: finalDelta
-            }]
-        };
-    });
-
-    if (!finalResponse) {
-        throw new Error(`handleStreamedResponse: empty final response`);
-    }
-
-    return finalResponse;
-}
 
 /* -------------------- STOP SERVER -------------------- */
 

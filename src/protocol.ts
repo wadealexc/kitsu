@@ -18,7 +18,7 @@ type ToolDefinition = {
     }
 };
 
-type Message = BasicMessage | AssistantMessage | ToolMessage;
+export type Message = BasicMessage | AssistantMessage | ToolMessage;
 
 type BasicMessage = {
     role: 'user' | 'system' | 'developer',
@@ -99,3 +99,7 @@ type ToolCall = {
         name: string,
     },
 };
+
+export type Result<T, E> =
+    | { ok: true; value: T }
+    | { ok: false; value: E };
