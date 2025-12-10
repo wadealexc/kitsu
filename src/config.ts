@@ -76,7 +76,6 @@ async function loadModelInfo(modelsPath: string): Promise<proto.ModelInfo[]> {
             ? path.join(subdirPath, "model.json")
             : undefined;
 
-        let toolNames: string[] = [];
         let params: string[] = [];
         if (modelFile) {
             const raw = await fs.promises.readFile(modelFile, "utf8");

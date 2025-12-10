@@ -22,6 +22,11 @@ type RequestBody<T> = express.Request<{}, any, T>;
 type LlamaStatus = {
     status: number,
     headers: Headers,
+    usage?: {
+        tps: number,
+        inputTokens: number,
+        outputTokens: number,
+    }
 };
 
 type SearchStatus = {
@@ -107,10 +112,16 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
             if (res.locals.error) {
                 const err = res.locals.error?.message;
                 console.error(chalk.dim.red(` -> error: ${err}`));
-                console.error(chalk.dim.red(` -> request:\n${JSON.stringify(req, null, 2)}`));
+                // console.error(chalk.dim.red(` -> request:\n${JSON.stringify(req, null, 2)}`));
             } else if (res.locals.llama) {
                 const llama = res.locals.llama as LlamaStatus;
-                console.log(chalk.dim.green(` -> llama response ok (code: ${llama?.status}); (content-type: ${llama?.headers.get('content-type')})`));
+                console.log(chalk.dim.green(` -> llama response ok (code: ${llama?.status} | ${llama?.headers.get('content-type')})`));
+                if (llama.usage) {
+                    const tIn = llama.usage.inputTokens;
+                    const tOut = llama.usage.outputTokens;
+                    const total = tIn + tOut;
+                    console.log(chalk.dim.green(` -> usage: (in: ${tIn} + out: ${tOut} = ${total} tokens) (tps: ${llama.usage.tps.toFixed(1)})`));
+                }
 
                 // console.log('llama-server response headers:')
                 // llama?.headers.forEach((v, k) => console.log(` -> ${k}: ${v}`))
@@ -128,17 +139,6 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 });
 
 app.use(express.json({ type: (() => true), limit: '50mb' }));
-
-// Error handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    res.locals.error = {
-        message: err?.message,
-    };
-
-    if (res.headersSent) return next(err);
-
-    res.status(500).json({ error: `error: ${err?.message || 'unknown error'}` });
-});
 
 /* -------------------- ROUTES -------------------- */
 
@@ -191,11 +191,16 @@ app.post('/v1/chat/completions', async (
         };
         res.locals.llama = llamaStatus;
 
-        // Copy headers and status for client
-        llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
-        res.status(llamaStatus.status);
-
         const stream = llamaResponse.stream;
+
+        // Once we have data back from llama-server, we can begin streaming it to the client
+        stream.once('data', () => {
+            // Copy headers and status for client once we have confirmation we're getting data
+            llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
+            res.status(llamaStatus.status);
+
+            stream.pipe(res);
+        });
 
         // This listener is triggered when llama-server is done streaming, or when the
         // stream is cancelled prematurely due to:
@@ -207,12 +212,25 @@ app.post('/v1/chat/completions', async (
                 response: result.ok ? result.value : result.value.message
             });
 
-            // Call Express error handler or end response
-            if (!result.ok) next(result.value);
-            else res.end();
-        });
+            // On success, end response and track stats for logs
+            if (result.ok) {
+                const tps = result.value.timings?.predicted_per_second;
+                const tokensOut = result.value.timings?.predicted_n;
+                const cacheIn = result.value.timings?.cache_n ?? 0;
+                const promptIn = result.value.timings?.prompt_n ?? 0;
+                const tokensIn = cacheIn + promptIn;
 
-        stream.pipe(res);
+                (res.locals.llama as LlamaStatus).usage = {
+                    tps: tps ?? 0,
+                    inputTokens: tokensIn ?? 0,
+                    outputTokens: tokensOut ?? 0,
+                }
+
+                res.end();
+            } else {
+                next(result.value);
+            }
+        });
     } catch (err: any) {
         return next(err);
     }
@@ -341,6 +359,18 @@ app.all('/{*splat}', async (req, res) => {
     console.log(`${JSON.stringify(JSON.parse(req.body.toString('utf8')), null, 2)}`);
 
     res.send('result text');
+});
+
+// Error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    res.locals.error = {
+        message: err?.message,
+    };
+
+    if (res.headersSent) return next(err);
+
+    res.status(500).json({ error: `error: ${err?.message || 'unknown error'}` });
+    res.end();
 });
 
 /* -------------------- STOP SERVER -------------------- */

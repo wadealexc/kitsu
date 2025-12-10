@@ -6,6 +6,7 @@ import { Router } from 'express';
 
 type LlamaStreamEvents = {
     response: (response: Response) => void,
+    data: () => void,
     stop: (result: proto.Result<proto.CompletionResponse, Error>) => void,
 };
 

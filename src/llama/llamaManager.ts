@@ -238,7 +238,7 @@ export class LlamaManager {
      * 
      * @throws if the request to llama-server fails
      */
-    async #send(llama: ActiveLlama, req: LlamaRequest): Promise<LlamaResponse> {
+    async #send(llama: Llama, req: LlamaRequest): Promise<LlamaResponse> {
         if (!llama.active) throw new Error(`LlamaManager.#send: llama not active`);
 
         // Serialize request body back into buffer form
@@ -269,9 +269,21 @@ export class LlamaManager {
 
         // console.log(`starting request to ${chalk.dim.magenta(llama.model.name)} (${llama.active.requests} active requests)`);
 
+        let stream: LlamaStream | null = null;
+
+        // When running close to context window limit, a prompt will sometimes crash
+        // the llama-server process without correctly closing the response.
+        //
+        // We add a listener here that is cleaned up when the stream stops naturally.
+        const prematureExit = ((code: number | null, signal: NodeJS.Signals | null) => {
+            stream?.destroy(new Error(`llama-server crashed; code=${code} signal=${signal}`));
+        });
+
+        llama.active.proc.once('exit', prematureExit);
+
         // Send request to `llama-server` and throw if we're unhappy
-        let response;
-        let contentType;
+        let response: Response;
+        let contentType: string | null;
         try {
             response = await fetch(llamaURL, init);
             contentType = response.headers.get('content-type');
@@ -290,12 +302,16 @@ export class LlamaManager {
         }
 
         // Create a PassThrough stream we can listen to to know when the request is done
-        const stream = new LlamaStream(response.body, contentType, req.signal);
+        stream = new LlamaStream(response.body, contentType, req.signal);
         stream.once('stop', () => {
-            llama.active!.requests--;
-            // console.log(`ending request to ${chalk.dim.magenta(llama.model.name)} (${llama.active!.requests} active requests)`);
+            if (llama.active) {
+                // console.log(`ending request to ${chalk.dim.magenta(llama.model.name)} (${llama.active!.requests} active requests)`);
+                llama.active.requests--;
+                llama.active.proc.removeListener('exit', prematureExit);
+            }
 
-            if (llama.active!.requests === 0 && this.waitingLlamas.length !== 0) {
+            const activeRequests = llama.active?.requests ?? 0;
+            if (activeRequests === 0 && this.waitingLlamas.length !== 0) {
                 const waitingLlama = this.waitingLlamas.shift()!;
                 const nextLlama = this.llamas.get(waitingLlama)
                     ?? (() => { throw new Error(`LlamaManager.#send: nextLlama not found: ${waitingLlama}`) })();
