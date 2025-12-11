@@ -1,92 +1,58 @@
 import os from 'os';
 import bytes from 'bytes';
 
-import type { Tool, JsonSchema } from './toolServer.js';
+// import { z } from "zod";
 
-type Info = {
-    osArch: string;
-    osRelease: string;
-    hostname: string;
-    upTime: number;
-    memory: {
-        total: string;
-        available: string;
-    };
-};
+import { z } from './types.js';
+import type { Tool, ToolContext } from './types.js';
 
-// Empty input object (no params)
-type Input = Record<string, never>;
+const InputSchema = z.object();
+const OutputSchema = z.object({
+    osArch: z.string(),
+    osRelease: z.string(),
+    hostname: z.string(),
+    upTime: z.number(),
+    memory: z.object({
+        total: z.string(),
+        available: z.string(),
+    }),
+});
 
-const inputSchema: JsonSchema = {
-    type: 'object',
-    properties: {},
-    additionalProperties: false,
-    description: '',
-};
+type Input = z.infer<typeof InputSchema>;
+type Output = z.infer<typeof OutputSchema>;
 
-const outputSchema: JsonSchema = {
-    type: 'object',
-    description: 'Information about the host system',
-    properties: {
-        osArch: {
-            type: 'string',
-            description: 'CPU architecture (e.g., x64)',
-        },
-        osRelease: {
-            type: 'string',
-            description: 'Operating system release/version',
-        },
-        hostname: {
-            type: 'string',
-            description: 'System hostname',
-        },
-        upTime: {
-            type: 'number',
-            description: 'System uptime in seconds',
-        },
-        memory: {
-            type: 'object',
-            description: 'Memory statistics',
-            properties: {
-                total: {
-                    type: 'string',
-                    description: 'Total system memory, human-readable',
-                },
-                available: {
-                    type: 'string',
-                    description: 'Available system memory, human-readable',
-                },
-            },
-            required: ['total', 'available'],
-            additionalProperties: false,
-        },
-    },
-    required: ['osArch', 'osRelease', 'hostname', 'upTime', 'memory'],
-    additionalProperties: false,
-};
+class SystemInfo implements Tool<Input, Output> {
 
-const systemInfo: Tool<Input, Info> = {
+    constructor(ctx: ToolContext) { }
+
     name(): string {
         return `systemInfo`;
-    },
+    }
 
     description(): string {
-        return (`Retrieve information about the system on which this LLM is running.`);
-    },
+        return (
+`Retrieve information about the system on which this LLM is running:
+- osArch: CPU architecture (e.g. x64)
+- osRelease: Operating system release/version
+- hostname: System hostname
+- upTime: System uptime in seconds
+- memory: Total and available memory`
+        );
+    }
 
     strict(): boolean {
         return true;
-    },
+    }
 
-    inputSchema(): JsonSchema {
-        return inputSchema;
-    },
+    inputSchema(): z.ZodType<Input> {
+        return InputSchema;
+    }
 
-    outputSchema(): JsonSchema {
-        return outputSchema;
-    },
+    outputSchema(): z.ZodType<Output> {
+        return OutputSchema;
+    }
 
-    call(): Info {
+    call(): Output {
         return {
             osArch: os.arch(),
             osRelease: os.release(),
@@ -97,7 +63,9 @@ const systemInfo: Tool<Input, Info> = {
                 available: `${bytes(os.freemem())}`,
             },
         };
-    },
-};
+    }
+}
 
-export default systemInfo;
+export default function systemInfo(ctx: ToolContext): Tool<Input, Output> {
+    return new SystemInfo(ctx);
+}

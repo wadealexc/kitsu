@@ -12,8 +12,7 @@ import { LlamaManager, type LlamaResponse } from './llama/llamaManager.js';
 import * as Browser from './browser/browser.js';
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
-import type LlamaStream from './llama/llamaStream.js';
-import { ToolServer } from './tools/toolServer.js';
+import { ToolServer } from './tools/server.js';
 
 /* -------------------- EXPRESS TYPINGS -------------------- */
 
@@ -194,7 +193,7 @@ app.post('/v1/chat/completions', async (
         const stream = llamaResponse.stream;
 
         // Once we have data back from llama-server, we can begin streaming it to the client
-        stream.once('data', () => {
+        stream.once('readable', () => {
             // Copy headers and status for client once we have confirmation we're getting data
             llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
             res.status(llamaStatus.status);
