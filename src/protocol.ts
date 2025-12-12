@@ -1,3 +1,10 @@
+export interface ModelInfo {
+    name: string;
+    path: string;                        // required: non-mmproj .gguf
+    mmprojPath: string | undefined;      // optional: mmproj-*.gguf
+    params: string[];                    // optional: model.json.params
+}
+
 // https://platform.openai.com/docs/api-reference/chat/create
 // (only tracking the fields we care about)
 export type CompletionRequest = {
@@ -8,7 +15,7 @@ export type CompletionRequest = {
 };
 
 // Top-level tool definition provided to assistant
-type ToolDefinition = {
+export type ToolDefinition = {
     type: 'function',
     function: {
         name: string,
@@ -72,7 +79,22 @@ export type CompletionResponse = {
     model: string,
     system_fingerprint: string,
     object: string,
-    timings?: any,
+    usage?: {
+        completion_tokens: number,
+        prompt_tokens: number,
+        total_tokens: number,
+    },
+    timings?: {
+        cache_n: number,
+        prompt_n: number,
+        prompt_ms: number,
+        prompt_per_token_ms: number,
+        prompt_per_second: number,
+        predicted_n: number,
+        predicted_ms: number,
+        predicted_per_token_ms: number,
+        predicted_per_second: number,
+    },
     choices: ChatChoice[],
 };
 

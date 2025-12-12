@@ -2,9 +2,12 @@ import { type Response } from 'node-fetch';
 import { PassThrough } from 'stream';
 
 import * as proto from '../protocol.js';
+import { Router } from 'express';
 
 type LlamaStreamEvents = {
     response: (response: Response) => void,
+    data: () => void,
+    readable: () => void,
     stop: (result: proto.Result<proto.CompletionResponse, Error>) => void,
 };
 
@@ -16,14 +19,14 @@ export default class LlamaStream extends PassThrough {
         super({ signal: signal });
 
         super.on('data', chunk => this.chunks.push(Buffer.from(chunk)));
-        
+
         super.once('error', (err: any) => {
             this.emit('stop', {
                 ok: false,
                 value: err
             });
         });
-        
+
         super.once('end', () => {
             const responseString = Buffer.concat(this.chunks).toString('utf8');
 
@@ -32,6 +35,7 @@ export default class LlamaStream extends PassThrough {
                 ? handleStreamedResponse(responseString)
                 : handleStaticResponse(responseString);
 
+            // TODO - For streamed responses, SSE spec should make it possible to send an error `{ "type": "error", ... }`
             if (!result.ok) {
                 console.error(`error parsing llama-server response: ${result.value} | responseString: ${responseString}`);
             }
@@ -57,7 +61,7 @@ export default class LlamaStream extends PassThrough {
 }
 
 function handleStaticResponse(responseString: string): proto.Result<proto.CompletionResponse, Error> {
-    try { 
+    try {
         return {
             ok: true,
             value: JSON.parse(responseString),
@@ -107,9 +111,19 @@ function handleStreamedResponse(responseString: string): proto.Result<proto.Comp
             finalDelta.refusal = choice.delta.refusal;
         }
 
-        if (choice.delta.tool_calls) {
-            finalDelta.tool_calls = choice.delta.tool_calls;
-        }
+        choice.delta.tool_calls?.forEach(call => {
+            if (!finalDelta.tool_calls) finalDelta.tool_calls = [];
+
+            const existingCall = finalDelta.tool_calls.find(
+                existingCall => existingCall.index === call.index
+            );
+
+            if (!existingCall) {
+                finalDelta.tool_calls.push(call);
+            } else {
+                existingCall.function.arguments += call.function.arguments;
+            }
+        });
 
         finalResponse = {
             ...responseDelta,
