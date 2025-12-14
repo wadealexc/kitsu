@@ -103,7 +103,8 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
             const requestInfo =
                 `${req.method}: ${chalk.yellow(req.originalUrl)}`
                 + ` (request: ${bytes(Number(requestLen))})`
-                + ` (elapsed: ${durationStr})`;
+                + ` (elapsed: ${durationStr})`
+                + ` (HTTP ${res.statusCode})`;
 
             console.log(requestInfo);
 
@@ -310,30 +311,6 @@ if (cfg.web.enable) {
     });
 }
 
-// app.put('/pdf/process', async (req, res) => {
-//     console.log(`got pdf extract request (${req.originalUrl})`);
-//     console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
-//     console.log(`method: ${req.method}`);
-//     console.log(`body size: ${req.body?.length}`);
-
-//     // Format originally from: https://github.com/open-webui/open-webui/discussions/17621
-//     // (backend/open_webui/retrieval/loaders/external_document.py)
-//     let result = [
-//         {
-//             "page_content": "hello world",
-//             "metadata": {
-//                 "source": "bingus",
-//                 "page": 1,
-//                 "extraction_method": "dummy thicc",
-//                 "total_pages": 1,
-//                 "ocr_language": "bongus",
-//             }
-//         }
-//     ]
-
-//     res.send(result);
-// });
-
 const tools = new ToolServer(app, { browser: browser });
 await tools.serve();
 
@@ -366,10 +343,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
         message: err?.message,
     };
 
-    if (res.headersSent) return next(err);
+    if (res.headersSent) {
+        console.error(`reached error handler but headers already sent`);
+        return next(err);
+    }
 
     res.status(500).json({ error: `error: ${err?.message || 'unknown error'}` });
-    res.end();
 });
 
 /* -------------------- STOP SERVER -------------------- */

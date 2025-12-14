@@ -89,7 +89,7 @@ export class ToolServer {
             },
         });
 
-        console.log(`spec: \n${JSON.stringify(openApiDoc, null, 2)}`);
+        // console.log(`spec: \n${JSON.stringify(openApiDoc, null, 2)}`);
 
         // Serve tool server spec for OWU
         this.app.get('/openapi.json', (_req, res) => {
