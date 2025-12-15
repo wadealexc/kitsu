@@ -50,11 +50,9 @@ class WebSearch implements Tool<Input, Output> {
     }
 
     async call(input: Input): Promise<Output> {
-        if (input.queries.length >= MAX_SEARCH_TERMS) {
-            input.queries.slice(0, MAX_SEARCH_TERMS);
-        }
+        const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
 
-        const responses = await this.browser.searchMulti(input.queries, this.defaultResultCount, true);
+        const responses = await this.browser.searchMulti(queries, this.defaultResultCount, true);
         const pages: Output = [];
 
         const urls: URL[] = [];

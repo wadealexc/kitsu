@@ -183,7 +183,16 @@ export class Browser {
             }
         }
 
-        return responses;
+        // Return only unique links
+        const links = new Set<string>();
+        return responses.filter((response, index, arr) => {
+            if (!links.has(response.link)) {
+                links.add(response.link);
+                return true;
+            }
+
+            return false;
+        });
     }
 
     /**
