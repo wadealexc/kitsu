@@ -1,4 +1,4 @@
-import { z } from './types.js';
+import { z } from '../config.js';
 
 import type { Tool, ToolContext } from './types.js';
 import type { Browser } from '../browser/browser.js';

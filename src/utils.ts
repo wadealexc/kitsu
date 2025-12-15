@@ -4,6 +4,8 @@ import path from 'path';
 import * as https from "https";
 import * as http from "http";
 
+export type Prettify<T> = { [K in keyof T]: T[K] } & {};
+
 // File extension for local models
 const MODEL_FILE_EXT = '.gguf';
 

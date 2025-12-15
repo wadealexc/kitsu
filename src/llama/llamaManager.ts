@@ -102,20 +102,40 @@ export class LlamaManager {
     private llamaServerVerboseLogs: boolean;
 
     constructor(params: {
-        llamaServerIP: string, llamaServerPort: number, llamaServerVerbose: boolean,
+        ports: {
+            port: number,
+            host: string,
+        }, 
+        llamaServerVerbose: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
         models: ModelConfig,
     }) {
         // Map models s.t. (key == model name, value == model info)
-        this.llamas = new Map(params.models.infos.map(modelInfo => [
-            modelInfo.name,
-            {
-                model: modelInfo,
+        this.llamas = new Map(params.models.models.map(model => {
+            const name = model.alias ?? model.gguf;
+            
+            const basePath = params.models.path;
+            const modelPath = path.join(basePath, model.gguf.endsWith('.gguf')
+                ? model.gguf
+                : model.gguf + '.gguf');
+
+            const mmprojPath = (model.mmproj ? model.mmproj.endsWith('.gguf')
+                ? path.join(basePath, model.mmproj)
+                : path.join(basePath, model.mmproj + '.gguf')
+            : undefined);
+
+            return [name, {
+                model: {
+                    name: name,
+                    path: modelPath,
+                    mmprojPath: mmprojPath,
+                    params: model.params ?? [],
+                },
                 pending: [],
                 active: null,
-            }
-        ]));
+            }];
+        }));
 
         const defaultModelName = params.models.onStart;
         this.defaultLlama = this.llamas.get(defaultModelName)
@@ -126,9 +146,9 @@ export class LlamaManager {
         this.logDirectory = params.logDirectory;
         this.logFilePrefix = params.logFilePrefix;
 
-        this.llamaServerIP = params.llamaServerIP;
-        this.llamaServerPort = params.llamaServerPort.toString();
-        this.llamaServerURL = `http://${params.llamaServerIP}:${params.llamaServerPort}`;
+        this.llamaServerIP = params.ports.host;
+        this.llamaServerPort = params.ports.port.toString();
+        this.llamaServerURL = `http://${this.llamaServerIP}:${this.llamaServerPort}`;
         this.llamaServerVerboseLogs = params.llamaServerVerbose;
 
         // Start llama-server with default model
@@ -444,6 +464,7 @@ export class LlamaManager {
 
         // Add any extra params
         if (model.params) {
+            console.log(chalk.dim(` - extra params: ${model.params}`));
             args = [...args, ...model.params];
         }
 

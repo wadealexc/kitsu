@@ -3,10 +3,20 @@
         "sleepAfterXSeconds": 600
     },
     "web": {
-        "braveAPIKey": "",
         "enable": false,
+        "braveAPIKey": "",
         "runDangerouslyWithoutSandbox": false,
         "screenshotWebpages": false
+    },
+    "ports": {
+        "llamaCpp": {
+            "port": 8080,
+            "host": "192.168.87.30"
+        },
+        "shim": {
+            "port": 8081,
+            "host": "192.168.87.30"
+        }
     },
     "logs": {
         "path": "./logs",
@@ -14,6 +24,25 @@
     },
     "models": {
         "path": "./models",
-        "onStart": "qwen3-vl-30b"
+        "onStart": "qwen3-vl-30b",
+        "models": [
+            {
+                "gguf": "qwen3-vl-30b/Qwen3-VL-30B-A3B-Thinking-Q6_K",
+                "mmproj": "qwen3-vl-30b/mmproj-BF16",
+                "alias": "qwen3-vl-30b",
+                "params": [
+                    "--ctx-size",
+                    50000
+                ]
+            },
+            {
+                "gguf": "gpt-oss-20b/gpt-oss-20b-mxfp4",
+                "alias": "gpt-oss-20b",
+                "params": [
+                    "--ctx-size",
+                    0
+                ]
+            }
+        ]
     }
 }

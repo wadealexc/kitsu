@@ -67,6 +67,11 @@ export class ToolServer {
 
             // Express handler: POST /tools/{toolName}
             this.app.post(pathKey, express.json(), async (req, res, next) => {
+                console.log(`tc: ${pathKey}`);
+                console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
+                console.log(`===`)
+                console.log(`body: ${JSON.stringify(req.body, null, 2)}`);
+
                 const inputSchema = tool.inputSchema();
 
                 try {

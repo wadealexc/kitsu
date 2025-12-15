@@ -1,9 +1,7 @@
 import os from 'os';
 import bytes from 'bytes';
 
-// import { z } from "zod";
-
-import { z } from './types.js';
+import { z } from '../config.js';
 import type { Tool, ToolContext } from './types.js';
 
 const InputSchema = z.object();

@@ -1,104 +1,200 @@
 import * as fs from 'fs';
+import { stat } from 'fs/promises';
 import path from 'path';
 
-import * as proto from './protocol.js';
+import { z } from 'zod';
+import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
+extendZodWithOpenApi(z);
+export { z };
 
-export type ConfigBase = {
-    llamaCpp: LlamaCppConfig,
-    web: WebConfig,
-    logs: LogConfig,
-    models: ModelConfig,
-};
+const LlamaCppSchema = z.object({
+    sleepAfterXSeconds: z.number().min(0).default(600),
+});
 
-export type LlamaCppConfig = {
-    sleepAfterXSeconds: number,
-};
+/**
+ * llama runner settings:
+ *
+ * ```json
+ * "llamaCpp": {
+ *     "sleepAfterXSeconds": number,                 // default: 600
+ * }
+ * ```
+ */
+export type LlamaCppConfig = z.infer<typeof LlamaCppSchema>;
 
-export type WebConfig = {
-    braveAPIKey: string,
-    enable: boolean,
-    runDangerouslyWithoutSandbox: boolean,
-    screenshotWebpages: boolean,
-};
+const WebEnabledSchema = z.object({
+    enable: z.literal(true),
+    braveAPIKey: z.string().min(1, { message: "Brave API key is required if web is enabled" }),
+    runDangerouslyWithoutSandbox: z.boolean().default(false),
+    screenshotWebpages: z.boolean().default(false),
+});
 
-export type LogConfig = {
-    path: string,
-    enable: boolean,
-};
+/// `looseObject` used here in case of including `WebEnabledSchema` keys when not enabled
+const WebDisabledSchema = z.looseObject({
+    enable: z.literal(false),
+});
 
-export type ModelConfig = {
-    path: string,
-    onStart: string,
-    infos: proto.ModelInfo[],
-};
+const WebSchema = z.union([WebDisabledSchema, WebEnabledSchema]);
 
-type ModelFile = {
-    params?: string[],
-    // tools?: string[],
-}
+/**
+ * web search / webpage loader settings:
+ *
+ * ```json
+ * "web": {
+ *     "enable": boolean,                            // default: false
+ *     "braveAPIKey": "your api key here",           // required if web.enable
+ *     "runDangerouslyWithoutSandbox": boolean,      // default: false
+ *     "screenshotWebpages": boolean,                // default: false
+ * }
+ * ```
+ */
+export type WebConfig = z.infer<typeof WebSchema>;
 
-// TODO - default values if unset
-export async function readConfig(path: string): Promise<ConfigBase> {
-    let base = JSON.parse(fs.readFileSync(path, 'utf-8')) as ConfigBase;
-    base.models.infos = await loadModelInfo(base.models.path);
+const PortSchema = z.object({
+    llamaCpp: z.object({
+        port: z.coerce.number().default(8080),
+        host: z.string().default('0.0.0.0'),
+    }),
+    shim: z.object({
+        port: z.coerce.number().default(8081),
+        host: z.string().default('0.0.0.0'),
+    }),
+});
 
-    return base;
-}
+/**
+ * Port settings:
+ *
+ * ```json
+ * "ports": {
+ *     "llamaCpp": {
+ *         port: number,                             // default: 8080
+ *         host: string                              // default: '0.0.0.0'
+ *     },                           
+ *     "shim": {
+ *         port: number,                             // default: 8081
+ *         host: string                              // default: '0.0.0.0'
+ *     },
+ * }
+ * ```
+ */
+export type PortConfig = z.infer<typeof PortSchema>;
 
-// Check for models locally as specified by config
-async function loadModelInfo(modelsPath: string): Promise<proto.ModelInfo[]> {
-    const dirEntries = await fs.promises.readdir(modelsPath, { withFileTypes: true });
-    const modelInfos: proto.ModelInfo[] = [];
+const LogSchema = z.object({
+    path: z.string().default('./logs'),
+    enable: z.boolean().default(false),
+});
 
-    for (const entry of dirEntries) {
-        if (!entry.isDirectory()) continue;
+/**
+ * logger settings:
+ *
+ * ```json
+ * "logs": {
+ *     "path": string,                               // default: './logs'
+ *     "enable": boolean,                            // default: false
+ * }
+ * ```
+ */
+export type LogConfig = z.infer<typeof LogSchema>;
 
-        const subdirName = entry.name;
-        const subdirPath = path.join(modelsPath, subdirName);
-        const files = await fs.promises.readdir(subdirPath);
+const ModelSchema = z.object({
+    path: z.string().default('./models'),
+    onStart: z.string().min(1, { message: "Startup model required - this should be the name of a directory within your models folder" }),
+    models: z.array(z.object({
+        gguf: z.string(),
+        mmproj: z.optional(z.string()),
+        alias: z.optional(z.string()),
+        params: z.optional(z.array(z.coerce.string())),
+    })).min(1),
+});
 
-        // required: a .gguf file that does NOT contain "mmproj" in its name
-        const mainModelFiles = files.filter((f) => f.endsWith('.gguf') && !f.includes("mmproj"));
-        if (mainModelFiles.length === 0) {
-            throw new Error(`config.loadModelInfo: expected ${subdirPath} to contain a non-mmproj model file`);
-        }
+/**
+ * Model settings:
+ * 
+ * ```json
+ * "models": {
+ *     "path": string,                               // default: './models'
+ *     "onStart": string,                            // OPTIONAL; default: first entry in `models`
+ *     "models": [                                   // REQUIRED; model definitions
+ *         {
+ *             // Points to `./models/qwen/Qwen3-VL-30B-A3B-Thinking-Q6_K.gguf`
+ *             "gguf": "qwen/Qwen3-VL-30B-A3B-Thinking-Q6_K",
+ *             // OPTIONAL; points to `./models/qwen/mmproj-BF16.gguf`
+ *             "mmproj": "qwen/mmproj-BF16",
+ *             // OPTIONAL: API will serve model under this alias
+ *             "alias": "qwen3-vl-30b",
+ *             // OPTIONAL: Extra params for llama-server
+ *             "params": [
+ *                 "--ctx-size",
+ *                 50000
+ *             ]
+ *         }
+ *     ]
+ * }
+ * ```
+ */
+export type ModelConfig = z.infer<typeof ModelSchema>;
 
-        const mainModelPath = path.join(subdirPath, mainModelFiles.at(0)!)
+// Main config schema with strict mode (rejects extra fields)
+const ConfigSchema = z.object({
+    llamaCpp: LlamaCppSchema,
+    web: WebSchema,
+    ports: PortSchema,
+    logs: LogSchema,
+    models: ModelSchema,
+}).strict();
 
-        // optional: mmproj-*.gguf
-        const mmprojFile = files.find((f) => f.endsWith('.gguf') && f.startsWith("mmproj"));
-        const mmprojPath = mmprojFile
-            ? path.join(subdirPath, mmprojFile)
-            : undefined;
+export type Config = z.infer<typeof ConfigSchema>;
 
-        // optional: model.json
-        const modelFile = files.includes("model.json")
-            ? path.join(subdirPath, "model.json")
-            : undefined;
-
-        let params: string[] = [];
-        if (modelFile) {
-            const raw = await fs.promises.readFile(modelFile, "utf8");
-
-            let parsed;
-            try {
-                parsed = JSON.parse(raw) as ModelFile;
-            } catch {
-                throw new Error(`config.loadModelInfo: invalid JSON in ${modelFile}`);
-            }
-
-            if (parsed.params) {
-                params = parsed.params;
-            }
-        }
-
-        modelInfos.push({
-            name: subdirName,
-            path: mainModelPath,
-            mmprojPath: mmprojPath,
-            params: params,
-        });
+/**
+ * Read the JSON file given by `path`, and return application config
+ */
+export async function readConfig(path: string): Promise<Config> {
+    let config: Config;
+    try {
+        // Read basic config from `path`
+        const configJSON = JSON.parse(fs.readFileSync(path, 'utf-8'));
+        config = ConfigSchema.parse(configJSON);
+    } catch (err: any) {
+        throw new Error(`readConfig: validation failed when reading file ${path}. Err: ${err}`);
     }
 
-    return modelInfos;
+    // Ensure existence of each of the files referenced by the config
+    await validateFilesExist(config);
+    return config;
+}
+
+async function validateFilesExist(config: Config) {
+    try {
+        const stats = await stat(config.logs.path);
+        if (!stats.isDirectory()) throw new Error(`path is not a directory`);
+    } catch (err: any) {
+        throw new Error(`config error locating log path: ${config.logs.path}; err: ${err}`);
+    }
+
+    const modelConfig: ModelConfig = config.models;
+    const basePath = path.resolve(modelConfig.path);
+
+    for (const model of modelConfig.models) {
+        // Validate GGUF file exists
+        let ggufPath = path.join(basePath, model.gguf);
+        if (!ggufPath.endsWith('.gguf')) ggufPath += '.gguf';
+
+        try {
+            await stat(ggufPath);
+        } catch (err: any) {
+            throw new Error(`config error; could not find model.gguf: ${ggufPath}; err: ${err}`);
+        }
+
+        // Validate MMProj exists if specified
+        if (model.mmproj) {
+            let mmprojPath = path.join(basePath, model.mmproj);
+            if (!mmprojPath.endsWith('.gguf')) mmprojPath += '.gguf';
+
+            try {
+                await stat(mmprojPath);
+            } catch (err: any) {
+                throw new Error(`config error; could not find model.mmproj: ${mmprojPath}; err: ${err}`);
+            }
+        }
+    }
 }

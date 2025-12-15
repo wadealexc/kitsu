@@ -2,6 +2,8 @@ import chalk from 'chalk';
 
 import EventEmitter from 'events';
 
+import type { Prettify } from '../utils.js';
+
 /**
  * The most basic browser task represents a request to load a page
  */
@@ -17,17 +19,17 @@ export type PageLoad<T> = {
  * Once a page has been loaded, we keep it around for a period of time
  * to include it in rate limit calculations. `Expiry` defines that time.
  */
-export type Expiry<T> = PageLoad<T> & {
+export type Expiry<T> = Prettify<PageLoad<T> & {
     expiryTime: number,
-}
+}>;
 
 /**
  * If we give up on loading a page and want to try again later, we can
  * use `Deferred`.
  */
-export type Deferred<T> = PageLoad<T> & {
+export type Deferred<T> = Prettify<PageLoad<T> & {
     retryTime?: number,
-}
+}>;
 
 type TaskEvents<T> = {
     newTask: () => void,

@@ -1,8 +1,4 @@
-import { z } from "zod";
-import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
-
-extendZodWithOpenApi(z);
-export { z };
+import { z } from '../config.js';
 
 import type { Browser } from '../browser/browser.js';
 
