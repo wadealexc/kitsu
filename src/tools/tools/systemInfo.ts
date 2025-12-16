@@ -1,8 +1,8 @@
 import os from 'os';
 import bytes from 'bytes';
 
-import { z } from '../config.js';
-import type { Tool, ToolContext } from './types.js';
+import { z } from '../../config.js';
+import type { Tool, ToolContext } from '../types.js';
 
 const InputSchema = z.object();
 const OutputSchema = z.object({

@@ -1,7 +1,7 @@
-import { z } from '../config.js';
+import { z } from '../../config.js';
 
-import type { Tool, ToolContext } from './types.js';
-import type { Browser } from '../browser/browser.js';
+import type { Tool, ToolContext } from '../types.js';
+import type { Browser } from '../../browser/browser.js';
 
 const MAX_SEARCH_TERMS = 3;
 
