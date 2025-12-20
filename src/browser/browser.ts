@@ -1,8 +1,11 @@
 import chalk from 'chalk';
 import puppeteer from 'puppeteer';
+import express from 'express';
 
 import EventEmitter from 'events';
 import * as Task from './taskManager.js';
+import * as middleware from '../server/middleware.js';
+import { type RequestBody } from '../server/middleware.js';
 
 // from: open_webui/retrieval/web/external.py
 // NOTE: supports optional ChatID input, could use to link requests with other tasks
@@ -71,6 +74,8 @@ type BrowserEvents = {
  */
 export class Browser {
 
+    private app: express.Express;
+
     private emitter = new EventEmitter();
 
     private braveAPIKey: string;
@@ -101,10 +106,12 @@ export class Browser {
     private screenshotWebpages: boolean;
 
     constructor(
+        app: express.Express,
         browser: puppeteer.Browser,
         braveAPIKey: string,
         screenshotWebpages: boolean,
     ) {
+        this.app = app;
         this.browser = browser;
         this.braveAPIKey = braveAPIKey;
         this.screenshotWebpages = screenshotWebpages;
@@ -167,16 +174,16 @@ export class Browser {
         }
 
         // Start background jobs if requested
-        if (loadPages) this.fetchContent(false, ...urls).forEach(promise => promise.catch(() => {}));
+        if (loadPages) this.fetchContent(false, ...urls).forEach(promise => promise.catch(() => { }));
         return searchResponses;
     }
 
     async searchMulti(queries: string[], count: number, loadPages: boolean): Promise<SearchResponse[]> {
         const responses: SearchResponse[] = [];
-        
+
         for (const query of queries) {
             try {
-                const response = await this.search({query, count}, loadPages);
+                const response = await this.search({ query, count }, loadPages);
                 responses.push(...response);
             } catch (err: any) {
                 console.log(`skipping failed search for query: ${query}; err: ${err}`);
@@ -423,6 +430,72 @@ export class Browser {
         this.rateLimits.set(url.hostname, this.getRateLimit(url) - 1);
     }
 
+    /* -------------------- ROUTES -------------------- */
+
+    serve() {
+        this.app.post('/web/search', async (
+            req: RequestBody<SearchRequest>,
+            res,
+            next
+        ) => {
+            const request: SearchRequest = req.body;
+
+            // Perform web search and start loading pages in background
+            let response: SearchResponse[];
+            try { response = await this.search(request, true) } catch (err: any) {
+                return next(new Error(`/web/search failed: ${err}`));
+            }
+
+            const searchStatus: middleware.SearchStatus = {
+                query: request.query,
+                results: response.length,
+            };
+            res.locals.search = searchStatus;
+            res.send(response);
+        });
+
+        this.app.post('/web/load', async (
+            req: RequestBody<LoadRequest>,
+            res,
+            next
+        ) => {
+            const request: LoadRequest = req.body;
+
+            // Convert input url strings to URLs
+            const urls: URL[] = [];
+            request.urls.forEach(url => {
+                try { urls.push(new URL(url)) } catch (err: any) {
+                    console.log(`/web/load: malformed url ${url}; skipping`);
+                }
+            });
+
+            // Wait for the browser to finish loading pages from a prior /web/search
+            // (fetchContent(true, ...) tells the browser the task must have been created already)
+            const response: LoadResponse[] = [];
+            (await Promise.allSettled(this.fetchContent(true, ...urls))).forEach(result => {
+                if (result.status === 'fulfilled') {
+                    response.push({
+                        page_content: result.value.content,
+                        metadata: result.value.metadata,
+                    });
+                } else {
+                    console.log(`/web/load: rejected promise: ${result.reason}`);
+                }
+            });
+
+            if (response.length === 0) {
+                return next(new Error(`returned 0 successful results`));
+            }
+
+            const loadStatus: middleware.LoadStatus = {
+                successful: response.length,
+                total: request.urls.length,
+            };
+            res.locals.load = loadStatus;
+            res.send(response);
+        });
+    }
+
     /* -------------------- EVENTS -------------------- */
 
     on<E extends keyof BrowserEvents>(event: E, listener: BrowserEvents[E]): this {
@@ -468,6 +541,7 @@ export class Browser {
 //
 // ... then again, if i just dockerize this, that should fix it
 export async function init(
+    app: express.Express,
     braveAPIKey: string,
     runDangerouslyWithoutSandbox: boolean,
     screenshotWebpages: boolean,
@@ -499,5 +573,5 @@ export async function init(
     }
 
     process.stdout.write(chalk.dim.green(`web browser running!\n`));
-    return new Browser(puppet, braveAPIKey, screenshotWebpages);
+    return new Browser(app, puppet, braveAPIKey, screenshotWebpages);
 }
