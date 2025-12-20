@@ -37,12 +37,40 @@ if (cfg.logs.enable) {
     };
 }
 
-/* -------------------- ROUTES - OPENAI -------------------- */
-
 const app = express();
 
 app.use(middleware.logging);
 app.use(express.json({ type: (() => true), limit: '50mb' }));
+
+/* -------------------- LLAMA, BROWSER, TOOL SERVER -------------------- */
+
+// If enabled, start web browser and web browser API
+let browser: Browser.Browser | undefined = undefined;
+if (cfg.web.enable) {
+    browser = await Browser.init(
+        app,
+        cfg.web.braveAPIKey,
+        cfg.web.runDangerouslyWithoutSandbox,
+        cfg.web.screenshotWebpages,
+    );
+
+    browser.serve();
+}
+
+// Start tool server and tool server API
+const tools = new ToolServer(app, { browser: browser });
+tools.serve();
+
+// Start llama-server
+const llama = new LlamaManager({
+    ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+    models: cfg.models,
+});
+await llama.startDefault();
+
+/* -------------------- ROUTES - OPENAI -------------------- */
 
 /**
  * /v1/models – return list of local models
@@ -67,7 +95,7 @@ app.post('/v1/chat/completions', async (
     res,
     next
 ) => {
-    const request: proto.CompletionRequest = req.body;
+    const request: proto.CompletionRequest = await tools.beforeRequest(req.body);
     const ctrl = new AbortController();
 
     req.once('aborted', () => {
@@ -83,7 +111,7 @@ app.post('/v1/chat/completions', async (
             originalURL: req.originalUrl,
             headers: req.headers,
             method: req.method,
-            body: req.body,
+            body: request,
             signal: ctrl.signal,
         });
 
@@ -136,96 +164,6 @@ app.post('/v1/chat/completions', async (
     } catch (err: any) {
         return next(err);
     }
-});
-
-/* -------------------- BROWSER -------------------- */
-
-// If web browser is enabled, start it and define an endpoint
-let browser: Browser.Browser | undefined = undefined;
-if (cfg.web.enable) {
-    browser = await Browser.init(
-        cfg.web.braveAPIKey,
-        cfg.web.runDangerouslyWithoutSandbox,
-        cfg.web.screenshotWebpages,
-    );
-
-    app.post('/web/search', async (
-        req: RequestBody<Browser.SearchRequest>,
-        res,
-        next
-    ) => {
-        const request: Browser.SearchRequest = req.body;
-
-        // Perform web search and start loading pages in background
-        let response: Browser.SearchResponse[];
-        try { response = await browser!.search(request, true) } catch (err: any) {
-            return next(new Error(`/web/search failed: ${err}`));
-        }
-
-        const searchStatus: middleware.SearchStatus = {
-            query: request.query,
-            results: response.length,
-        };
-        res.locals.search = searchStatus;
-        res.send(response);
-    });
-
-    app.post('/web/load', async (
-        req: RequestBody<Browser.LoadRequest>,
-        res,
-        next
-    ) => {
-        const request: Browser.LoadRequest = req.body;
-
-        // Convert input url strings to URLs
-        const urls: URL[] = [];
-        request.urls.forEach(url => {
-            try { urls.push(new URL(url)) } catch (err: any) {
-                console.log(`/web/load: malformed url ${url}; skipping`);
-            }
-        });
-
-        // Should never hit this but it satisfies TS typechecker
-        if (!browser) return next(new Error(`no existing browser instance`));
-
-        // Wait for the browser to finish loading pages from a prior /web/search
-        // (fetchContent(true, ...) tells the browser the task must have been created already)
-        const response: Browser.LoadResponse[] = [];
-        (await Promise.allSettled(browser.fetchContent(true, ...urls))).forEach(result => {
-            if (result.status === 'fulfilled') {
-                response.push({
-                    page_content: result.value.content,
-                    metadata: result.value.metadata,
-                });
-            } else {
-                console.log(`/web/load: rejected promise: ${result.reason}`);
-            }
-        });
-
-        if (response.length === 0) {
-            return next(new Error(`returned 0 successful results`));
-        }
-
-        const loadStatus: middleware.LoadStatus = {
-            successful: response.length,
-            total: request.urls.length,
-        };
-        res.locals.load = loadStatus;
-        res.send(response);
-    });
-}
-
-/* -------------------- LLAMA -------------------- */
-
-const tools = new ToolServer(app, { browser: browser });
-await tools.serve();
-
-// Start llama-server
-const llama = new LlamaManager({
-    ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-    models: cfg.models,
 });
 
 /* -------------------- ERROR HANDLING AND SHUTDOWN -------------------- */

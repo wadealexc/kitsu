@@ -105,7 +105,7 @@ export class LlamaManager {
         ports: {
             port: number,
             host: string,
-        }, 
+        },
         llamaServerVerbose: boolean,
         logDirectory: string, logFilePrefix: string,
         sleepAfterXSeconds: number,
@@ -114,7 +114,7 @@ export class LlamaManager {
         // Map models s.t. (key == model name, value == model info)
         this.llamas = new Map(params.models.models.map(model => {
             const name = model.alias ?? model.gguf;
-            
+
             const basePath = params.models.path;
             const modelPath = path.join(basePath, model.gguf.endsWith('.gguf')
                 ? model.gguf
@@ -123,7 +123,7 @@ export class LlamaManager {
             const mmprojPath = (model.mmproj ? model.mmproj.endsWith('.gguf')
                 ? path.join(basePath, model.mmproj)
                 : path.join(basePath, model.mmproj + '.gguf')
-            : undefined);
+                : undefined);
 
             return [name, {
                 model: {
@@ -150,12 +150,14 @@ export class LlamaManager {
         this.llamaServerPort = params.ports.port.toString();
         this.llamaServerURL = `http://${this.llamaServerIP}:${this.llamaServerPort}`;
         this.llamaServerVerboseLogs = params.llamaServerVerbose;
-
-        // Start llama-server with default model
-        this.#start(this.defaultLlama);
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
+
+    // Start llama-server with default model
+    startDefault(): Promise<void> {
+        return this.#start(this.defaultLlama);
+    }
 
     completions(req: LlamaRequest): Promise<LlamaResponse> {
 
@@ -206,7 +208,7 @@ export class LlamaManager {
      * 
      * If the process is still running, throws an error.
      */
-    async stopServer() {        
+    async stopServer() {
         await Promise.all(
             this.llamas.values()
                 .map(llama => this.#stop(llama))
@@ -367,7 +369,7 @@ export class LlamaManager {
             .catch((err: any) => {
                 console.error(`LlamaManager.#swap: error stopping existing llama: ${curLlama.model.name}; err: ${err}`);
             });
-            
+
     }
 
     async #stop(llama: Llama): Promise<void> {
@@ -427,7 +429,7 @@ export class LlamaManager {
      * 
      * @param model The model to load into llama-server
      */
-    #start(llama: Llama) {
+    #start(llama: Llama): Promise<void> {
         if (this.activeLlama) throw new Error(`LlamaManager.#startLlama: llama process already running!`);
 
         const model: proto.ModelInfo = llama.model;
@@ -528,15 +530,18 @@ export class LlamaManager {
             }),
         };
 
-        // Poll llama-server instance
-        this.#pollServer(llama)
-            .then(() => {
-                this.#doPending(llama as ActiveLlama);
-            })
-            .catch((err: any) => {
-                console.error(`LlamaManager.#start: error when polling: ${err}`);
-                this.activeLlama = null;
-            });
+        return new Promise<void>((resolve) => {
+            // Poll llama-server instance
+            this.#pollServer(llama)
+                .then(() => {
+                    resolve();
+                    this.#doPending(llama as ActiveLlama);
+                })
+                .catch((err: any) => {
+                    console.error(`LlamaManager.#start: error when polling: ${err}`);
+                    this.activeLlama = null;
+                });
+        });
     }
 
     /**
@@ -672,7 +677,7 @@ export class LlamaManager {
 
     getLlamaForModel(modelName: string, messages: proto.Message[]): Llama {
         if (modelName === 'auto') {
-            if (hasVisionContent(messages)) {
+            if (proto.hasVisionContent(messages)) {
                 return this.getVisionLlamas().at(0)
                     ?? (() => { throw new Error(`getLlamaForModel: vision model required, but none loaded`) })();
             } else if (this.activeLlama) {
@@ -695,13 +700,4 @@ export class LlamaManager {
         return llama !== undefined &&
             (llama.pending.length !== 0 || llama.active?.requests !== 0);
     }
-}
-
-function hasVisionContent(messages: proto.Message[]): boolean {
-    const has = messages.findIndex(msg => {
-        if (typeof msg.content === 'string') return false;
-        return msg.content.find(part => part.type === 'image_url');
-    }) !== -1;
-
-    return has;
 }

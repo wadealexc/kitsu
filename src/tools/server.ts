@@ -4,6 +4,7 @@ import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-open
 
 import loadTools from './loader.js';
 import type { Tool, ToolContext } from './types.js';
+import * as proto from '../protocol.js';
 
 export class ToolServer {
 
@@ -11,26 +12,48 @@ export class ToolServer {
     private registry: OpenAPIRegistry;
 
     private ctx: ToolContext;
-    private tools: Record<string, Tool>;
+    private tools: Map<string, Tool>;
 
     constructor(app: express.Express, ctx: ToolContext) {
         this.app = app;
         this.registry = new OpenAPIRegistry();
         this.ctx = ctx;
-        this.tools = {};
+
+        this.tools = new Map();
+        
+        loadTools().forEach((factory => {
+            try {
+                const tool = factory(this.ctx);
+                this.tools.set(tool.name(), tool);
+            } catch (err: any) {
+                console.error(`Failed to load tool: ${err}; skipping`);
+            }
+        }));
     }
 
-    async serve() {
-        console.log(`Setting up tool server`);
+    /**
+     * Each tool may have preflight changes to completion requests. This method
+     * iterates over each tool, allows it to mutate the request, and returns the
+     * final request.
+     */
+    async beforeRequest(req: proto.CompletionRequest): Promise<proto.CompletionRequest> {
+        for (const tool of this.tools.values()) {
+            if (tool.beforeRequest) req = await tool.beforeRequest(req);
+        }
 
-        this.initTools();
-        if (Object.values(this.tools).length === 0) {
+        return req;
+    }
+
+    serve() {
+        console.log(`Serving tool server endpoints:`);
+
+        if (this.tools.size === 0) {
             console.log(` -> no tools loaded`);
             return;
         }
 
         // For each tool, serve endpoint at `/tools/toolName`
-        for (const tool of Object.values(this.tools)) {
+        for (const tool of this.tools.values()) {
             const toolName = tool.name();
             const pathKey = `/tools/${toolName}`;
 
@@ -99,17 +122,6 @@ export class ToolServer {
         // Serve tool server spec for OWU
         this.app.get('/openapi.json', (_req, res) => {
             res.json(openApiDoc);
-        });
-    }
-
-    initTools() {
-        loadTools().forEach(factory => {
-            try {
-                const tool = factory(this.ctx);
-                this.tools[tool.name()] = tool;
-            } catch (err: any) {
-                console.error(`Failed to load tool: ${err}; skipping`);
-            }
         });
     }
 }

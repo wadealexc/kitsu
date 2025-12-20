@@ -36,12 +36,12 @@ type BasicMessage = {
 type ToolMessage = {
     role: 'tool',
     tool_call_id: string,
-    content: string | ContentPart[],
+    content: string | TextContentPart[],
 };
 
 type AssistantMessage = {
     role: 'assistant',
-    content: string | ContentPart[],
+    content: string | TextContentPart[],
     reasoning_content?: string,        // Not in OAI API docs, but Aldehir's adapter uses it
     name?: string,
     refusal?: string,
@@ -58,14 +58,14 @@ type AssistantToolCall = {
     }
 };
 
-type ContentPart = TextContentPart | ImageContentPart;
+export type ContentPart = TextContentPart | ImageContentPart;
 
-type TextContentPart = {
+export type TextContentPart = {
     type: 'text',
     text: string,
 };
 
-type ImageContentPart = {
+export type ImageContentPart = {
     type: 'image_url',
     image_url: {
         url: string,
@@ -125,3 +125,23 @@ type ToolCall = {
 export type Result<T, E> =
     | { ok: true; value: T }
     | { ok: false; value: E };
+
+/**
+ * Returns true if any of the messages has an image
+ */
+export function hasVisionContent(messages: Message[]): boolean {
+    const has = messages.findIndex(msg => {
+        if (typeof msg.content === 'string') return false;
+        return msg.content.find(part => part.type === 'image_url');
+    }) !== -1;
+
+    return has;
+}
+
+export function assistantMessages(messages: Message[]): AssistantMessage[] {
+    return messages.filter(msg => msg.role === 'assistant');
+}
+
+export function toolMessages(messages: Message[]): ToolMessage[] {
+    return messages.filter(msg => msg.role === 'tool');
+}
