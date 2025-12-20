@@ -530,8 +530,8 @@ export class LlamaManager {
             }),
         };
 
-        return new Promise<void>((resolve) => {
-            // Poll llama-server instance
+        // Poll llama-server instance
+        return new Promise<void>((resolve, reject) => {
             this.#pollServer(llama)
                 .then(() => {
                     resolve();
@@ -540,6 +540,7 @@ export class LlamaManager {
                 .catch((err: any) => {
                     console.error(`LlamaManager.#start: error when polling: ${err}`);
                     this.activeLlama = null;
+                    reject(err);
                 });
         });
     }

@@ -126,10 +126,6 @@ type Output = z.infer<typeof OutputSchema>;
  */
 class PreprocessImage implements Tool<Input, Output> {
 
-    // Map original images to their preprocessed form, and vice-versa
-    private rawToPP: Map<string, string> = new Map();
-    private ppToRaw: Map<string, string> = new Map();
-
     constructor(ctx: ToolContext) { }
 
     name(): string {
@@ -174,8 +170,8 @@ class PreprocessImage implements Tool<Input, Output> {
 
 #### Images:
 
-* Images are labeled in order: 'img_0', 'img_1', 'img_2_p', and so on. 
-* The '_p' suffix (e.g: 'img_2_p' above) denotes that this image has been preprocessed to make transcription easier.
+* Images are labeled in order: 'img_0', 'img_1', 'img_2', and so on. 
+* Image labels with a '_p' suffix (e.g: 'img_0_p') denote that the image has been preprocessed to make text easier to see.
 * When using tools in conjunction with images, you should reference images by their image label.`
         );
     }
@@ -186,7 +182,7 @@ class PreprocessImage implements Tool<Input, Output> {
         const snippet = this.systemPromptSnippet();
         let systemPrompt = newReq.messages.at(0);
 
-        // If the request has no system prompt, ... that's weird. Panic.
+        // If the request has no system prompt, ... that's weird. Panic. Run.
         if (systemPrompt === undefined || systemPrompt.role !== 'system') {
             throw new Error(`no system prompt`);
         } else if (!proto.hasVisionContent(newReq.messages)) {
@@ -224,8 +220,6 @@ class PreprocessImage implements Tool<Input, Output> {
             })
         }
 
-        if (imageRequests.size !== 0) console.log(`imageRequests: ${JSON.stringify(imageRequests.keys().toArray(), null, 2)}`);
-
         // Add image labels to images, and track tool messages to see if we need to
         // process any images
         let numImages = 0;
@@ -234,14 +228,6 @@ class PreprocessImage implements Tool<Input, Output> {
 
             const newParts: proto.ContentPart[] = [];
             const parts: proto.ContentPart[] = m.content;
-
-            console.log(`Before: ${JSON.stringify(parts.map(p => {
-                if (p.type === 'text') {
-                    return { type: p.type, text: p.text }
-                } else {
-                    return { type: p.type, image_url: p.image_url.url.length }
-                }
-            }), null, 2)}`);
 
             let cur: proto.ContentPart;
             let prev: proto.ContentPart | undefined = undefined;
@@ -264,15 +250,11 @@ class PreprocessImage implements Tool<Input, Output> {
                         prev = labelPart;
                         prevIdx = newParts.length;
 
-                        console.log(`creating image label: ${prev.text}`);
                         newParts.push(labelPart);
-                    } else {
-                        console.log(`found existing image label: ${prev.text}`);
                     }
 
                     // If cur is image, prev is a raw label, and cur is requested: process image
                     if (isRawImageLabel(prev.text) && imageRequests.has(prev.text)) {
-                        console.log(`processing image for label: ${prev.text}`);
                         try {
                             cur.image_url.url = await processImage(cur);
                             prev.text = createPreprocessedLabel(prev.text);
@@ -291,17 +273,7 @@ class PreprocessImage implements Tool<Input, Output> {
 
             const lenDiff = newParts.length - parts.length;
             console.log(`Added ${lenDiff} image labels to completion input`);
-            
-            console.log(`=========================`)
-            console.log(`=========================`)
-            console.log(`=========================`)
-            console.log(`After: ${JSON.stringify(newParts.map(p => {
-                if (p.type === 'text') {
-                    return { type: p.type, text: p.text }
-                } else {
-                    return { type: p.type, image_url: p.image_url.url.length }
-                }
-            }), null, 2)}`);
+
             m.content = newParts;
         }
 
@@ -384,7 +356,6 @@ async function preprocessForText(buffer: Buffer): Promise<Buffer> {
 }
 
 async function processImage(image: proto.ImageContentPart): Promise<string> {
-    console.log(`in len: ${image.image_url.url.length}`);
     const originalBuffer = await loadImageBufferFromContentPart(image);
     const processedBuffer = await preprocessForText(originalBuffer);
 
@@ -393,7 +364,5 @@ async function processImage(image: proto.ImageContentPart): Promise<string> {
     const base64 = processedBuffer.toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;
 
-
-    console.log(`out len: ${dataUrl.length}`);
     return dataUrl;
 }
