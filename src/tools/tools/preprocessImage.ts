@@ -134,8 +134,21 @@ class PreprocessImage implements Tool<Input, Output> {
 
     description(): string {
         return (
-            `Replaces any images in the input with a preprocessed version that is optimized for transcription tasks. ` +
-            `Use when transcription is an important component in a vision task.`
+            `Replaces any images in the input with a preprocessed version that is optimized for text readability. ` +
+            `Use when reading text is an important component in a vision task. Never use if an image does not contain text.`
+        );
+    }
+
+    // Added to system prompt when images are included
+    systemPromptSnippet(): string {
+        return (
+            `
+
+#### Images
+
+* Images are labeled in order: 'img_0', 'img_1', 'img_2', and so on. 
+* Image labels with a '_p' suffix (e.g: 'img_0_p') denote that the image has been preprocessed to make text easier to see.
+* When using tools in conjunction with images, you should reference images by their image label.`
         );
     }
 
@@ -164,18 +177,6 @@ class PreprocessImage implements Tool<Input, Output> {
         };
     }
 
-    systemPromptSnippet(): string {
-        return (
-            `
-
-#### Images:
-
-* Images are labeled in order: 'img_0', 'img_1', 'img_2', and so on. 
-* Image labels with a '_p' suffix (e.g: 'img_0_p') denote that the image has been preprocessed to make text easier to see.
-* When using tools in conjunction with images, you should reference images by their image label.`
-        );
-    }
-
     async beforeRequest(req: proto.CompletionRequest): Promise<proto.CompletionRequest> {
         let newReq: proto.CompletionRequest = req;
 
@@ -185,20 +186,14 @@ class PreprocessImage implements Tool<Input, Output> {
         // If the request has no system prompt, ... that's weird. Panic. Run.
         if (systemPrompt === undefined || systemPrompt.role !== 'system') {
             throw new Error(`no system prompt`);
+        } else if (typeof systemPrompt.content !== 'string') {
+            throw new Error(`system prompt contains text chunks`);
         } else if (!proto.hasVisionContent(newReq.messages)) {
             return newReq; // no vision content, no tweaks needed
         }
 
         // Add the system prompt snippet to tell the model about image labels
-        if (typeof systemPrompt.content === 'string') {
-            systemPrompt.content += snippet;
-        } else {
-            systemPrompt.content.push({
-                type: 'text',
-                text: snippet,
-            });
-        }
-
+        systemPrompt.content += snippet;
         newReq.messages[0] = systemPrompt;
 
         // Find any assistant messages calling this tool and keep track of any image labels
