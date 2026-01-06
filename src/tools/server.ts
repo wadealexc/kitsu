@@ -38,6 +38,10 @@ export class ToolServer {
      */
     async beforeRequest(req: proto.CompletionRequest): Promise<proto.CompletionRequest> {
         for (const tool of this.tools.values()) {
+            // Don't perform preflight changes if the tool was not included
+            if (!req.tools) continue;
+            if (-1 === req.tools.findIndex(t => t.function.name === tool.name())) continue;
+
             if (tool.beforeRequest) req = await tool.beforeRequest(req);
         }
 
