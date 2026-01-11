@@ -93,7 +93,17 @@ function handleStreamedResponse(responseString: string): proto.Result<proto.Comp
 
     // Combine streamed CompletionResponse deltas into a single CompletionResponse
     responseDeltas.forEach(responseDelta => {
-        const choice = responseDelta.choices.at(0)!;
+        if (!responseDelta.choices) {
+            console.error(`handleStreamedResponse: invalid response: ${JSON.stringify(responseDelta)}`);
+            return;
+        }
+
+        const choice = responseDelta.choices.at(0);
+
+        if (!choice || !choice.delta) {
+            console.error(`handleStreamedResponse: invalid choice: ${JSON.stringify(responseDelta)}`);
+            return;
+        }
 
         if (choice.delta.role) {
             finalDelta.role = choice.delta.role;

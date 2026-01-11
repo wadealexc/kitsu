@@ -1,7 +1,7 @@
 # Docker-compose for Open WebUI (llama-shim runs outside of this)
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.6.38
+    image: ghcr.io/open-webui/open-webui:v0.7.2
     container_name: open-webui
     restart: unless-stopped
     ports:
