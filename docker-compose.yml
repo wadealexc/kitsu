@@ -29,6 +29,9 @@ services:
       ENABLE_ADMIN_EXPORT: false
       ENABLE_ADMIN_CHAT_ACCESS: false
 
+      # Forward chat id to backend
+      ENABLE_FORWARD_USER_INFO_HEADERS: true
+
       # From: github/owu:/backend/open-webui/config.py
       # - ENABLE_RAG_WEB_SEARCH: true
       # - RAG_WEB_SEARCH_ENGINE: "external"

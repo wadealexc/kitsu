@@ -101,7 +101,6 @@ function handleStreamedResponse(responseString: string): proto.Result<proto.Comp
         const choice = responseDelta.choices.at(0);
 
         if (!choice || !choice.delta) {
-            console.error(`handleStreamedResponse: invalid choice: ${JSON.stringify(responseDelta)}`);
             return;
         }
 

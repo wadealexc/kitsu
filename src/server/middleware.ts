@@ -46,6 +46,8 @@ export const logging = ((req: express.Request, res: express.Response, next: expr
             const durationSec = Number(end - start) / 1_000_000_000;
             const durationStr = `${durationSec.toFixed(3)} sec`;
 
+            console.log(JSON.stringify(req.headers, null, 2));
+
             // Pretty-print request info, e.g:
             // POST: /v1/chat/completions (request: 1.13KB) (elapsed: 1.3 sec)
             //
