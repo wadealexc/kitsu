@@ -15,4 +15,9 @@ docker-compose.yml
 /screenshots/*
 !/screenshots/.gitkeep
 
+/data/*
+!/data/.gitkeep
+
 /src/scratch.ts
+
+.claude/
