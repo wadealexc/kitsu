@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
-import { createId } from '@paralleldrive/cuid2';
+import { randomUUID } from 'crypto';
 import { relations } from 'drizzle-orm';
 
 // ============================================================
@@ -14,7 +14,7 @@ import { relations } from 'drizzle-orm';
 // ============================================================
 
 export const users = sqliteTable('user', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   email: text('email').notNull().unique(),
   username: text('username'),
   name: text('name').notNull(),
@@ -39,7 +39,7 @@ export const users = sqliteTable('user', {
 });
 
 export const sessions = sqliteTable('session', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   token: text('token').notNull().unique(),
   expires_at: integer('expires_at').notNull(),
@@ -51,7 +51,7 @@ export const sessions = sqliteTable('session', {
 // ============================================================
 
 export const groups = sqliteTable('group', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   name: text('name').notNull().unique(),
   description: text('description'),
   permissions: text('permissions', { mode: 'json' }).$type<{
@@ -74,7 +74,7 @@ export const group_members = sqliteTable('group_member', {
 // ============================================================
 
 export const chats = sqliteTable('chat', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
 
@@ -111,7 +111,7 @@ export const chats = sqliteTable('chat', {
 // ============================================================
 
 export const folders = sqliteTable('folder', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   parent_id: text('parent_id').references((): any => folders.id, { onDelete: 'cascade' }),
@@ -120,7 +120,7 @@ export const folders = sqliteTable('folder', {
 });
 
 export const tags = sqliteTable('tag', {
-  id: text('id').primaryKey().$defaultFn(() => createId()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   name: text('name').notNull().unique(),
 });
 

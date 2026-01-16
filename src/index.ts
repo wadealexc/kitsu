@@ -12,6 +12,10 @@ import { type RequestBody } from './server/middleware.js';
 import { LlamaManager, type LlamaResponse } from './llama/llamaManager.js';
 import * as Browser from './browser/browser.js';
 import { ToolServer } from './tools/server.js';
+import authsRouter from './routes/auths.js';
+import configsRouter from './routes/configs.js';
+import usersRouter from './routes/users.js';
+import modelsRouter from './routes/models.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -69,6 +73,13 @@ const llama = new LlamaManager({
     models: cfg.models,
 });
 await llama.startDefault();
+
+/* -------------------- ROUTES - API -------------------- */
+
+app.use('/api/v1/auths', authsRouter);
+app.use('/api/v1/configs', configsRouter);
+app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/models', modelsRouter);
 
 /* -------------------- ROUTES - OPENAI -------------------- */
 
