@@ -1,5 +1,7 @@
 # Files API Specification
 
+**Note:** This implementation differs from OpenWebUI by using `:file_id` instead of `:id` in path parameters for consistency and clarity. This makes the API more explicit and easier to understand when working with file-related routes.
+
 ## Endpoints
 
 **Context:** Core file management - upload, download, and process files for multimodal chat and attachments.
@@ -14,8 +16,7 @@ Get all files accessible to the current user.
 
 #### Inputs
 
-**Query Parameters:**
-- `content` (boolean, optional) - If false, excludes file content from response to reduce payload size
+**Query Parameters:** [`FileListQuery`](#filelistquery)
 
 #### Outputs
 
@@ -44,9 +45,7 @@ Upload a new file with optional automatic processing.
 
 #### Inputs
 
-**Query Parameters:**
-- `process` (boolean, optional, default: `true`) - Whether to process file for content extraction
-- `process_in_background` (boolean, optional, default: `true`) - Process asynchronously if true
+**Query Parameters:** [`UploadFileQuery`](#uploadfilequery)
 
 **Request Body:** Multipart form-data - [`UploadFileForm`](#uploadfileform)
 
@@ -84,12 +83,7 @@ Search files using glob patterns (wildcards).
 
 #### Inputs
 
-**Query Parameters:**
-- `query` (string, required) - Glob pattern to match against filenames (supports `*` and `?` wildcards)
-- `user_id` (string, optional) - Filter by user ID (admin only; null = search all users)
-- `skip` (integer, optional, default: `0`) - Pagination offset
-- `limit` (integer, optional, default: `100`, max: `1000`) - Maximum results to return
-- `content` (boolean, optional) - If false, excludes file content from response
+**Query Parameters:** [`FileSearchQuery`](#filesearchquery)
 
 #### Outputs
 
@@ -105,12 +99,13 @@ Response (404): If no files match the pattern
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Regular users can only search their own files
-  - Admin users can specify `user_id` to search specific user or all users (null)
+  - Admin users see all files across all users
 - _OWUI Implementation Notes:_
   - Glob pattern conversion: `*` → `%` (any chars), `?` → `_` (single char)
   - Case-insensitive matching via SQL `ILIKE`
   - Examples: `*.pdf`, `report_?.doc`, `image*`
   - Pagination via skip/limit (max 1000 results)
+  - `content` parameter defaults to `true` - set to `false` to exclude file content
   - Returns empty array with 404 status if no matches
 
 ---
@@ -144,14 +139,14 @@ Response (200): `{"message": string}` - Returns success message
 
 ---
 
-### GET `/api/v1/files/{id}`
+### GET `/api/v1/files/{file_id}`
 
 Get file metadata by ID.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
 #### Outputs
 
@@ -179,14 +174,14 @@ Response (404): If file not found or user lacks access
 
 ---
 
-### DELETE `/api/v1/files/{id}`
+### DELETE `/api/v1/files/{file_id}`
 
 Delete a specific file.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID to delete
+- `file_id` (string, required) - File ID to delete
 
 #### Outputs
 
@@ -209,17 +204,16 @@ Response (200): `{"message": string}` - Returns success message
 
 ---
 
-### GET `/api/v1/files/{id}/content`
+### GET `/api/v1/files/{file_id}/content`
 
 Download file content directly.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
-**Query Parameters:**
-- `attachment` (boolean, optional, default: `false`) - If true, forces download with Content-Disposition: attachment
+**Query Parameters:** [`FileContentQuery`](#filecontentquery)
 
 #### Outputs
 
@@ -242,14 +236,14 @@ Response (200): File content with appropriate Content-Type and Content-Dispositi
 
 ---
 
-### GET `/api/v1/files/{id}/content/{file_name}`
+### GET `/api/v1/files/{file_id}/content/{file_name}`
 
 Download file content with specific filename.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 - `file_name` (string, required) - Desired filename for download
 
 #### Outputs
@@ -273,14 +267,14 @@ Response (200): File content or extracted text content with specified filename
 
 ---
 
-### GET `/api/v1/files/{id}/content/html`
+### GET `/api/v1/files/{file_id}/content/html`
 
 Get file content as raw HTML (admin-owned files only).
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
 #### Outputs
 
@@ -303,14 +297,14 @@ Response (200): Raw file content
 
 ---
 
-### GET `/api/v1/files/{id}/data/content`
+### GET `/api/v1/files/{file_id}/data/content`
 
 Get extracted text content from processed file.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
 #### Outputs
 
@@ -332,14 +326,14 @@ Response (200): `{"content": string}` - Extracted text content from file.data.co
 
 ---
 
-### POST `/api/v1/files/{id}/data/content/update`
+### POST `/api/v1/files/{file_id}/data/content/update`
 
 Update file's extracted content and reprocess.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
 **Request Body:** [`ContentForm`](#contentform)
 
@@ -364,17 +358,16 @@ Response (200): [`FileModelResponse`](#filemodelresponse)
 
 ---
 
-### GET `/api/v1/files/{id}/process/status`
+### GET `/api/v1/files/{file_id}/process/status`
 
 Get file processing status with optional streaming.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - File ID
+- `file_id` (string, required) - File ID
 
-**Query Parameters:**
-- `stream` (boolean, optional, default: `false`) - Enable SSE streaming of status updates
+**Query Parameters:** [`FileProcessStatusQuery`](#fileprocessstatusquery)
 
 #### Outputs
 
@@ -446,8 +439,8 @@ API response model for file metadata (excludes internal path field).
     user_id: string;
     hash: string | null;
     filename: string;
-    data: object | null;        // Processing status, error, content
-    meta: FileMeta;             // Name, content_type, size, custom metadata
+    data: FileData | null;      // Processing status, error, content
+    meta: FileMeta;             // File metadata
     created_at: number;         // Unix timestamp (seconds)
     updated_at: number;         // Unix timestamp (seconds)
 }
@@ -458,8 +451,8 @@ API response model for file metadata (excludes internal path field).
 - `user_id` - Owner user ID
 - `hash` - File content hash (nullable)
 - `filename` - Original filename
-- `data` - JSON object with processing info: `{status, error, content}`
-- `meta` - File metadata structure
+- `data` - Processing info (see [`FileData`](#filedata))
+- `meta` - File metadata (see [`FileMeta`](#filemeta))
 - `created_at` - Upload timestamp (Unix seconds)
 - `updated_at` - Last update timestamp (Unix seconds)
 
@@ -478,9 +471,9 @@ Full file representation with all fields including internal path.
     hash: string | null;
     filename: string;
     path: string | null;           // Internal storage path
-    data: object | null;
-    meta: object | null;
-    access_control: object | null; // Granular access control rules
+    data: FileData | null;         // Processing status, error, content
+    meta: FileMeta | null;         // File metadata
+    access_control: AccessControl; // Granular access control rules
     created_at: number | null;
     updated_at: number | null;
 }
@@ -488,7 +481,9 @@ Full file representation with all fields including internal path.
 
 **Additional fields vs FileModelResponse:**
 - `path` - Internal file storage path (should not be exposed to clients)
-- `access_control` - Access control rules for read/write permissions
+- `access_control` - Access control rules for read/write permissions (see [`AccessControl`](#accesscontrol))
+- `data` - Can be more flexible/nullable in the full model (see [`FileData`](#filedata))
+- `meta` - Can be null in the full model (see [`FileMeta`](#filemeta))
 
 ---
 
@@ -528,9 +523,9 @@ Request form for updating file content.
 
 ---
 
-### File Data Structure
+### `FileData`
 
-Content of the `data` JSON field in file records.
+Structure of the `data` JSON field in file records.
 
 ```typescript
 {
@@ -547,9 +542,9 @@ Content of the `data` JSON field in file records.
 
 ---
 
-### Access Control Structure
+### `AccessControl`
 
-Content of the `access_control` JSON field (same as other resources).
+Structure of the `access_control` JSON field (same as other resources). Can be null.
 
 ```typescript
 {
@@ -561,7 +556,7 @@ Content of the `access_control` JSON field (same as other resources).
         group_ids?: string[];
         user_ids?: string[];
     };
-}
+} | null
 ```
 
 **Access resolution:**
@@ -571,6 +566,98 @@ Content of the `access_control` JSON field (same as other resources).
 - File in user's accessible channel
 - File in user's shared chats
 - User/group IDs in access_control permissions
+
+---
+
+### `FileListQuery`
+
+Query parameters for listing files.
+
+```typescript
+{
+    content?: boolean;  // If false, excludes file content from response (default: include)
+}
+```
+
+**Notes:**
+- Use `content=false` to reduce payload size when listing many files
+- Omit parameter or use `content=true` to include full file data
+
+---
+
+### `UploadFileQuery`
+
+Query parameters for file upload.
+
+```typescript
+{
+    process?: boolean;              // Whether to process file for content extraction (default: true)
+    process_in_background?: boolean;  // Process asynchronously if true (default: true)
+}
+```
+
+**Notes:**
+- Set `process=false` to skip automatic file processing
+- Background processing (`process_in_background=true`) allows immediate response while processing continues
+
+---
+
+### `FileSearchQuery`
+
+Query parameters for file search.
+
+```typescript
+{
+    filename: string;     // Required - Filename pattern (supports * and ? wildcards)
+    content?: boolean;    // Optional - Include file content in response (default: true)
+    skip?: number;        // Optional - Pagination offset (default: 0)
+    limit?: number;       // Optional - Max results (default: 100, max: 1000)
+}
+```
+
+**Filename patterns:**
+- `*` - Matches any number of characters
+- `?` - Matches single character
+- Examples: `*.pdf`, `report_?.doc`, `image*`
+- Uses SQL ILIKE for case-insensitive matching
+
+---
+
+### `FileContentQuery`
+
+Query parameters for file content download.
+
+```typescript
+{
+    attachment?: boolean;  // Forces download with Content-Disposition: attachment (default: false)
+}
+```
+
+**Notes:**
+- PDF files default to `inline` disposition (browser viewing)
+- Other files controlled by `attachment` parameter
+- Set `attachment=true` to force download instead of inline display
+
+---
+
+### `FileProcessStatusQuery`
+
+Query parameters for file processing status.
+
+```typescript
+{
+    stream?: boolean;  // Enable SSE streaming of status updates (default: false)
+}
+```
+
+**Streaming mode (`stream=true`):**
+- Returns `text/event-stream` with Server-Sent Events
+- Polls status every 1 second
+- Continues until status is "completed" or "failed"
+- Maximum polling duration: 2 hours
+
+**Non-streaming mode (`stream=false`):**
+- Returns current status immediately as JSON
 
 ---
 

@@ -982,6 +982,189 @@ async function testFolderEndpoints(): Promise<void> {
     );
 }
 
+/* -------------------- FILE TESTS -------------------- */
+
+async function testFileEndpoints(): Promise<void> {
+    console.log('\n' + '='.repeat(60));
+    console.log('FILE ENDPOINTS');
+    console.log('='.repeat(60));
+
+    /* -------------------- LIST & SEARCH -------------------- */
+
+    // GET /api/v1/files/ (list all files)
+    await testEndpoint(
+        'GET /api/v1/files/',
+        'GET',
+        '/api/v1/files/',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/?content=false (exclude content)
+    await testEndpoint(
+        'GET /api/v1/files/?content=false',
+        'GET',
+        '/api/v1/files/?content=false',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/search (search by filename pattern)
+    await testEndpoint(
+        'GET /api/v1/files/search?filename=*.pdf',
+        'GET',
+        '/api/v1/files/search?filename=*.pdf',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/search?filename=*.png&content=false
+    await testEndpoint(
+        'GET /api/v1/files/search?filename=*.png&content=false',
+        'GET',
+        '/api/v1/files/search?filename=*.png&content=false',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    /* -------------------- UPLOAD -------------------- */
+
+    // POST /api/v1/files/ (upload file)
+    const uploadInput: Types.UploadFileForm = {
+        file: 'mock-binary-data',
+        metadata: { channel_id: 'test-channel' },
+    };
+    await testEndpoint(
+        'POST /api/v1/files/',
+        'POST',
+        '/api/v1/files/?process=true&process_in_background=true',
+        uploadInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileModelResponseSchema
+    );
+
+    /* -------------------- FILE RETRIEVAL -------------------- */
+
+    // GET /api/v1/files/:file_id
+    await testEndpoint(
+        'GET /api/v1/files/:file_id',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileModelSchema
+    );
+
+    /* -------------------- FILE CONTENT -------------------- */
+
+    // GET /api/v1/files/:file_id/content
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/content',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/content`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/:file_id/content?attachment=true
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/content?attachment=true',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/content?attachment=true`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/:file_id/content/:file_name
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/content/:file_name',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/content/download.pdf`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/files/:file_id/content/html
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/content/html',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/content/html`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    /* -------------------- FILE DATA -------------------- */
+
+    // GET /api/v1/files/:file_id/data/content
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/data/content',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/data/content`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileDataContentResponseSchema
+    );
+
+    // POST /api/v1/files/:file_id/data/content/update
+    const contentUpdateInput: Types.ContentForm = {
+        content: 'Updated file content with new extracted text.',
+    };
+    await testEndpoint(
+        'POST /api/v1/files/:file_id/data/content/update',
+        'POST',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_1}/data/content/update`,
+        contentUpdateInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileModelResponseSchema
+    );
+
+    /* -------------------- FILE PROCESSING -------------------- */
+
+    // GET /api/v1/files/:file_id/process/status
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/process/status',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_2}/process/status`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileProcessStatusResponseSchema
+    );
+
+    // GET /api/v1/files/:file_id/process/status?stream=false
+    await testEndpoint(
+        'GET /api/v1/files/:file_id/process/status?stream=false',
+        'GET',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_4}/process/status?stream=false`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileProcessStatusResponseSchema
+    );
+
+    /* -------------------- FILE DELETION -------------------- */
+
+    // DELETE /api/v1/files/:file_id
+    await testEndpoint(
+        'DELETE /api/v1/files/:file_id',
+        'DELETE',
+        `/api/v1/files/${MockData.MOCK_FILE_ID_3}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileDeleteResponseSchema
+    );
+
+    /* -------------------- ADMIN ENDPOINTS -------------------- */
+
+    // DELETE /api/v1/files/all (admin only)
+    await testEndpoint(
+        'DELETE /api/v1/files/all',
+        'DELETE',
+        '/api/v1/files/all',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FileDeleteResponseSchema
+    );
+}
+
 /* -------------------- RUN ALL TESTS -------------------- */
 
 async function runTests(): Promise<void> {
@@ -991,6 +1174,7 @@ async function runTests(): Promise<void> {
     await testModelEndpoints();
     await testChatEndpoints();
     await testFolderEndpoints();
+    await testFileEndpoints();
 
     console.log('\n' + '='.repeat(60));
     console.log('ALL TESTS COMPLETED');

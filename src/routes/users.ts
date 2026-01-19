@@ -82,7 +82,7 @@ router.get('/all', requireAdmin, (
  *
  * Update a user's profile, role, email, and optionally password.
  *
- * @param {string} user_id - User ID to update
+ * @param {Types.UserIdParams} - User ID to update
  * @param {Types.UserUpdateForm} - Updated user data
  * @returns {Types.UserModel | null} - updated user or null
  */
@@ -120,7 +120,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, (
  *
  * Delete a user account. Cannot delete the primary admin.
  *
- * @param {string} user_id - User ID to delete
+ * @param {Types.UserIdParams} - User ID to delete
  * @returns {boolean} - true if deletion successful
  */
 router.delete('/:user_id', validateUserId, requireAdmin, (
@@ -191,7 +191,7 @@ router.post('/default/permissions', requireAdmin, (
  *
  * Get detailed information about a specific user, including their active status and groups.
  *
- * @param {string} user_id - User ID to retrieve
+ * @param {Types.UserIdParams} - User ID to retrieve
  * @returns {Types.UserActiveResponse} - user details with active status
  */
 router.get('/:user_id', validateUserId, requireAuth, (
@@ -351,7 +351,7 @@ router.post('/user/info/update', requireAuth, (
  * Get a user's profile image. Returns redirect (HTTP URLs), streaming image data (data URIs),
  * or default fallback image.
  *
- * @param {string} user_id - User ID whose profile image to retrieve
+ * @param {Types.UserIdParams} - User ID whose profile image to retrieve
  * @returns {Response} - 302 redirect, image stream, or default image file
  */
 router.get('/:user_id/profile/image', validateUserId, requireAuth, (

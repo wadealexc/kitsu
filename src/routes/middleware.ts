@@ -70,7 +70,7 @@ export const validateUserId = <P extends { user_id: Types.UserId }>(
     res: Response,
     next: NextFunction
 ): void => {
-    const parsed = Types.UserIdParamsSchema.safeParse(req.params);
+    const parsed = Types.UserIdSchema.safeParse(req.params.user_id);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route (e.g., /permissions, /search)
@@ -142,6 +142,29 @@ export const validateFolderId = <P extends { folder_id: Types.FolderId }>(
     next: NextFunction
 ): void => {
     const parsed = Types.FolderIdSchema.safeParse(req.params.folder_id);
+
+    if (!parsed.success) {
+        return next('route'); // Skip to next route
+    }
+
+    next();
+};
+
+/**
+ * File ID validation middleware for :file_id parameter.
+ * Validates file ID format (UUID v4).
+ * If validation fails, skip to next route with next('route').
+ *
+ * Generic constraint allows this to work with any params type that includes file_id.
+ *
+ * @returns next('route') if validation fails (skips to next route)
+ */
+export const validateFileId = <P extends { file_id: Types.FileId }>(
+    req: TypedRequest<P>,
+    res: Response,
+    next: NextFunction
+): void => {
+    const parsed = Types.FileIdSchema.safeParse(req.params.file_id);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route

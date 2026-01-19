@@ -9,9 +9,9 @@ import * as Types from './types.js';
 /* -------------------- CONSTANTS -------------------- */
 
 // User IDs (reused across routes)
-export const MOCK_ADMIN_USER_ID = '550e8400-e29b-41d4-a716-446655440000';
-export const MOCK_REGULAR_USER_ID = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
-export const MOCK_PENDING_USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+export const MOCK_ADMIN_USER_ID = crypto.randomUUID();
+export const MOCK_REGULAR_USER_ID = crypto.randomUUID();
+export const MOCK_PENDING_USER_ID = crypto.randomUUID();
 
 // Auth token
 export const MOCK_JWT_TOKEN = 'mock-jwt-token-def456';
@@ -260,9 +260,9 @@ export const mockModels: Types.ModelModel[] = [
 
 /* -------------------- FOLDER DATA -------------------- */
 
-export const MOCK_FOLDER_ID_1 = '550e8400-e29b-41d4-a716-446655440001';
-export const MOCK_FOLDER_ID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c9';
-export const MOCK_FOLDER_ID_3 = '7c1e8590-f39c-42e5-a855-f28fd6520cc3';
+export const MOCK_FOLDER_ID_1 = crypto.randomUUID();
+export const MOCK_FOLDER_ID_2 = crypto.randomUUID();
+export const MOCK_FOLDER_ID_3 = crypto.randomUUID();
 
 export const mockFolders: Types.FolderModel[] = [
     {
@@ -306,13 +306,13 @@ export const mockFolders: Types.FolderModel[] = [
 /* -------------------- CHAT DATA -------------------- */
 
 // Mix of permanent (UUID) and temporary (local:) chat IDs
-export const MOCK_CHAT_ID_1 = '550e8400-e29b-41d4-a716-446655440001';  // Permanent
-export const MOCK_CHAT_ID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c9';  // Permanent
+export const MOCK_CHAT_ID_1 = crypto.randomUUID();  // Permanent
+export const MOCK_CHAT_ID_2 = crypto.randomUUID();  // Permanent
 export const MOCK_CHAT_ID_3 = 'local:ccXIrOFpfsc4MaOZAACD';  // Temporary
-export const MOCK_CHAT_ID_4 = '8d0f7780-8536-41ef-955c-f18fd5410bd9';  // Permanent
+export const MOCK_CHAT_ID_4 = crypto.randomUUID();  // Permanent
 export const MOCK_CHAT_ID_5 = 'local:9e1f8891abc123def456';  // Temporary
-export const MOCK_SHARE_ID = 'a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6';  // UUIDv4 for shared chat
-export const MOCK_MESSAGE_ID_1 = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';  // UUIDv4 for message
+export const MOCK_SHARE_ID = crypto.randomUUID();  // UUIDv4 for shared chat
+export const MOCK_MESSAGE_ID_1 = crypto.randomUUID();  // UUIDv4 for message
 
 export const mockChats: Types.ChatResponse[] = [
     {
@@ -411,5 +411,91 @@ export const mockChats: Types.ChatResponse[] = [
         pinned: true,
         meta: {},
         folder_id: MOCK_FOLDER_ID_2,
+    },
+];
+
+/* -------------------- FILE DATA -------------------- */
+
+// File IDs (reused across routes) - generated once at module load
+export const MOCK_FILE_ID_1 = crypto.randomUUID();
+export const MOCK_FILE_ID_2 = crypto.randomUUID();
+export const MOCK_FILE_ID_3 = crypto.randomUUID();
+export const MOCK_FILE_ID_4 = crypto.randomUUID();
+
+export const mockFiles: Types.FileModel[] = [
+    {
+        id: MOCK_FILE_ID_1,
+        user_id: MOCK_ADMIN_USER_ID,
+        hash: 'abc123def456',
+        filename: 'project-diagram.png',
+        path: '/uploads/project-diagram.png',
+        data: {
+            status: 'completed',
+            content: 'Extracted text from diagram: Project Architecture - Frontend, Backend, Database',
+        },
+        meta: {
+            name: 'project-diagram.png',
+            content_type: 'image/png',
+            size: 245680,
+        },
+        access_control: null,
+        created_at: now - 86400 * 5,
+        updated_at: now - 86400 * 5,
+    },
+    {
+        id: MOCK_FILE_ID_2,
+        user_id: MOCK_ADMIN_USER_ID,
+        hash: 'xyz789ghi012',
+        filename: 'meeting-notes.pdf',
+        path: '/uploads/meeting-notes.pdf',
+        data: {
+            status: 'completed',
+            content: 'Meeting Notes - January 2026\n\nAttendees: Alice, Bob, Carol\n\nAgenda:\n1. Project status update\n2. Q1 planning\n3. Technical architecture review',
+        },
+        meta: {
+            name: 'meeting-notes.pdf',
+            content_type: 'application/pdf',
+            size: 532100,
+        },
+        access_control: null,
+        created_at: now - 86400 * 10,
+        updated_at: now - 86400 * 10,
+    },
+    {
+        id: MOCK_FILE_ID_3,
+        user_id: MOCK_REGULAR_USER_ID,
+        hash: 'mno345pqr678',
+        filename: 'readme.txt',
+        path: '/uploads/readme.txt',
+        data: {
+            status: 'completed',
+            content: 'README\n\nThis is a simple text file with project instructions.\n\nPlease follow the guidelines in this document.',
+        },
+        meta: {
+            name: 'readme.txt',
+            content_type: 'text/plain',
+            size: 1024,
+        },
+        access_control: null,
+        created_at: now - 86400 * 2,
+        updated_at: now - 86400 * 2,
+    },
+    {
+        id: MOCK_FILE_ID_4,
+        user_id: MOCK_ADMIN_USER_ID,
+        hash: 'stu901vwx234',
+        filename: 'large-document.docx',
+        path: '/uploads/large-document.docx',
+        data: {
+            status: 'pending',
+        },
+        meta: {
+            name: 'large-document.docx',
+            content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size: 2048000,
+        },
+        access_control: null,
+        created_at: now - 300,
+        updated_at: now - 300,
     },
 ];

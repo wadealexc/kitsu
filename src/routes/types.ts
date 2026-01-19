@@ -9,9 +9,14 @@ import { type Request } from 'express';
 
 /* -------------------- HELPER TYPES -------------------- */
 
-// User ID schema (UUID v4 format)
-export const UserIdSchema = z.uuidv4();
-export type UserId = z.infer<typeof UserIdSchema>;
+// Generic type for Express requests with typed params, body, and/or query
+// Usage:
+//   TypedRequest<{ user_id: string }>                    - only path params
+//   TypedRequest<{}, SomeBodyType>                       - only body
+//   TypedRequest<{ user_id: string }, SomeBody>          - params and body
+//   TypedRequest<{}, any, SomeQueryType>                 - only query params
+//   TypedRequest<{ user_id: string }, any, SomeQuery>    - params and query
+export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
 
 // Chat ID schema (UUID v4 format OR "local:<socket_id>" for temporary chats)
 export const ChatIdSchema = z.union([
@@ -19,6 +24,10 @@ export const ChatIdSchema = z.union([
     z.string().regex(/^local:[a-zA-Z0-9_-]+$/),  // Temporary chat: local:<socket_id>
 ]);
 export type ChatId = z.infer<typeof ChatIdSchema>;
+
+// User ID schema (UUID v4 format)
+export const UserIdSchema = z.uuidv4();
+export type UserId = z.infer<typeof UserIdSchema>;
 
 // Share ID schema (UUID v4 format)
 export const ShareIdSchema = z.uuidv4();
@@ -36,19 +45,14 @@ export type MessageId = z.infer<typeof MessageIdSchema>;
 export const FileIdSchema = z.uuidv4();
 export type FileId = z.infer<typeof FileIdSchema>;
 
-// Generic type for Express requests with typed params, body, and/or query
-// Usage:
-//   TypedRequest<{ user_id: string }>                    - only path params
-//   TypedRequest<{}, SomeBodyType>                       - only body
-//   TypedRequest<{ user_id: string }, SomeBody>          - params and body
-//   TypedRequest<{}, any, SomeQueryType>                 - only query params
-//   TypedRequest<{ user_id: string }, any, SomeQuery>    - params and query
-export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
-
-// Common path parameter types
+// Path parameter types
 export type ChatIdParams = { id: ChatId };
+export type UserIdParams = { user_id: UserId };
 export type FolderIdParams = { folder_id: FolderId };
 export type FileIdParams = { file_id: FileId };
+export type ShareIdParams = { share_id: ShareId };
+export type MessageIdParams = { id: ChatId; message_id: MessageId };
+export type NamedFileParams = { file_id: FileId; file_name: string };
 
 /* -------------------- COMMON SCHEMAS -------------------- */
 
@@ -71,12 +75,6 @@ export const AdminDetailsResponseSchema = z.object({
     email: z.email(),
 });
 export type AdminDetailsResponse = z.infer<typeof AdminDetailsResponseSchema>;
-
-// User ID path parameter schema
-export const UserIdParamsSchema = z.object({
-    user_id: UserIdSchema,
-});
-export type UserIdParams = z.infer<typeof UserIdParamsSchema>;
 
 /* -------------------- AUTH SCHEMAS -------------------- */
 
@@ -420,7 +418,7 @@ export const AccessControlSchema = z.object({
         group_ids: z.array(z.string()).optional(),
         user_ids: z.array(UserIdSchema).optional(),
     }).optional(),
-}).nullable();
+}).passthrough().nullable();
 export type AccessControl = z.infer<typeof AccessControlSchema>;
 
 // Model parameters (flexible JSON object)
@@ -533,10 +531,6 @@ export const ModelIdQuerySchema = z.object({
 export type ModelIdQuery = z.infer<typeof ModelIdQuerySchema>;
 
 /* -------------------- CHAT SCHEMAS -------------------- */
-
-// Path parameters for chat endpoints
-export type ShareIdParams = { share_id: ShareId };
-export type MessageIdParams = { id: ChatId; message_id: MessageId };
 
 // Chat response (complete chat object with all fields)
 export const ChatResponseSchema = z.object({
@@ -727,3 +721,119 @@ export const FolderDeleteQuerySchema = z.object({
     delete_contents: z.coerce.boolean().default(true),
 });
 export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;
+
+/* -------------------- FILE SCHEMAS -------------------- */
+
+// File metadata structure
+export const FileMetaSchema = z.object({
+    name: z.string(),
+    content_type: z.string(),
+    size: z.number(),
+    data: z.record(z.string(), z.any()).optional(),
+});
+export type FileMeta = z.infer<typeof FileMetaSchema>;
+
+// File data structure (processing status and content)
+export const FileDataSchema = z.object({
+    status: z.enum(['pending', 'completed', 'failed']).optional(),
+    error: z.string().optional(),
+    content: z.string().optional(),
+}).passthrough();  // Allow additional properties
+export type FileData = z.infer<typeof FileDataSchema>;
+
+// Full file model (includes internal path field)
+export const FileModelSchema = z.object({
+    id: FileIdSchema,
+    user_id: UserIdSchema,
+    hash: z.string().nullable(),
+    filename: z.string(),
+    path: z.string().nullable(),
+    data: FileDataSchema.nullable(),
+    meta: FileMetaSchema.nullable(),
+    access_control: AccessControlSchema,
+    created_at: z.number().nullable(),
+    updated_at: z.number().nullable(),
+});
+export type FileModel = z.infer<typeof FileModelSchema>;
+
+// File model response (excludes internal path field)
+export const FileModelResponseSchema = z.object({
+    id: FileIdSchema,
+    user_id: UserIdSchema,
+    hash: z.string().nullable(),
+    filename: z.string(),
+    data: FileDataSchema.nullable(),
+    meta: FileMetaSchema,
+    created_at: z.number(),
+    updated_at: z.number(),
+});
+export type FileModelResponse = z.infer<typeof FileModelResponseSchema>;
+
+// Upload file form (multipart form-data)
+// Note: Actual file upload validation happens at Express middleware level (e.g., multer)
+export const UploadFileFormSchema = z.object({
+    file: z.any(),
+    metadata: z.union([
+        z.string(),
+        z.record(z.string(), z.any()),
+    ]).nullable().optional(),
+});
+export type UploadFileForm = z.infer<typeof UploadFileFormSchema>;
+
+// Query parameters for POST /api/v1/files/
+export const UploadFileQuerySchema = z.object({
+    process: z.coerce.boolean().optional().default(true),
+    process_in_background: z.coerce.boolean().optional().default(true),
+});
+export type UploadFileQuery = z.infer<typeof UploadFileQuerySchema>;
+
+// Content form (for updating file content)
+export const ContentFormSchema = z.object({
+    content: z.string(),
+});
+export type ContentForm = z.infer<typeof ContentFormSchema>;
+
+// Query parameters for GET /api/v1/files/
+export const FileListQuerySchema = z.object({
+    content: z.coerce.boolean().optional(),
+});
+export type FileListQuery = z.infer<typeof FileListQuerySchema>;
+
+// Query parameters for GET /api/v1/files/search
+export const FileSearchQuerySchema = z.object({
+    filename: z.string(),
+    content: z.coerce.boolean().optional().default(true),
+    skip: z.coerce.number().int().min(0).optional().default(0),
+    limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
+});
+export type FileSearchQuery = z.infer<typeof FileSearchQuerySchema>;
+
+// Query parameters for GET /api/v1/files/{id}/content
+export const FileContentQuerySchema = z.object({
+    attachment: z.coerce.boolean().default(false),
+});
+export type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
+
+// Query parameters for GET /api/v1/files/{id}/process/status
+export const FileProcessStatusQuerySchema = z.object({
+    stream: z.coerce.boolean().default(false),
+});
+export type FileProcessStatusQuery = z.infer<typeof FileProcessStatusQuerySchema>;
+
+// Response for /api/v1/files/all DELETE and file delete operations
+export const FileDeleteResponseSchema = z.object({
+    message: z.string(),
+});
+export type FileDeleteResponse = z.infer<typeof FileDeleteResponseSchema>;
+
+// Response for /api/v1/files/{id}/data/content GET
+export const FileDataContentResponseSchema = z.object({
+    content: z.string(),
+});
+export type FileDataContentResponse = z.infer<typeof FileDataContentResponseSchema>;
+
+// Response for /api/v1/files/{id}/process/status GET (non-streaming)
+export const FileProcessStatusResponseSchema = z.object({
+    status: z.string(),
+});
+export type FileProcessStatusResponse = z.infer<typeof FileProcessStatusResponseSchema>;
