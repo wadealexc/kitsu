@@ -255,3 +255,121 @@ export const mockModels: Types.ModelModel[] = [
         created_at: Math.floor(Date.now() / 1000) - 86400 * 7,
     },
 ];
+
+/* -------------------- FOLDER DATA -------------------- */
+
+export const MOCK_FOLDER_ID_1 = '550e8400-e29b-41d4-a716-446655440001';
+export const MOCK_FOLDER_ID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c9';
+
+/* -------------------- CHAT DATA -------------------- */
+
+// Mix of permanent (UUID) and temporary (local:) chat IDs
+export const MOCK_CHAT_ID_1 = '550e8400-e29b-41d4-a716-446655440001';  // Permanent
+export const MOCK_CHAT_ID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c9';  // Permanent
+export const MOCK_CHAT_ID_3 = 'local:ccXIrOFpfsc4MaOZAACD';  // Temporary
+export const MOCK_CHAT_ID_4 = '8d0f7780-8536-41ef-955c-f18fd5410bd9';  // Permanent
+export const MOCK_CHAT_ID_5 = 'local:9e1f8891abc123def456';  // Temporary
+export const MOCK_SHARE_ID = 'a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6';  // UUIDv4 for shared chat
+export const MOCK_MESSAGE_ID_1 = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';  // UUIDv4 for message
+
+const now = Math.floor(Date.now() / 1000);
+
+export const mockChats: Types.ChatResponse[] = [
+    {
+        id: MOCK_CHAT_ID_1,
+        user_id: MOCK_ADMIN_USER_ID,
+        title: 'Getting Started with AI',
+        chat: {
+            messages: [
+                { role: 'user', content: 'Hello! How can I get started with AI?' },
+                { role: 'assistant', content: 'Great question! Let me help you get started...' },
+            ],
+            model: 'gpt-4',
+        },
+        updated_at: now - 3600,
+        created_at: now - 86400 * 5,
+        share_id: null,
+        archived: false,
+        pinned: false,
+        meta: {},
+        folder_id: null,
+    },
+    {
+        id: MOCK_CHAT_ID_2,
+        user_id: MOCK_ADMIN_USER_ID,
+        title: 'TypeScript Best Practices',
+        chat: {
+            messages: [
+                { role: 'user', content: 'What are TypeScript best practices?' },
+                { role: 'assistant', content: 'Here are some key TypeScript best practices...' },
+                { role: 'user', content: 'Tell me more about type guards' },
+                { role: 'assistant', content: 'Type guards are a way to narrow types...' },
+            ],
+            model: 'gpt-4',
+        },
+        updated_at: now - 7200,
+        created_at: now - 86400 * 10,
+        share_id: MOCK_SHARE_ID,
+        archived: false,
+        pinned: true,
+        meta: { tags: ['typescript', 'programming'] },
+        folder_id: MOCK_FOLDER_ID_1,
+    },
+    {
+        id: MOCK_CHAT_ID_3,
+        user_id: MOCK_REGULAR_USER_ID,
+        title: 'Cooking Recipes',
+        chat: {
+            messages: [
+                { role: 'user', content: 'Give me a recipe for chocolate chip cookies' },
+                { role: 'assistant', content: 'Here\'s a great chocolate chip cookie recipe...' },
+            ],
+            model: 'llama-3-70b',
+        },
+        updated_at: now - 14400,
+        created_at: now - 86400 * 3,
+        share_id: null,
+        archived: false,
+        pinned: false,
+        meta: {},
+        folder_id: null,
+    },
+    {
+        id: MOCK_CHAT_ID_4,
+        user_id: MOCK_ADMIN_USER_ID,
+        title: 'Old Archived Conversation',
+        chat: {
+            messages: [
+                { role: 'user', content: 'This is an old chat' },
+                { role: 'assistant', content: 'Yes, this chat has been archived.' },
+            ],
+            model: 'gpt-4',
+        },
+        updated_at: now - 86400 * 30,
+        created_at: now - 86400 * 60,
+        share_id: null,
+        archived: true,
+        pinned: false,
+        meta: {},
+        folder_id: null,
+    },
+    {
+        id: MOCK_CHAT_ID_5,
+        user_id: MOCK_REGULAR_USER_ID,
+        title: 'Work Projects Planning',
+        chat: {
+            messages: [
+                { role: 'user', content: 'Help me plan my Q1 projects' },
+                { role: 'assistant', content: 'Let\'s break down your Q1 planning...' },
+            ],
+            model: 'gpt-4',
+        },
+        updated_at: now - 1800,
+        created_at: now - 86400 * 2,
+        share_id: null,
+        archived: false,
+        pinned: true,
+        meta: {},
+        folder_id: MOCK_FOLDER_ID_2,
+    },
+];

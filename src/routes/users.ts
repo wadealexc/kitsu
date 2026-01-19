@@ -8,24 +8,9 @@
 import { Router, type Response, type NextFunction } from 'express';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
-import { requireAuth, requireAdmin } from './middleware.js';
+import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
 
 const router = Router();
-
-/* -------------------- MIDDLEWARE -------------------- */
-
-// UUID validation middleware for :user_id parameter
-// If user_id doesn't match UUID v4 format, skip to next route with next('route')
-const validateUserId = (req: Types.TypedRequest<Types.UserIdParams>, res: Response, next: NextFunction) => {
-    const parsed = Types.UserIdParamsSchema.safeParse(req.params);
-
-    if (!parsed.success) {
-        return next('route'); // Skip to next route (e.g., /permissions, /search)
-    }
-
-    next();
-};
-
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */
 
@@ -101,7 +86,7 @@ router.get('/all', requireAdmin, (
  * @param {Types.UserUpdateForm} - Updated user data
  * @returns {Types.UserModel | null} - updated user or null
  */
-router.post('/:user_id/update', requireAdmin, validateUserId, (
+router.post('/:user_id/update', validateUserId, requireAdmin, (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
     res: Response<Types.UserModel | null | Types.ErrorResponse>
 ) => {
@@ -138,7 +123,7 @@ router.post('/:user_id/update', requireAdmin, validateUserId, (
  * @param {string} user_id - User ID to delete
  * @returns {boolean} - true if deletion successful
  */
-router.delete('/:user_id', requireAdmin, validateUserId, (
+router.delete('/:user_id', validateUserId, requireAdmin, (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
@@ -209,7 +194,7 @@ router.post('/default/permissions', requireAdmin, (
  * @param {string} user_id - User ID to retrieve
  * @returns {Types.UserActiveResponse} - user details with active status
  */
-router.get('/:user_id', requireAuth, validateUserId, (
+router.get('/:user_id', validateUserId, requireAuth, (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<Types.UserActiveResponse | Types.ErrorResponse>
 ) => {
@@ -369,7 +354,7 @@ router.post('/user/info/update', requireAuth, (
  * @param {string} user_id - User ID whose profile image to retrieve
  * @returns {Response} - 302 redirect, image stream, or default image file
  */
-router.get('/:user_id/profile/image', requireAuth, validateUserId, (
+router.get('/:user_id/profile/image', validateUserId, requireAuth, (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response
 ) => {

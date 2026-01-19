@@ -642,6 +642,251 @@ async function testModelEndpoints(): Promise<void> {
     );
 }
 
+/* -------------------- CHAT TESTS -------------------- */
+
+async function testChatEndpoints(): Promise<void> {
+    console.log('\n' + '='.repeat(60));
+    console.log('CHAT MANAGEMENT ENDPOINTS');
+    console.log('='.repeat(60));
+
+    /* -------------------- CHAT LIST & RETRIEVAL -------------------- */
+
+    // GET /api/v1/chats/ (with pagination and filters)
+    await testEndpoint(
+        'GET /api/v1/chats/',
+        'GET',
+        '/api/v1/chats/?page=1&include_pinned=false&include_folders=false',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/chats/list (alias)
+    await testEndpoint(
+        'GET /api/v1/chats/list',
+        'GET',
+        '/api/v1/chats/list',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/chats/all
+    await testEndpoint(
+        'GET /api/v1/chats/all',
+        'GET',
+        '/api/v1/chats/all',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/chats/all/db (admin export)
+    await testEndpoint(
+        'GET /api/v1/chats/all/db',
+        'GET',
+        '/api/v1/chats/all/db',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/chats/:id
+    await testEndpoint(
+        'GET /api/v1/chats/:id',
+        'GET',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // GET /api/v1/chats/list/user/:user_id (admin)
+    await testEndpoint(
+        'GET /api/v1/chats/list/user/:user_id',
+        'GET',
+        `/api/v1/chats/list/user/${MockData.MOCK_REGULAR_USER_ID}?page=1`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    /* -------------------- CHAT CREATION & MODIFICATION -------------------- */
+
+    // POST /api/v1/chats/new
+    const newChatInput: Types.ChatForm = {
+        chat: {
+            messages: [
+                { role: 'user', content: 'Hello, how are you?' },
+            ],
+            model: 'gpt-4',
+        },
+        folder_id: null,
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/new',
+        'POST',
+        '/api/v1/chats/new',
+        newChatInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // POST /api/v1/chats/:id (update)
+    const updateChatInput: Types.ChatForm = {
+        chat: {
+            messages: [
+                { role: 'user', content: 'Updated message' },
+                { role: 'assistant', content: 'Updated response' },
+            ],
+            model: 'gpt-4',
+        },
+        folder_id: MockData.MOCK_FOLDER_ID_1,
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/:id',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}`,
+        updateChatInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // DELETE /api/v1/chats/:id
+    await testEndpoint(
+        'DELETE /api/v1/chats/:id',
+        'DELETE',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_4}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // DELETE /api/v1/chats/ (delete all for user)
+    // Skipping this test as it's destructive
+
+    /* -------------------- SHARING & CLONING -------------------- */
+
+    // POST /api/v1/chats/:id/share
+    await testEndpoint(
+        'POST /api/v1/chats/:id/share',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}/share`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // GET /api/v1/chats/share/:share_id
+    await testEndpoint(
+        'GET /api/v1/chats/share/:share_id',
+        'GET',
+        `/api/v1/chats/share/${MockData.MOCK_SHARE_ID}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // DELETE /api/v1/chats/:id/share
+    await testEndpoint(
+        'DELETE /api/v1/chats/:id/share',
+        'DELETE',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_2}/share`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // POST /api/v1/chats/:id/clone/shared
+    await testEndpoint(
+        'POST /api/v1/chats/:id/clone/shared',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_2}/clone/shared`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // POST /api/v1/chats/:id/clone
+    const cloneChatInput: Types.CloneForm = {
+        title: 'Cloned Chat Title',
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/:id/clone',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}/clone`,
+        cloneChatInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    /* -------------------- FOLDER ORGANIZATION -------------------- */
+
+    // POST /api/v1/chats/:id/folder
+    const folderInput: Types.ChatFolderIdForm = {
+        folder_id: MockData.MOCK_FOLDER_ID_1,
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/:id/folder',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}/folder`,
+        folderInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // GET /api/v1/chats/folder/:folder_id
+    await testEndpoint(
+        'GET /api/v1/chats/folder/:folder_id',
+        'GET',
+        `/api/v1/chats/folder/${MockData.MOCK_FOLDER_ID_1}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/chats/folder/:folder_id/list
+    await testEndpoint(
+        'GET /api/v1/chats/folder/:folder_id/list',
+        'GET',
+        `/api/v1/chats/folder/${MockData.MOCK_FOLDER_ID_1}/list?page=1`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    /* -------------------- MESSAGE OPERATIONS -------------------- */
+
+    // POST /api/v1/chats/:id/messages/:message_id
+    const messageUpdateInput: Types.MessageForm = {
+        content: 'Updated message content',
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/:id/messages/:message_id',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}/messages/${MockData.MOCK_MESSAGE_ID_1}`,
+        messageUpdateInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatResponseSchema
+    );
+
+    // POST /api/v1/chats/:id/messages/:message_id/event
+    const eventInput: Types.EventForm = {
+        type: 'typing',
+        data: { status: 'active' },
+    };
+    await testEndpoint(
+        'POST /api/v1/chats/:id/messages/:message_id/event',
+        'POST',
+        `/api/v1/chats/${MockData.MOCK_CHAT_ID_1}/messages/${MockData.MOCK_MESSAGE_ID_1}/event`,
+        eventInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    /* -------------------- STATISTICS -------------------- */
+
+    // GET /api/v1/chats/stats/usage
+    await testEndpoint(
+        'GET /api/v1/chats/stats/usage',
+        'GET',
+        '/api/v1/chats/stats/usage?page=1&items_per_page=50',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.ChatUsageStatsListResponseSchema
+    );
+}
+
 /* -------------------- RUN ALL TESTS -------------------- */
 
 async function runTests(): Promise<void> {
@@ -649,6 +894,7 @@ async function runTests(): Promise<void> {
     await testConfigEndpoints();
     await testUserEndpoints();
     await testModelEndpoints();
+    await testChatEndpoints();
 
     console.log('\n' + '='.repeat(60));
     console.log('ALL TESTS COMPLETED');

@@ -16,10 +16,7 @@ List current user's chats with pagination. Returns minimal chat info (ID, title,
 
 #### Inputs
 
-**Query Parameters:**
-- `page` (integer, optional) - Page number for pagination (60 items per page)
-- `include_pinned` (boolean, optional, default: false) - Whether to include pinned chats
-- `include_folders` (boolean, optional, default: false) - Whether to include chats in folders
+**Query Parameters:** [`ChatListQuery`](#chatlistquery)
 
 #### Outputs
 
@@ -47,7 +44,7 @@ Alias for `GET /api/v1/chats/` - identical functionality.
 
 #### Inputs
 
-Same as `GET /api/v1/chats/`
+**Query Parameters:** [`ChatListQuery`](#chatlistquery)
 
 #### Outputs
 
@@ -162,11 +159,7 @@ Response (200): [`ChatResponse`](#chatresponse) or `null`
 **Path Parameters:**
 - `user_id` (string, required) - User ID whose chats to retrieve
 
-**Query Parameters:**
-- `page` (integer, optional, default: 1) - Page number for pagination
-- `query` (string, optional) - Search query to filter chats
-- `order_by` (string, optional) - Field to order results by
-- `direction` (string, optional) - Sort direction ("asc" or "desc")
+**Query Parameters:** [`UserChatListQuery`](#userchatlistquery)
 
 #### Outputs
 
@@ -523,23 +516,13 @@ Get chat list for a specific folder with pagination (minimal data).
 **Path Parameters:**
 - `folder_id` (string, required) - Folder ID
 
-**Query Parameters:**
-- `page` (integer, optional, default: 1) - Page number for pagination
+**Query Parameters:** [`FolderChatListQuery`](#folderchatlistquery)
 
 #### Outputs
 
-Response (200): Array of objects (schema not defined in OpenAPI)
+Response (200): [`FolderChatListItemResponse[]`](#folderchatlistitemresponse)
 
-**Actual response structure:**
-```typescript
-[
-  {
-    title: string       // Chat title
-    id: string          // Chat ID
-    updated_at: number  // Last update timestamp (unix seconds)
-  }
-]
-```
+**Note:** Schema not defined in OpenAPI - we defined this based on actual response structure.
 
 #### Notes
 
@@ -631,9 +614,7 @@ Get usage statistics for the current user's chats (message counts, models used, 
 
 #### Inputs
 
-**Query Parameters:**
-- `items_per_page` (integer, optional, default: 50) - Items per page
-- `page` (integer, optional, default: 1) - Page number
+**Query Parameters:** [`ChatUsageStatsQuery`](#chatusagestatsquery)
 
 #### Outputs
 
@@ -793,6 +774,27 @@ Minimal chat information for list views.
 
 ---
 
+### `FolderChatListItemResponse`
+
+Minimal chat information for folder list views (excludes created_at).
+
+```typescript
+{
+    id: string          // Chat ID
+    title: string       // Chat title
+    updated_at: number  // Last update timestamp (unix seconds)
+}
+```
+
+**Required fields:** `id`, `title`, `updated_at`
+
+**Notes:**
+- Used specifically for `GET /api/v1/chats/folder/{folder_id}/list` endpoint
+- Similar to `ChatTitleIdResponse` but excludes `created_at` field
+- Schema not defined in OpenAPI - we defined this based on actual OWUI response structure
+
+---
+
 ### `ChatForm`
 
 Form data for creating or updating chats.
@@ -930,3 +932,93 @@ Detailed usage statistics for a single chat.
 **Notes:**
 - Uses `additionalProperties: true`, may include extra computed statistics
 - "History" fields include all-time data, while non-history fields may be for current session
+
+---
+
+### `ChatListQuery`
+
+Query parameters for listing chats with pagination and filtering.
+
+```typescript
+{
+    page?: number                    // Page number for pagination (60 items per page)
+    include_pinned?: boolean         // Whether to include pinned chats (default: false)
+    include_folders?: boolean        // Whether to include chats in folders (default: false)
+}
+```
+
+**Required fields:** None
+
+**Optional fields:** `page`, `include_pinned`, `include_folders`
+
+**Notes:**
+- If `page` is not provided, returns all chats (no pagination)
+- Pagination: 60 items per page
+- Defaults to excluding pinned chats and chats in folders (both default to false)
+
+---
+
+### `UserChatListQuery`
+
+Query parameters for listing a specific user's chats (admin endpoint).
+
+```typescript
+{
+    page?: number                    // Page number for pagination (60 items per page, default: 1)
+    query?: string                   // Search query to filter chats
+    order_by?: string               // Field to order results by
+    direction?: "asc" | "desc"      // Sort direction
+}
+```
+
+**Required fields:** None
+
+**Optional fields:** `page`, `query`, `order_by`, `direction`
+
+**Notes:**
+- Admin-only endpoint
+- Pagination: 60 items per page
+- Includes archived chats (unlike normal user list endpoint)
+- Page defaults to 1 if not specified
+
+---
+
+### `FolderChatListQuery`
+
+Query parameters for listing chats in a specific folder with pagination.
+
+```typescript
+{
+    page?: number  // Page number for pagination (10 items per page, default: 1)
+}
+```
+
+**Required fields:** None
+
+**Optional fields:** `page`
+
+**Notes:**
+- Pagination: 10 items per page (smaller than other list endpoints)
+- Page defaults to 1 if not specified
+
+---
+
+### `ChatUsageStatsQuery`
+
+Query parameters for retrieving chat usage statistics with pagination.
+
+```typescript
+{
+    items_per_page?: number  // Items per page (default: 50)
+    page?: number            // Page number for pagination (default: 1)
+}
+```
+
+**Required fields:** None
+
+**Optional fields:** `items_per_page`, `page`
+
+**Notes:**
+- Pagination: 50 items per page by default
+- Both parameters default to standard values if not specified
+- Used for experimental usage statistics endpoint

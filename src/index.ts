@@ -16,6 +16,7 @@ import authsRouter from './routes/auths.js';
 import configsRouter from './routes/configs.js';
 import usersRouter from './routes/users.js';
 import modelsRouter from './routes/models.js';
+import chatsRouter from './routes/chats.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -80,6 +81,7 @@ app.use('/api/v1/auths', authsRouter);
 app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/models', modelsRouter);
+app.use('/api/v1/chats', chatsRouter);
 
 /* -------------------- ROUTES - OPENAI -------------------- */
 

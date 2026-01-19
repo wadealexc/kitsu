@@ -13,6 +13,25 @@ import { type Request } from 'express';
 export const UserIdSchema = z.uuidv4();
 export type UserId = z.infer<typeof UserIdSchema>;
 
+// Chat ID schema (UUID v4 format OR "local:<socket_id>" for temporary chats)
+export const ChatIdSchema = z.union([
+    z.uuidv4(),  // Permanent chat: UUID v4
+    z.string().regex(/^local:[a-zA-Z0-9_-]+$/),  // Temporary chat: local:<socket_id>
+]);
+export type ChatId = z.infer<typeof ChatIdSchema>;
+
+// Share ID schema (UUID v4 format)
+export const ShareIdSchema = z.uuidv4();
+export type ShareId = z.infer<typeof ShareIdSchema>;
+
+// Folder ID schema (UUID v4 format)
+export const FolderIdSchema = z.uuidv4();
+export type FolderId = z.infer<typeof FolderIdSchema>;
+
+// Message ID schema (UUID v4 format)
+export const MessageIdSchema = z.uuidv4();
+export type MessageId = z.infer<typeof MessageIdSchema>;
+
 // Generic type for Express requests with typed params, body, and/or query
 // Usage:
 //   TypedRequest<{ user_id: string }>                    - only path params
@@ -23,8 +42,8 @@ export type UserId = z.infer<typeof UserIdSchema>;
 export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
 
 // Common path parameter types
-export type ChatIdParams = { chat_id: string };
-export type FolderIdParams = { folder_id: string };
+export type ChatIdParams = { id: ChatId };
+export type FolderIdParams = { folder_id: FolderId };
 export type FileIdParams = { file_id: string };
 
 /* -------------------- COMMON SCHEMAS -------------------- */
@@ -508,3 +527,130 @@ export const ModelIdQuerySchema = z.object({
     id: z.string(),
 });
 export type ModelIdQuery = z.infer<typeof ModelIdQuerySchema>;
+
+/* -------------------- CHAT SCHEMAS -------------------- */
+
+// Path parameters for chat endpoints
+export type ShareIdParams = { share_id: ShareId };
+export type MessageIdParams = { id: ChatId; message_id: MessageId };
+
+// Chat response (complete chat object with all fields)
+export const ChatResponseSchema = z.object({
+    id: ChatIdSchema,
+    user_id: UserIdSchema,
+    title: z.string(),
+    chat: z.record(z.string(), z.any()),  // Flexible structure containing messages
+    updated_at: z.number(),
+    created_at: z.number(),
+    share_id: z.string().nullable().optional(),
+    archived: z.boolean(),
+    pinned: z.boolean().optional().default(false),
+    meta: z.record(z.string(), z.any()).optional().default({}),
+    folder_id: FolderIdSchema.nullable().optional(),
+});
+export type ChatResponse = z.infer<typeof ChatResponseSchema>;
+
+// Chat title/ID response (minimal chat info for list views)
+export const ChatTitleIdResponseSchema = z.object({
+    id: ChatIdSchema,
+    title: z.string(),
+    updated_at: z.number(),
+    created_at: z.number(),
+});
+export type ChatTitleIdResponse = z.infer<typeof ChatTitleIdResponseSchema>;
+
+// Folder chat list item response (minimal chat info for folder list views, excludes created_at)
+export const FolderChatListItemResponseSchema = z.object({
+    id: ChatIdSchema,
+    title: z.string(),
+    updated_at: z.number(),
+});
+export type FolderChatListItemResponse = z.infer<typeof FolderChatListItemResponseSchema>;
+
+// Chat form (for creating/updating chats)
+export const ChatFormSchema = z.object({
+    chat: z.record(z.string(), z.any()),  // Flexible chat data structure
+    folder_id: FolderIdSchema.nullable().optional(),
+});
+export type ChatForm = z.infer<typeof ChatFormSchema>;
+
+// Clone form (for cloning chats)
+export const CloneFormSchema = z.object({
+    title: z.string().optional(),
+});
+export type CloneForm = z.infer<typeof CloneFormSchema>;
+
+// Chat folder ID form (for moving chats to folders)
+export const ChatFolderIdFormSchema = z.object({
+    folder_id: FolderIdSchema.nullable().optional(),
+});
+export type ChatFolderIdForm = z.infer<typeof ChatFolderIdFormSchema>;
+
+// Message form (for updating message content)
+export const MessageFormSchema = z.object({
+    content: z.string(),
+});
+export type MessageForm = z.infer<typeof MessageFormSchema>;
+
+// Event form (for sending message events)
+export const EventFormSchema = z.object({
+    type: z.string(),
+    data: z.record(z.string(), z.any()),
+});
+export type EventForm = z.infer<typeof EventFormSchema>;
+
+// Chat usage stats response
+export const ChatUsageStatsResponseSchema = z.object({
+    id: ChatIdSchema,
+    models: z.record(z.string(), z.any()).optional().default({}),
+    message_count: z.number(),
+    history_models: z.record(z.string(), z.any()).optional().default({}),
+    history_message_count: z.number(),
+    history_user_message_count: z.number(),
+    history_assistant_message_count: z.number(),
+    average_response_time: z.number(),
+    average_user_message_content_length: z.number(),
+    average_assistant_message_content_length: z.number(),
+    tags: z.array(z.string()).optional().default([]),
+    last_message_at: z.number(),
+    updated_at: z.number(),
+    created_at: z.number(),
+}).passthrough();  // Allow additional computed statistics
+export type ChatUsageStatsResponse = z.infer<typeof ChatUsageStatsResponseSchema>;
+
+// Chat usage stats list response (paginated)
+export const ChatUsageStatsListResponseSchema = z.object({
+    items: z.array(ChatUsageStatsResponseSchema),
+    total: z.number(),
+}).passthrough();  // Allow additional pagination metadata
+export type ChatUsageStatsListResponse = z.infer<typeof ChatUsageStatsListResponseSchema>;
+
+// Query parameters for GET /api/v1/chats/ and /api/v1/chats/list
+export const ChatListQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).optional(),
+    include_pinned: z.coerce.boolean().optional().default(false),
+    include_folders: z.coerce.boolean().optional().default(false),
+});
+export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;
+
+// Query parameters for GET /api/v1/chats/list/user/:user_id
+export const UserChatListQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    query: z.string().optional(),
+    order_by: z.string().optional(),
+    direction: z.enum(['asc', 'desc']).optional(),
+});
+export type UserChatListQuery = z.infer<typeof UserChatListQuerySchema>;
+
+// Query parameters for GET /api/v1/chats/folder/:folder_id/list
+export const FolderChatListQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+});
+export type FolderChatListQuery = z.infer<typeof FolderChatListQuerySchema>;
+
+// Query parameters for GET /api/v1/chats/stats/usage
+export const ChatUsageStatsQuerySchema = z.object({
+    items_per_page: z.coerce.number().int().min(1).default(50),
+    page: z.coerce.number().int().min(1).default(1),
+});
+export type ChatUsageStatsQuery = z.infer<typeof ChatUsageStatsQuerySchema>;
