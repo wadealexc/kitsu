@@ -11,7 +11,7 @@ import fetch from 'node-fetch';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 
-const BASE_URL = 'http://192.168.87.30:8081';
+const BASE_URL = 'http://192.168.87.30:8071';
 
 /* -------------------- HELPERS -------------------- */
 
@@ -202,35 +202,11 @@ async function testAuthEndpoints(): Promise<void> {
     );
 
     // POST /api/v1/auths/admin/config
-    const adminConfigInput: Types.AdminConfig = {
-        SHOW_ADMIN_DETAILS: true,
-        ADMIN_EMAIL: 'admin@example.com',
-        WEBUI_URL: 'http://localhost:3000',
-        ENABLE_SIGNUP: false,
-        ENABLE_API_KEYS: true,
-        ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-        API_KEYS_ALLOWED_ENDPOINTS: '',
-        DEFAULT_USER_ROLE: 'pending',
-        DEFAULT_GROUP_ID: 'default-group',
-        JWT_EXPIRES_IN: '14d',
-        ENABLE_COMMUNITY_SHARING: true,
-        ENABLE_MESSAGE_RATING: true,
-        ENABLE_FOLDERS: true,
-        FOLDER_MAX_FILE_COUNT: 100,
-        ENABLE_CHANNELS: false,
-        ENABLE_MEMORIES: false,
-        ENABLE_NOTES: false,
-        ENABLE_USER_WEBHOOKS: false,
-        ENABLE_USER_STATUS: true,
-        PENDING_USER_OVERLAY_TITLE: 'Pending Approval',
-        PENDING_USER_OVERLAY_CONTENT: 'Your account is pending admin approval.',
-        RESPONSE_WATERMARK: null,
-    };
     await testEndpoint(
         'POST /api/v1/auths/admin/config',
         'POST',
         '/api/v1/auths/admin/config',
-        adminConfigInput,
+        MockData.mockAdminConfig,
         { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
         Types.AdminConfigSchema
     );
@@ -374,72 +350,11 @@ async function testUserEndpoints(): Promise<void> {
     );
 
     // POST /api/v1/users/default/permissions
-    const defaultPermsInput: Types.UserPermissions = {
-        workspace: {
-            models: true,
-            knowledge: false,
-            prompts: false,
-            tools: false,
-            models_import: false,
-            models_export: false,
-            prompts_import: false,
-            prompts_export: false,
-            tools_import: false,
-            tools_export: false,
-        },
-        sharing: {
-            models: false,
-            public_models: false,
-            knowledge: false,
-            public_knowledge: false,
-            prompts: false,
-            public_prompts: false,
-            tools: false,
-            public_tools: true,
-            notes: false,
-            public_notes: true,
-        },
-        chat: {
-            controls: true,
-            valves: true,
-            system_prompt: true,
-            params: true,
-            file_upload: true,
-            delete: true,
-            delete_message: true,
-            continue_response: true,
-            regenerate_response: true,
-            rate_response: true,
-            edit: true,
-            share: true,
-            export: true,
-            stt: true,
-            tts: true,
-            call: true,
-            multiple_models: true,
-            temporary: true,
-            temporary_enforced: false,
-        },
-        features: {
-            api_keys: false,
-            notes: true,
-            channels: true,
-            folders: true,
-            direct_tool_servers: false,
-            web_search: true,
-            image_generation: true,
-            code_interpreter: true,
-            memories: true,
-        },
-        settings: {
-            interface: true,
-        },
-    };
     await testEndpoint(
         'POST /api/v1/users/default/permissions',
         'POST',
         '/api/v1/users/default/permissions',
-        defaultPermsInput,
+        MockData.mockDefaultPermissions,
         { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
     );
 

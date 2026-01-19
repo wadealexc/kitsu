@@ -72,7 +72,7 @@ const llama = new LlamaManager({
     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
     models: cfg.models,
 });
-await llama.startDefault();
+// await llama.startDefault(); TODO - don't start llm while we work on routes
 
 /* -------------------- ROUTES - API -------------------- */
 
