@@ -17,6 +17,7 @@ import configsRouter from './routes/configs.js';
 import usersRouter from './routes/users.js';
 import modelsRouter from './routes/models.js';
 import chatsRouter from './routes/chats.js';
+import foldersRouter from './routes/folders.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -82,6 +83,7 @@ app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/models', modelsRouter);
 app.use('/api/v1/chats', chatsRouter);
+app.use('/api/v1/folders', foldersRouter);
 
 /* -------------------- ROUTES - OPENAI -------------------- */
 

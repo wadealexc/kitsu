@@ -16,6 +16,8 @@ export const MOCK_PENDING_USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 // Auth token
 export const MOCK_JWT_TOKEN = 'mock-jwt-token-def456';
 
+const now = Math.floor(Date.now() / 1000);
+
 /* -------------------- AUTH DATA -------------------- */
 
 export const mockToken = MOCK_JWT_TOKEN;
@@ -260,6 +262,46 @@ export const mockModels: Types.ModelModel[] = [
 
 export const MOCK_FOLDER_ID_1 = '550e8400-e29b-41d4-a716-446655440001';
 export const MOCK_FOLDER_ID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c9';
+export const MOCK_FOLDER_ID_3 = '7c1e8590-f39c-42e5-a855-f28fd6520cc3';
+
+export const mockFolders: Types.FolderModel[] = [
+    {
+        id: MOCK_FOLDER_ID_1,
+        parent_id: null,
+        user_id: MOCK_ADMIN_USER_ID,
+        name: 'Work Projects',
+        items: null,
+        meta: { icon: 'briefcase' },
+        data: null,
+        is_expanded: true,
+        created_at: now - 86400 * 30,
+        updated_at: now - 86400 * 5,
+    },
+    {
+        id: MOCK_FOLDER_ID_2,
+        parent_id: null,
+        user_id: MOCK_REGULAR_USER_ID,
+        name: 'Personal',
+        items: null,
+        meta: { icon: 'home' },
+        data: null,
+        is_expanded: false,
+        created_at: now - 86400 * 20,
+        updated_at: now - 86400 * 3,
+    },
+    {
+        id: MOCK_FOLDER_ID_3,
+        parent_id: MOCK_FOLDER_ID_1,
+        user_id: MOCK_ADMIN_USER_ID,
+        name: 'Client Work',
+        items: null,
+        meta: null,
+        data: null,
+        is_expanded: false,
+        created_at: now - 86400 * 15,
+        updated_at: now - 86400 * 2,
+    },
+];
 
 /* -------------------- CHAT DATA -------------------- */
 
@@ -271,8 +313,6 @@ export const MOCK_CHAT_ID_4 = '8d0f7780-8536-41ef-955c-f18fd5410bd9';  // Perman
 export const MOCK_CHAT_ID_5 = 'local:9e1f8891abc123def456';  // Temporary
 export const MOCK_SHARE_ID = 'a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6';  // UUIDv4 for shared chat
 export const MOCK_MESSAGE_ID_1 = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';  // UUIDv4 for message
-
-const now = Math.floor(Date.now() / 1000);
 
 export const mockChats: Types.ChatResponse[] = [
     {

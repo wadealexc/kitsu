@@ -32,6 +32,10 @@ export type FolderId = z.infer<typeof FolderIdSchema>;
 export const MessageIdSchema = z.uuidv4();
 export type MessageId = z.infer<typeof MessageIdSchema>;
 
+// File ID schema (UUID v4 format)
+export const FileIdSchema = z.uuidv4();
+export type FileId = z.infer<typeof FileIdSchema>;
+
 // Generic type for Express requests with typed params, body, and/or query
 // Usage:
 //   TypedRequest<{ user_id: string }>                    - only path params
@@ -44,7 +48,7 @@ export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
 // Common path parameter types
 export type ChatIdParams = { id: ChatId };
 export type FolderIdParams = { folder_id: FolderId };
-export type FileIdParams = { file_id: string };
+export type FileIdParams = { file_id: FileId };
 
 /* -------------------- COMMON SCHEMAS -------------------- */
 
@@ -654,3 +658,72 @@ export const ChatUsageStatsQuerySchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
 });
 export type ChatUsageStatsQuery = z.infer<typeof ChatUsageStatsQuerySchema>;
+
+/* -------------------- FOLDER SCHEMAS -------------------- */
+
+// Folder metadata response (icon, etc.)
+export const FolderMetadataResponseSchema = z.object({
+    icon: z.string().nullable().optional(),
+});
+export type FolderMetadataResponse = z.infer<typeof FolderMetadataResponseSchema>;
+
+// Folder name/ID response (lightweight response for list views)
+export const FolderNameIdResponseSchema = z.object({
+    id: FolderIdSchema,
+    name: z.string(),
+    meta: FolderMetadataResponseSchema.nullable().optional(),
+    parent_id: FolderIdSchema.nullable().optional(),
+    is_expanded: z.boolean().default(false),
+    created_at: z.number(),
+    updated_at: z.number(),
+});
+export type FolderNameIdResponse = z.infer<typeof FolderNameIdResponseSchema>;
+
+// Full folder model (complete folder representation)
+export const FolderModelSchema = z.object({
+    id: FolderIdSchema,
+    parent_id: FolderIdSchema.nullable().optional(),
+    user_id: UserIdSchema,
+    name: z.string(),
+    items: z.record(z.string(), z.any()).nullable().optional(),
+    meta: z.record(z.string(), z.any()).nullable().optional(),
+    data: z.record(z.string(), z.any()).nullable().optional(),
+    is_expanded: z.boolean().default(false),
+    created_at: z.number(),
+    updated_at: z.number(),
+});
+export type FolderModel = z.infer<typeof FolderModelSchema>;
+
+// Folder form (for creating folders)
+export const FolderFormSchema = z.object({
+    name: z.string(),
+    data: z.record(z.string(), z.any()).nullable().optional(),
+    meta: z.record(z.string(), z.any()).nullable().optional(),
+}).passthrough();  // Allow additional properties
+export type FolderForm = z.infer<typeof FolderFormSchema>;
+
+// Folder update form (for updating folder properties)
+export const FolderUpdateFormSchema = z.object({
+    name: z.string().nullable().optional(),
+    data: z.record(z.string(), z.any()).nullable().optional(),
+    meta: z.record(z.string(), z.any()).nullable().optional(),
+}).passthrough();  // Allow additional properties
+export type FolderUpdateForm = z.infer<typeof FolderUpdateFormSchema>;
+
+// Folder parent ID form (for moving folders)
+export const FolderParentIdFormSchema = z.object({
+    parent_id: FolderIdSchema.nullable().optional(),
+});
+export type FolderParentIdForm = z.infer<typeof FolderParentIdFormSchema>;
+
+// Folder is_expanded form (for updating UI expansion state)
+export const FolderIsExpandedFormSchema = z.object({
+    is_expanded: z.boolean(),
+});
+export type FolderIsExpandedForm = z.infer<typeof FolderIsExpandedFormSchema>;
+
+// Query parameters for DELETE /api/v1/folders/:id
+export const FolderDeleteQuerySchema = z.object({
+    delete_contents: z.coerce.boolean().default(true),
+});
+export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;

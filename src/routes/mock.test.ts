@@ -887,6 +887,101 @@ async function testChatEndpoints(): Promise<void> {
     );
 }
 
+/* -------------------- FOLDER TESTS -------------------- */
+
+async function testFolderEndpoints(): Promise<void> {
+    console.log('\n' + '='.repeat(60));
+    console.log('FOLDER MANAGEMENT ENDPOINTS');
+    console.log('='.repeat(60));
+
+    /* -------------------- FOLDER LIST & RETRIEVAL -------------------- */
+
+    // GET /api/v1/folders/
+    await testEndpoint(
+        'GET /api/v1/folders/',
+        'GET',
+        '/api/v1/folders/',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+
+    // GET /api/v1/folders/:folder_id
+    await testEndpoint(
+        'GET /api/v1/folders/:folder_id',
+        'GET',
+        `/api/v1/folders/${MockData.MOCK_FOLDER_ID_1}`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FolderModelSchema
+    );
+
+    /* -------------------- FOLDER CREATION & MODIFICATION -------------------- */
+
+    // POST /api/v1/folders/
+    const newFolderInput: Types.FolderForm = {
+        name: 'New Test Folder',
+        meta: { icon: 'folder' },
+        data: { description: 'Test folder for mock' },
+    };
+    await testEndpoint(
+        'POST /api/v1/folders/',
+        'POST',
+        '/api/v1/folders/',
+        newFolderInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FolderModelSchema
+    );
+
+    // POST /api/v1/folders/:folder_id/update
+    const updateFolderInput: Types.FolderUpdateForm = {
+        name: 'Updated Folder Name',
+        meta: { icon: 'star' },
+    };
+    await testEndpoint(
+        'POST /api/v1/folders/:folder_id/update',
+        'POST',
+        `/api/v1/folders/${MockData.MOCK_FOLDER_ID_1}/update`,
+        updateFolderInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FolderModelSchema
+    );
+
+    // POST /api/v1/folders/:folder_id/update/parent
+    const updateParentInput: Types.FolderParentIdForm = {
+        parent_id: null,  // Move to root level
+    };
+    await testEndpoint(
+        'POST /api/v1/folders/:folder_id/update/parent',
+        'POST',
+        `/api/v1/folders/${MockData.MOCK_FOLDER_ID_3}/update/parent`,
+        updateParentInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FolderModelSchema
+    );
+
+    // POST /api/v1/folders/:folder_id/update/expanded
+    const updateExpandedInput: Types.FolderIsExpandedForm = {
+        is_expanded: true,
+    };
+    await testEndpoint(
+        'POST /api/v1/folders/:folder_id/update/expanded',
+        'POST',
+        `/api/v1/folders/${MockData.MOCK_FOLDER_ID_1}/update/expanded`,
+        updateExpandedInput,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.FolderModelSchema
+    );
+
+    // DELETE /api/v1/folders/:folder_id (with delete_contents=true)
+    await testEndpoint(
+        'DELETE /api/v1/folders/:folder_id',
+        'DELETE',
+        `/api/v1/folders/${MockData.MOCK_FOLDER_ID_3}?delete_contents=true`,
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` }
+    );
+}
+
 /* -------------------- RUN ALL TESTS -------------------- */
 
 async function runTests(): Promise<void> {
@@ -895,6 +990,7 @@ async function runTests(): Promise<void> {
     await testUserEndpoints();
     await testModelEndpoints();
     await testChatEndpoints();
+    await testFolderEndpoints();
 
     console.log('\n' + '='.repeat(60));
     console.log('ALL TESTS COMPLETED');

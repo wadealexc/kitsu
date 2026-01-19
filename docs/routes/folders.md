@@ -1,5 +1,7 @@
 # Folders API Specification
 
+**Note:** This implementation differs from OpenWebUI by using `:folder_id` instead of `:id` in path parameters for consistency with chat folder endpoints (e.g., `/api/v1/chats/folder/:folder_id`). This makes the API more explicit and easier to understand.
+
 ## Endpoints
 
 **Context:** Core folder management - hierarchical folder organization for chats.
@@ -18,7 +20,7 @@ None
 
 #### Outputs
 
-Response (200): Array of [`FolderNameIdResponse`](#foldernameIdresponse)
+Response (200): Array of [`FolderNameIdResponse`](#foldernameidresponse)
 
 #### Notes
 
@@ -72,14 +74,14 @@ Response (200): [`FolderModel`](#foldermodel)
 
 ---
 
-### GET `/api/v1/folders/{id}`
+### GET `/api/v1/folders/{folder_id}`
 
 Get a specific folder by ID with all details.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - Folder ID to retrieve
+- `folder_id` (string, required) - Folder ID to retrieve
 
 #### Outputs
 
@@ -100,14 +102,14 @@ Response (200): [`FolderModel`](#foldermodel) or `null` if not found
 
 ---
 
-### POST `/api/v1/folders/{id}/update`
+### POST `/api/v1/folders/{folder_id}/update`
 
 Update folder properties (name, data, meta).
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - Folder ID to update
+- `folder_id` (string, required) - Folder ID to update
 
 **Request Body:** [`FolderUpdateForm`](#folderupdateform)
 
@@ -134,14 +136,14 @@ Response (200): [`FolderModel`](#foldermodel)
 
 ---
 
-### DELETE `/api/v1/folders/{id}`
+### DELETE `/api/v1/folders/{folder_id}`
 
 Delete a folder and optionally its contents.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - Folder ID to delete
+- `folder_id` (string, required) - Folder ID to delete
 
 **Query Parameters:**
 - `delete_contents` (boolean, optional, default: `true`) - If true, deletes all chats in folder; if false, moves chats to root level
@@ -171,14 +173,14 @@ Response (200): `boolean` - Returns `true` on success
 
 ---
 
-### POST `/api/v1/folders/{id}/update/parent`
+### POST `/api/v1/folders/{folder_id}/update/parent`
 
 Move a folder to a different parent folder or root level.
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - Folder ID to move
+- `folder_id` (string, required) - Folder ID to move
 
 **Request Body:** [`FolderParentIdForm`](#folderparentidform)
 
@@ -204,14 +206,14 @@ Response (200): [`FolderModel`](#foldermodel)
 
 ---
 
-### POST `/api/v1/folders/{id}/update/expanded`
+### POST `/api/v1/folders/{folder_id}/update/expanded`
 
 Update the UI expansion state of a folder (for tree view persistence).
 
 #### Inputs
 
 **Path Parameters:**
-- `id` (string, required) - Folder ID
+- `folder_id` (string, required) - Folder ID
 
 **Request Body:** [`FolderIsExpandedForm`](#folderisexpandedform)
 
