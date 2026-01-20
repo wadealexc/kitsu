@@ -8,10 +8,19 @@ import * as Types from './types.js';
 
 /* -------------------- CONSTANTS -------------------- */
 
+let numUUIDs = 0;
+
+// Create a static UUID that increments each time we create a new one
+function getUUID(): string {
+    const id = numUUIDs++;
+    const paddedNum = id.toString().padStart(4, '0');
+    return '550e8400-e29b-41d4-a716-44665544' + paddedNum;
+}
+
 // User IDs (reused across routes)
-export const MOCK_ADMIN_USER_ID = crypto.randomUUID();
-export const MOCK_REGULAR_USER_ID = crypto.randomUUID();
-export const MOCK_PENDING_USER_ID = crypto.randomUUID();
+export const MOCK_ADMIN_USER_ID = getUUID();
+export const MOCK_REGULAR_USER_ID = getUUID();
+export const MOCK_PENDING_USER_ID = getUUID();
 
 // Auth token
 export const MOCK_JWT_TOKEN = 'mock-jwt-token-def456';
@@ -260,9 +269,9 @@ export const mockModels: Types.ModelModel[] = [
 
 /* -------------------- FOLDER DATA -------------------- */
 
-export const MOCK_FOLDER_ID_1 = crypto.randomUUID();
-export const MOCK_FOLDER_ID_2 = crypto.randomUUID();
-export const MOCK_FOLDER_ID_3 = crypto.randomUUID();
+export const MOCK_FOLDER_ID_1 = getUUID();
+export const MOCK_FOLDER_ID_2 = getUUID();
+export const MOCK_FOLDER_ID_3 = getUUID();
 
 export const mockFolders: Types.FolderModel[] = [
     {
@@ -306,13 +315,13 @@ export const mockFolders: Types.FolderModel[] = [
 /* -------------------- CHAT DATA -------------------- */
 
 // Mix of permanent (UUID) and temporary (local:) chat IDs
-export const MOCK_CHAT_ID_1 = crypto.randomUUID();  // Permanent
-export const MOCK_CHAT_ID_2 = crypto.randomUUID();  // Permanent
+export const MOCK_CHAT_ID_1 = getUUID();  // Permanent
+export const MOCK_CHAT_ID_2 = getUUID();  // Permanent
 export const MOCK_CHAT_ID_3 = 'local:ccXIrOFpfsc4MaOZAACD';  // Temporary
-export const MOCK_CHAT_ID_4 = crypto.randomUUID();  // Permanent
+export const MOCK_CHAT_ID_4 = getUUID();  // Permanent
 export const MOCK_CHAT_ID_5 = 'local:9e1f8891abc123def456';  // Temporary
-export const MOCK_SHARE_ID = crypto.randomUUID();  // UUIDv4 for shared chat
-export const MOCK_MESSAGE_ID_1 = crypto.randomUUID();  // UUIDv4 for message
+export const MOCK_SHARE_ID = getUUID();  // UUIDv4 for shared chat
+export const MOCK_MESSAGE_ID_1 = getUUID();  // UUIDv4 for message
 
 export const mockChats: Types.ChatResponse[] = [
     {
@@ -417,10 +426,10 @@ export const mockChats: Types.ChatResponse[] = [
 /* -------------------- FILE DATA -------------------- */
 
 // File IDs (reused across routes) - generated once at module load
-export const MOCK_FILE_ID_1 = crypto.randomUUID();
-export const MOCK_FILE_ID_2 = crypto.randomUUID();
-export const MOCK_FILE_ID_3 = crypto.randomUUID();
-export const MOCK_FILE_ID_4 = crypto.randomUUID();
+export const MOCK_FILE_ID_1 = getUUID();
+export const MOCK_FILE_ID_2 = getUUID();
+export const MOCK_FILE_ID_3 = getUUID();
+export const MOCK_FILE_ID_4 = getUUID();
 
 export const mockFiles: Types.FileModel[] = [
     {

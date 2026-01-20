@@ -8,6 +8,7 @@
  */
 
 import fetch from 'node-fetch';
+import chalk from 'chalk';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 
@@ -24,7 +25,7 @@ async function testEndpoint(
     responseSchema?: any,
     expectJson: boolean = true
 ): Promise<void> {
-    console.log(`\n${name}`);
+    console.log(`\n${chalk.bold(name)}`);
 
     const response = await fetch(`${BASE_URL}${path}`, {
         method,
@@ -36,8 +37,13 @@ async function testEndpoint(
     });
 
     const status = response.status;
+    const statusPassed = status === 200;
 
-    console.log(`  Status: ${status} ${status === 200 ? '✓' : '✗'}`);
+    if (statusPassed) {
+        console.log(chalk.green(`  Status: ${status} ✓`));
+    } else {
+        console.log(chalk.red(`  Status: ${status} ✗`));
+    }
 
     // Skip JSON parsing for non-JSON responses (like images)
     if (!expectJson) {
@@ -50,10 +56,10 @@ async function testEndpoint(
     if (responseSchema) {
         const parsed = responseSchema.safeParse(data);
         if (parsed.success) {
-            console.log(`  Schema: ✓`);
+            console.log(chalk.green(`  Schema: ✓`));
         } else {
-            console.log(`  Schema: ✗`);
-            console.log(`  Errors: ${JSON.stringify(parsed.error.issues, null, 2)}`);
+            console.log(chalk.red(`  Schema: ✗`));
+            console.log(chalk.red(`  Errors: ${JSON.stringify(parsed.error.issues, null, 2)}`));
         }
     }
 }
@@ -61,9 +67,9 @@ async function testEndpoint(
 /* -------------------- AUTH TESTS -------------------- */
 
 async function testAuthEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('AUTHENTICATION ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('AUTHENTICATION ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- PUBLIC ENDPOINTS -------------------- */
 
@@ -215,9 +221,9 @@ async function testAuthEndpoints(): Promise<void> {
 /* -------------------- CONFIG TESTS -------------------- */
 
 async function testConfigEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('CONFIGURATION ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('CONFIGURATION ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- ADMIN ENDPOINTS -------------------- */
 
@@ -297,9 +303,9 @@ async function testConfigEndpoints(): Promise<void> {
 /* -------------------- USER TESTS -------------------- */
 
 async function testUserEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('USER MANAGEMENT ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('USER MANAGEMENT ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- ADMIN ENDPOINTS -------------------- */
 
@@ -463,9 +469,9 @@ async function testUserEndpoints(): Promise<void> {
 /* -------------------- MODEL TESTS -------------------- */
 
 async function testModelEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('MODEL MANAGEMENT ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('MODEL MANAGEMENT ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- PUBLIC ENDPOINTS -------------------- */
 
@@ -645,9 +651,9 @@ async function testModelEndpoints(): Promise<void> {
 /* -------------------- CHAT TESTS -------------------- */
 
 async function testChatEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('CHAT MANAGEMENT ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('CHAT MANAGEMENT ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- CHAT LIST & RETRIEVAL -------------------- */
 
@@ -890,9 +896,9 @@ async function testChatEndpoints(): Promise<void> {
 /* -------------------- FOLDER TESTS -------------------- */
 
 async function testFolderEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('FOLDER MANAGEMENT ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('FOLDER MANAGEMENT ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- FOLDER LIST & RETRIEVAL -------------------- */
 
@@ -985,9 +991,9 @@ async function testFolderEndpoints(): Promise<void> {
 /* -------------------- FILE TESTS -------------------- */
 
 async function testFileEndpoints(): Promise<void> {
-    console.log('\n' + '='.repeat(60));
-    console.log('FILE ENDPOINTS');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('FILE ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
 
     /* -------------------- LIST & SEARCH -------------------- */
 
@@ -1176,9 +1182,9 @@ async function runTests(): Promise<void> {
     await testFolderEndpoints();
     await testFileEndpoints();
 
-    console.log('\n' + '='.repeat(60));
-    console.log('ALL TESTS COMPLETED');
-    console.log('='.repeat(60));
+    console.log('\n' + chalk.green('='.repeat(60)));
+    console.log(chalk.green.bold('ALL TESTS COMPLETED'));
+    console.log(chalk.green('='.repeat(60)));
 }
 
 runTests().catch(err => {
