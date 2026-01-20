@@ -22,6 +22,7 @@ import filesRouter from './routes/files.js';
 import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
 import pwaRouter from './routes/pwa.js';
+import * as MockData from './routes/mock-data.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -92,6 +93,11 @@ app.use('/api/v1/files', filesRouter);
 app.use('/api/version', versionRouter);
 app.use('/health', healthRouter);
 app.use('/manifest.json', pwaRouter);
+
+// Backend config endpoint (temporary inline implementation)
+app.get('/api/config', (_req, res) => {
+    res.json(MockData.mockBackendConfig);
+});
 
 /* -------------------- ROUTES - OPENAI -------------------- */
 
