@@ -1171,6 +1171,88 @@ async function testFileEndpoints(): Promise<void> {
     );
 }
 
+/* -------------------- VERSION TESTS -------------------- */
+
+async function testVersionEndpoints(): Promise<void> {
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('VERSION ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
+
+    /* -------------------- PUBLIC ENDPOINTS -------------------- */
+
+    // GET /api/version
+    await testEndpoint(
+        'GET /api/version',
+        'GET',
+        '/api/version',
+        undefined,
+        undefined,
+        Types.VersionInfoSchema
+    );
+
+    /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
+
+    // GET /api/version/updates
+    await testEndpoint(
+        'GET /api/version/updates',
+        'GET',
+        '/api/version/updates',
+        undefined,
+        { 'Authorization': `Bearer ${MockData.MOCK_JWT_TOKEN}` },
+        Types.VersionUpdateInfoSchema
+    );
+}
+
+/* -------------------- HEALTH TESTS -------------------- */
+
+async function testHealthEndpoints(): Promise<void> {
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('HEALTH ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
+
+    /* -------------------- PUBLIC ENDPOINTS -------------------- */
+
+    // GET /health
+    await testEndpoint(
+        'GET /health',
+        'GET',
+        '/health',
+        undefined,
+        undefined,
+        Types.StatusResponseSchema
+    );
+
+    // GET /health/db
+    await testEndpoint(
+        'GET /health/db',
+        'GET',
+        '/health/db',
+        undefined,
+        undefined,
+        Types.StatusResponseSchema
+    );
+}
+
+/* -------------------- PWA TESTS -------------------- */
+
+async function testPWAEndpoints(): Promise<void> {
+    console.log('\n' + chalk.cyan('='.repeat(60)));
+    console.log(chalk.cyan.bold('PWA ENDPOINTS'));
+    console.log(chalk.cyan('='.repeat(60)));
+
+    /* -------------------- PUBLIC ENDPOINTS -------------------- */
+
+    // GET /manifest.json
+    await testEndpoint(
+        'GET /manifest.json',
+        'GET',
+        '/manifest.json',
+        undefined,
+        undefined,
+        Types.PWAManifestSchema
+    );
+}
+
 /* -------------------- RUN ALL TESTS -------------------- */
 
 async function runTests(): Promise<void> {
@@ -1181,6 +1263,9 @@ async function runTests(): Promise<void> {
     await testChatEndpoints();
     await testFolderEndpoints();
     await testFileEndpoints();
+    await testVersionEndpoints();
+    await testHealthEndpoints();
+    await testPWAEndpoints();
 
     console.log('\n' + chalk.green('='.repeat(60)));
     console.log(chalk.green.bold('ALL TESTS COMPLETED'));

@@ -837,3 +837,55 @@ export const FileProcessStatusResponseSchema = z.object({
     status: z.string(),
 });
 export type FileProcessStatusResponse = z.infer<typeof FileProcessStatusResponseSchema>;
+
+/* -------------------- VERSION SCHEMAS -------------------- */
+
+// Version information response
+export const VersionInfoSchema = z.object({
+    version: z.string(),
+    deployment_id: z.string(),
+});
+export type VersionInfo = z.infer<typeof VersionInfoSchema>;
+
+// Version update information response
+export const VersionUpdateInfoSchema = z.object({
+    current: z.string(),
+    latest: z.string(),
+});
+export type VersionUpdateInfo = z.infer<typeof VersionUpdateInfoSchema>;
+
+/* -------------------- PWA SCHEMAS -------------------- */
+
+// PWA icon configuration
+export const PWAIconSchema = z.object({
+    src: z.string(),
+    type: z.string(),
+    sizes: z.string(),
+    purpose: z.string(),
+});
+export type PWAIcon = z.infer<typeof PWAIconSchema>;
+
+// PWA share target configuration
+export const PWAShareTargetSchema = z.object({
+    action: z.string(),
+    method: z.enum(['GET', 'POST']),
+    params: z.object({
+        text: z.string().optional(),
+        title: z.string().optional(),
+        url: z.string().optional(),
+    }),
+});
+export type PWAShareTarget = z.infer<typeof PWAShareTargetSchema>;
+
+// PWA manifest
+export const PWAManifestSchema = z.object({
+    name: z.string(),
+    short_name: z.string(),
+    description: z.string(),
+    start_url: z.string(),
+    display: z.enum(['standalone', 'fullscreen', 'minimal-ui', 'browser']),
+    background_color: z.string(),
+    icons: z.array(PWAIconSchema),
+    share_target: PWAShareTargetSchema.optional(),
+});
+export type PWAManifest = z.infer<typeof PWAManifestSchema>;

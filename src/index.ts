@@ -19,6 +19,9 @@ import modelsRouter from './routes/models.js';
 import chatsRouter from './routes/chats.js';
 import foldersRouter from './routes/folders.js';
 import filesRouter from './routes/files.js';
+import versionRouter from './routes/version.js';
+import healthRouter from './routes/health.js';
+import pwaRouter from './routes/pwa.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -86,6 +89,9 @@ app.use('/api/v1/models', modelsRouter);
 app.use('/api/v1/chats', chatsRouter);
 app.use('/api/v1/folders', foldersRouter);
 app.use('/api/v1/files', filesRouter);
+app.use('/api/version', versionRouter);
+app.use('/health', healthRouter);
+app.use('/manifest.json', pwaRouter);
 
 /* -------------------- ROUTES - OPENAI -------------------- */
 

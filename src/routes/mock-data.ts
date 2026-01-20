@@ -508,3 +508,47 @@ export const mockFiles: Types.FileModel[] = [
         updated_at: now - 300,
     },
 ];
+
+/* -------------------- VERSION DATA -------------------- */
+
+export const mockVersionInfo: Types.VersionInfo = {
+    version: '0.3.9',
+    deployment_id: 'dev-local',
+};
+
+export const mockVersionUpdateInfo: Types.VersionUpdateInfo = {
+    current: '0.3.9',
+    latest: '0.3.9',  // No update available
+};
+
+/* -------------------- PWA DATA -------------------- */
+
+export const mockPWAManifest: Types.PWAManifest = {
+    name: 'Open WebUI',
+    short_name: 'Open WebUI',
+    description: 'Open WebUI is an open, extensible, user-friendly interface for AI that adapts to your workflow.',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#343541',
+    icons: [
+        {
+            src: '/static/logo.png',
+            type: 'image/png',
+            sizes: '500x500',
+            purpose: 'any',
+        },
+        {
+            src: '/static/logo.png',
+            type: 'image/png',
+            sizes: '500x500',
+            purpose: 'maskable',
+        },
+    ],
+    share_target: {
+        action: '/',
+        method: 'GET',
+        params: {
+            text: 'shared',
+        },
+    },
+};
