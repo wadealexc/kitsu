@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import path from 'path';
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import chalk from 'chalk';
 import bytes from 'bytes';
 
@@ -51,6 +52,7 @@ if (cfg.logs.enable) {
 const app = express();
 
 app.use(middleware.logging);
+app.use(cookieParser());
 app.use(express.json({ type: (() => true), limit: '50mb' }));
 
 /* -------------------- LLAMA, BROWSER, TOOL SERVER -------------------- */

@@ -5,19 +5,36 @@ import * as Types from './types.js';
 /* -------------------- AUTHENTICATION MIDDLEWARE -------------------- */
 
 /**
- * Middleware that requires a valid Bearer token in the Authorization header.
+ * Middleware that requires a valid Bearer token in the Authorization header OR cookie.
  * Validates the token format.
  *
- * @returns 401 if authorization header is missing or invalid
+ * This dual approach is necessary because:
+ * - JavaScript fetch/XHR can send Authorization headers
+ * - Browser <img>, <script>, <link> tags cannot send custom headers
+ * - Cookies are automatically sent by browsers for all requests
+ *
+ * @returns 401 if no valid token is found
  */
 export const requireAuth = <P = {}, B = any, Q = any>(
     req: TypedRequest<P, B, Q>,
     res: Response,
     next: NextFunction
 ): void => {
+    let token: string | undefined;
+
+    // Check Authorization header first
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-        res.status(401).json({ detail: 'Missing or invalid authorization header' });
+    if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7); // Remove "Bearer " prefix
+    }
+
+    // Fallback to cookie if no Authorization header
+    if (!token && req.cookies?.token) {
+        token = req.cookies.token;
+    }
+
+    if (!token) {
+        res.status(401).json({ detail: 'Missing or invalid authorization' });
         return;
     }
 
@@ -29,7 +46,7 @@ export const requireAuth = <P = {}, B = any, Q = any>(
 };
 
 /**
- * Middleware that requires a valid Bearer token AND admin role.
+ * Middleware that requires a valid Bearer token (header or cookie) AND admin role.
  * First validates authentication, then checks if user has admin role.
  *
  * @returns 401 if authentication fails
@@ -40,10 +57,21 @@ export const requireAdmin = <P = {}, B = any, Q = any>(
     res: Response,
     next: NextFunction
 ): void => {
-    // First check authentication
+    let token: string | undefined;
+
+    // Check Authorization header first
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-        res.status(401).json({ detail: 'Missing or invalid authorization header' });
+    if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.substring(7); // Remove "Bearer " prefix
+    }
+
+    // Fallback to cookie if no Authorization header
+    if (!token && req.cookies?.token) {
+        token = req.cookies.token;
+    }
+
+    if (!token) {
+        res.status(401).json({ detail: 'Missing or invalid authorization' });
         return;
     }
 
