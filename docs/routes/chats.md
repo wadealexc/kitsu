@@ -643,17 +643,7 @@ Main chat completion API - send messages to AI and get responses. OpenAI-compati
 
 #### Inputs
 
-**Request Body:** `object` (flexible, OpenAI-compatible format with extensions)
-
-**Key fields:**
-- `model` (string) - Model ID to use
-- `messages` (array) - Chat messages
-- `stream` (boolean, optional) - Enable streaming response
-- `chat_id` (string, optional) - Chat ID for persistence
-- `id` (string, optional) - Message ID
-- `tool_ids` (array, optional) - Tool IDs to enable
-- `files` (array, optional) - File attachments
-- `model_item` (object, optional) - Direct model configuration
+**Request Body:** [`ChatCompletionForm`](#chatcompletionform)
 
 #### Outputs
 
@@ -932,6 +922,80 @@ Detailed usage statistics for a single chat.
 **Notes:**
 - Uses `additionalProperties: true`, may include extra computed statistics
 - "History" fields include all-time data, while non-history fields may be for current session
+
+---
+
+### `ChatCompletionForm`
+
+Form data for chat completion API - OpenAI-compatible with OpenWebUI extensions.
+
+```typescript
+{
+    // Required fields
+    model: string                    // Model ID to use for completion
+    messages: array                  // Chat messages (OpenAI message format)
+
+    // OpenAI standard fields
+    stream?: boolean                 // Enable streaming response (default: false)
+    temperature?: number             // Sampling temperature
+    top_p?: number                   // Nucleus sampling parameter
+    max_tokens?: number              // Maximum tokens to generate
+    stop?: string | string[]         // Stop sequences
+    presence_penalty?: number        // Presence penalty
+    frequency_penalty?: number       // Frequency penalty
+    logit_bias?: object              // Token ID to bias mapping
+    user?: string                    // User identifier for OpenAI
+
+    // OpenWebUI extensions
+    chat_id?: string                 // Chat ID for persistence (temporary chats start with "local:")
+    id?: string                      // Message ID
+    parent_id?: string               // Parent message ID for threading
+    parent_message?: object          // Full parent message object with files, etc.
+    session_id?: string              // Session ID for async processing (requires chat_id + id)
+    tool_ids?: string[]              // Tool IDs to enable for this completion
+    tool_servers?: object            // Tool server configurations
+    files?: array                    // File attachments (with id, type, url, etc.)
+    filter_ids?: string[]            // Filter IDs to apply
+    features?: object                // Feature flags for completion behavior
+    variables?: object               // Template variables for prompt substitution
+    model_item?: {                   // Direct model configuration (bypasses model registry)
+        direct: boolean              // Whether this is a direct model
+        [key: string]: any           // Additional model configuration
+    }
+    background_tasks?: any           // Background task reference (internal use)
+    params?: {                       // OpenWebUI-specific parameters
+        stream_delta_chunk_size?: number    // Chunk size for streaming deltas
+        reasoning_tags?: any                // Tags for reasoning/thinking display
+        function_calling?: "native" | "default"  // Function calling mode
+    }
+}
+```
+
+**Required fields:** `model`, `messages`
+
+**Optional fields:** All others
+
+**Notes:**
+- **OpenAI-compatible:** Accepts standard OpenAI chat completion parameters
+- **Extended functionality:** Adds OWUI-specific features (persistence, tools, files, etc.)
+- **Flexible schema:** Uses `additionalProperties: true` to support OpenAI extensions
+- **Temporary chats:** Chat IDs starting with `"local:"` are not stored in database
+- **Async processing:** If `session_id`, `chat_id`, and `id` (message_id) are all provided, processes asynchronously and returns `{status: true, task_id: string}` immediately
+- **Direct models:** `model_item.direct = true` bypasses model registry and uses provided config directly
+- **Message format:** `messages` array follows OpenAI format: `[{role: "user"|"assistant"|"system", content: string}, ...]`
+- **File handling:** Files from `parent_message.files` are inserted into chat files table
+- **Tool calling:** `tool_ids` enables specific tools; function calling mode controlled by `params.function_calling`
+
+**Schema derived from:**
+- File: `/home/fox/open-webui/backend/open_webui/main.py:1559-1795`
+- Function signature (line 1563): `form_data: dict` - accepts flexible dictionary
+- Model extraction (lines 1569-1571): `model`, `model_item`, `background_tasks`
+- Params extraction (lines 1622-1635): `params.stream_delta_chunk_size`, `params.reasoning_tags`, `params.function_calling`
+- Metadata extraction (lines 1637-1664): `chat_id`, `id`, `parent_message`, `parent_id`, `session_id`, `filter_ids`, `tool_ids`, `tool_servers`, `files`, `features`, `variables`
+- Chat ownership verification (lines 1666-1677): validates `chat_id` against user ownership
+- File insertion (lines 1679-1696): extracts files from `parent_message.files`
+- Async processing (lines 1782-1795): conditional logic based on `session_id`, `chat_id`, `id`
+- OpenAI standard fields inferred from OpenAI API compatibility and standard chat completion parameters
 
 ---
 

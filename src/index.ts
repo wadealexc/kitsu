@@ -17,6 +17,7 @@ import authsRouter from './routes/auths.js';
 import configsRouter from './routes/configs.js';
 import usersRouter from './routes/users.js';
 import modelsRouter from './routes/models.js';
+import chatRouter from './routes/chat.js';
 import chatsRouter from './routes/chats.js';
 import foldersRouter from './routes/folders.js';
 import filesRouter from './routes/files.js';
@@ -83,6 +84,11 @@ const llama = new LlamaManager({
 });
 // await llama.startDefault(); TODO - don't start llm while we work on routes
 
+/* -------------------- APP STATE -------------------- */
+
+// Store application state in app.locals for access in routers
+app.locals.llama = llama;
+
 /* -------------------- ROUTES - API -------------------- */
 
 // Temporary stub endpoints (TODO: remove these when frontend is cleaned up)
@@ -106,6 +112,7 @@ app.use('/api/v1/auths', authsRouter);
 app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/models', modelsRouter);
+app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/chats', chatsRouter);
 app.use('/api/v1/folders', foldersRouter);
 app.use('/api/v1/files', filesRouter);
@@ -119,24 +126,6 @@ app.get('/api/config', (_req, res) => {
 });
 
 /* -------------------- ROUTES - OPENAI -------------------- */
-
-/**
- * /v1/models – return list of local models
- * TODO - return richer info
- */
-app.get('/v1/models', async (_req, res, next) => {
-    try {
-        const data = llama.getAllModelNames().map(name => ({
-            id: name,
-            object: 'model',
-            owned_by: 'llamacpp',
-        }));
-
-        res.json({ object: 'list', data });
-    } catch (err) {
-        return next(new Error(`failed to list models: ${err}`));
-    }
-});
 
 app.post('/v1/chat/completions', async (
     req: RequestBody<proto.CompletionRequest>,

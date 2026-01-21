@@ -653,6 +653,47 @@ export const ChatUsageStatsQuerySchema = z.object({
 });
 export type ChatUsageStatsQuery = z.infer<typeof ChatUsageStatsQuerySchema>;
 
+// Chat completion form (OpenAI-compatible with OpenWebUI extensions)
+export const ChatCompletionFormSchema = z.object({
+    // Required fields
+    model: z.string(),
+    messages: z.array(z.any()),  // OpenAI message format - flexible structure
+
+    // OpenAI standard fields
+    stream: z.boolean().optional(),
+    temperature: z.number().optional(),
+    top_p: z.number().optional(),
+    max_tokens: z.number().int().optional(),
+    stop: z.union([z.string(), z.array(z.string())]).optional(),
+    presence_penalty: z.number().optional(),
+    frequency_penalty: z.number().optional(),
+    logit_bias: z.record(z.string(), z.number()).optional(),
+    user: z.string().optional(),
+
+    // OpenWebUI extensions
+    chat_id: ChatIdSchema.optional(),
+    id: MessageIdSchema.optional(),
+    parent_id: MessageIdSchema.optional(),
+    parent_message: z.record(z.string(), z.any()).optional(),
+    session_id: z.string().optional(),
+    tool_ids: z.array(z.string()).optional(),
+    tool_servers: z.record(z.string(), z.any()).optional(),
+    files: z.array(z.any()).optional(),
+    filter_ids: z.array(z.string()).optional(),
+    features: z.record(z.string(), z.any()).optional(),
+    variables: z.record(z.string(), z.any()).optional(),
+    model_item: z.object({
+        direct: z.boolean(),
+    }).passthrough().optional(),
+    background_tasks: z.any().optional(),
+    params: z.object({
+        stream_delta_chunk_size: z.number().optional(),
+        reasoning_tags: z.any().optional(),
+        function_calling: z.enum(['native', 'default']).optional(),
+    }).optional(),
+}).passthrough();  // Allow additional OpenAI extensions
+export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
+
 /* -------------------- FOLDER SCHEMAS -------------------- */
 
 // Folder metadata response (icon, etc.)

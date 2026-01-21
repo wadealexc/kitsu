@@ -5,6 +5,7 @@
  */
 
 import { Router, type Response, type NextFunction } from 'express';
+import type { LlamaManager } from '../llama/llamaManager.js';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin } from './middleware.js';
@@ -24,22 +25,38 @@ const router = Router();
  */
 router.get('/', requireAuth, (
     req: Types.TypedRequest<{}, any, Types.ModelsQuery>,
-    res: Response<{ data: Types.ModelResponse[] } | Types.ErrorResponse>
+    res: Response<{ data: Types.ModelResponse[] } | Types.ErrorResponse>,
+    next: NextFunction
 ) => {
     const queryValidation = Types.ModelsQuerySchema.safeParse(req.query);
     if (!queryValidation.success) {
         return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
     }
 
-    const { refresh } = queryValidation.data;
+    try {
+        const llama = req.app.locals.llama as LlamaManager;
+        const data = llama.getAllModelNames().map(name => ({
+            id: name,
+            user_id: MockData.MOCK_ADMIN_USER_ID,
+            base_model_id: null,
+            name: name,
+            params: {},
+            meta: {
+                profile_image_url: "/static/favicon.png",
+                description: null,
+                capabilities: null,
+                tags: [],
+            },
+            access_control: null,
+            is_active: true,
+            updated_at: 1764621939,
+            created_at: 1764621939,
+        }));
 
-    // TODO: If refresh=true, fetch fresh models from backends
-    // TODO: Filter models based on user access control
-    // TODO: For now, return all active models
-
-    const accessibleModels = MockData.mockModels.filter(m => m.is_active);
-
-    res.status(200).json({ data: accessibleModels });
+        res.status(200).json({ data });
+    } catch (err) {
+        return next(new Error(`failed to list models: ${err}`));
+    }
 });
 
 /**
