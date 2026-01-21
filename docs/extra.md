@@ -4,6 +4,26 @@ Endpoints discovered while integrating with the OpenWebUI frontend that weren't 
 
 ---
 
+## Temporary Stub Endpoints
+
+**Location:** `src/index.ts` (marked as temporary)
+
+These endpoints return empty arrays to prevent frontend errors. They should be removed once the frontend is cleaned up to not depend on features we've excluded.
+
+### GET `/api/v1/tools`
+Returns empty array `[]` - Tools/integrations system not implemented
+
+### GET `/api/v1/functions`
+Returns empty array `[]` - Functions system not implemented
+
+### GET `/api/v1/chats/all/tags`
+Returns empty array `[]` - Tags system not implemented
+
+### GET `/api/v1/chats/pinned`
+Returns empty array `[]` - Pinned chats feature not implemented
+
+---
+
 ## GET `/api/config`
 
 Get backend configuration and feature flags. Returns different levels of configuration based on authentication status.

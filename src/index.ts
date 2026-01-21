@@ -85,6 +85,23 @@ const llama = new LlamaManager({
 
 /* -------------------- ROUTES - API -------------------- */
 
+// Temporary stub endpoints (TODO: remove these when frontend is cleaned up)
+app.get('/api/v1/tools', (_req, res) => {
+    res.json([]);
+});
+
+app.get('/api/v1/functions', (_req, res) => {
+    res.json([]);
+});
+
+app.get('/api/v1/chats/all/tags', (_req, res) => {
+    res.json([]);
+});
+
+app.get('/api/v1/chats/pinned', (_req, res) => {
+    res.json([]);
+});
+
 app.use('/api/v1/auths', authsRouter);
 app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);
