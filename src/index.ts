@@ -82,7 +82,7 @@ const llama = new LlamaManager({
     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
     models: cfg.models,
 });
-// await llama.startDefault(); TODO - don't start llm while we work on routes
+await llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */
 
@@ -123,84 +123,6 @@ app.use('/manifest.json', pwaRouter);
 // Backend config endpoint (temporary inline implementation)
 app.get('/api/config', (_req, res) => {
     res.json(MockData.mockBackendConfig);
-});
-
-/* -------------------- ROUTES - OPENAI -------------------- */
-
-app.post('/v1/chat/completions', async (
-    req: RequestBody<proto.CompletionRequest>,
-    res,
-    next
-) => {
-    const request: proto.CompletionRequest = await tools.beforeRequest(req.body);
-    const ctrl = new AbortController();
-
-    req.once('aborted', () => {
-        console.log(chalk.dim.yellow(`client aborted request`));
-        ctrl.abort();
-    });
-
-    res.once('close', () => ctrl.abort());
-
-    try {
-        // Forward request to llama-server
-        const llamaResponse: LlamaResponse = await llama.completions({
-            originalURL: req.originalUrl,
-            headers: req.headers,
-            method: req.method,
-            body: request,
-            signal: ctrl.signal,
-        });
-
-        const llamaStatus: middleware.LlamaStatus = {
-            status: llamaResponse.status,
-            headers: llamaResponse.headers,
-        };
-        res.locals.llama = llamaStatus;
-
-        const stream = llamaResponse.stream;
-
-        // Once we have data back from llama-server, we can begin streaming it to the client
-        stream.once('readable', () => {
-            // Copy headers and status for client once we have confirmation we're getting data
-            llamaResponse.headers.forEach((v, k) => res.setHeader(k, v));
-            res.status(llamaStatus.status);
-
-            stream.pipe(res);
-        });
-
-        // This listener is triggered when llama-server is done streaming, or when the
-        // stream is cancelled prematurely due to:
-        // - client disconnects
-        // - llama-server errors
-        stream.once('stop', (result: proto.Result<proto.CompletionResponse, Error>) => {
-            logger?.logs.push({
-                request: request,
-                response: result.ok ? result.value : result.value.message
-            });
-
-            // On success, end response and track stats for logs
-            if (result.ok) {
-                const tps = result.value.timings?.predicted_per_second;
-                const tokensOut = result.value.timings?.predicted_n;
-                const cacheIn = result.value.timings?.cache_n ?? 0;
-                const promptIn = result.value.timings?.prompt_n ?? 0;
-                const tokensIn = cacheIn + promptIn;
-
-                (res.locals.llama as middleware.LlamaStatus).usage = {
-                    tps: tps ?? 0,
-                    inputTokens: tokensIn ?? 0,
-                    outputTokens: tokensOut ?? 0,
-                }
-
-                res.end();
-            } else {
-                next(result.value);
-            }
-        });
-    } catch (err: any) {
-        return next(err);
-    }
 });
 
 /* -------------------- ERROR HANDLING AND SHUTDOWN -------------------- */

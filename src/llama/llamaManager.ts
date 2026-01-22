@@ -59,9 +59,6 @@ type PendingJob = {
 }
 
 type LlamaRequest = {
-    originalURL: string,
-    headers: IncomingHttpHeaders,
-    method: string,
     body: proto.CompletionRequest,
     signal: AbortSignal,
 };
@@ -263,25 +260,8 @@ export class LlamaManager {
     async #send(llama: Llama, req: LlamaRequest): Promise<LlamaResponse> {
         if (!llama.active) throw new Error(`LlamaManager.#send: llama not active`);
 
-        // Serialize request body back into buffer form
-        const bodyRaw = Buffer.from(JSON.stringify(req.body), 'utf8');
-
-        // Convert IncomingHttpHeaders to HeadersInit
-        const llamaURL = this.llamaServerURL + req.originalURL;
-        const headers: HeadersInit = {};
-        for (const [key, value] of Object.entries(req.headers)) {
-            if (typeof value === 'string') headers[key] = value;
-            else if (Array.isArray(value)) headers[key] = value.join(', ');
-        }
-
-        // ensure Host header matches target and construct request
-        headers["host"] = this.llamaServerURL;
-        const init: RequestInit = {
-            method: req.method,
-            headers,
-            body: !(req.method === 'GET' || req.method === 'HEAD') ? bodyRaw : null,
-            signal: req.signal,
-        };
+        // TODO - hardcoded completions
+        const llamaURL = this.llamaServerURL + '/v1/chat/completions';
 
         // Increment active requests, preventing calls to `prepareModel` until this request is processed
         // Note: this does NOT prevent direct calls to `stopServer` or `forceStopServer`, as we don't want
@@ -303,12 +283,15 @@ export class LlamaManager {
 
         llama.active.proc.once('exit', prematureExit);
 
-        // Send request to `llama-server` and throw if we're unhappy
-        let response: Response;
-        let contentType: string | null;
         try {
-            response = await fetch(llamaURL, init);
-            contentType = response.headers.get('content-type');
+            const response = await fetch(llamaURL, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(req.body),
+                signal: req.signal,
+            });
+
+            const contentType: string | null = response.headers.get('content-type');
 
             if (!response.ok) {
                 const errText = await response.text();
@@ -318,38 +301,43 @@ export class LlamaManager {
             } else if (contentType === null) {
                 throw new Error(`llama-server did not return expected header: content-type`);
             }
+
+            const expectSSE = contentType.includes('text/event-stream');
+            stream = new LlamaStream(
+                response.body,
+                expectSSE,
+                req.signal,
+            );
+
+            stream.once('stop', () => {
+                if (llama.active) {
+                    // console.log(`ending request to ${chalk.dim.magenta(llama.model.name)} (${llama.active!.requests} active requests)`);
+                    llama.active.requests--;
+                    llama.active.proc.removeListener('exit', prematureExit);
+                }
+
+                const activeRequests = llama.active?.requests ?? 0;
+                if (activeRequests === 0 && this.waitingLlamas.length !== 0) {
+                    const waitingLlama = this.waitingLlamas.shift()!;
+                    const nextLlama = this.llamas.get(waitingLlama)
+                        ?? (() => { throw new Error(`LlamaManager.#send: nextLlama not found: ${waitingLlama}`) })();
+                    console.log(chalk.dim(
+                        ` -> switching to next llama: ${chalk.magenta(nextLlama)} (${nextLlama.pending.length} pending requests)`
+                    ));
+
+                    this.#swap(nextLlama);
+                }
+            });
+
+            return {
+                status: response.status,
+                headers: response.headers,
+                stream: stream,
+            };
         } catch (err: any) {
             llama.active.requests--;
             throw new Error(err);
         }
-
-        // Create a PassThrough stream we can listen to to know when the request is done
-        stream = new LlamaStream(response.body, contentType, req.signal);
-        stream.once('stop', () => {
-            if (llama.active) {
-                // console.log(`ending request to ${chalk.dim.magenta(llama.model.name)} (${llama.active!.requests} active requests)`);
-                llama.active.requests--;
-                llama.active.proc.removeListener('exit', prematureExit);
-            }
-
-            const activeRequests = llama.active?.requests ?? 0;
-            if (activeRequests === 0 && this.waitingLlamas.length !== 0) {
-                const waitingLlama = this.waitingLlamas.shift()!;
-                const nextLlama = this.llamas.get(waitingLlama)
-                    ?? (() => { throw new Error(`LlamaManager.#send: nextLlama not found: ${waitingLlama}`) })();
-                console.log(chalk.dim(
-                    ` -> switching to next llama: ${chalk.magenta(nextLlama)} (${nextLlama.pending.length} pending requests)`
-                ));
-
-                this.#swap(nextLlama);
-            }
-        });
-
-        return {
-            status: response.status,
-            headers: response.headers,
-            stream: stream,
-        };
     }
 
     #swap(newLlama: Llama) {

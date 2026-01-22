@@ -6,9 +6,13 @@
  */
 
 import { Router, type Response, type NextFunction } from 'express';
+import chalk from 'chalk';
+
+import { LlamaManager, type LlamaResponse } from '../llama/llamaManager.js';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 import { requireAuth } from './middleware.js';
+import * as proto from '../protocol.js';
 
 const router = Router();
 
@@ -24,7 +28,7 @@ const router = Router();
  * @body {Types.ChatCompletionForm} - OpenAI-compatible request with extensions
  * @returns {object} - OpenAI-compatible response (streaming or static)
  */
-router.post('/completions', requireAuth, (
+router.post('/completions', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
     res: Response<any | Types.ErrorResponse>,
     next: NextFunction
@@ -37,40 +41,80 @@ router.post('/completions', requireAuth, (
         });
     }
 
-    const formData = parsed.data;
+    console.log(`body: \n\n${JSON.stringify(parsed, null, 2)}\n\n`);
 
     // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    // const userId = MockData.MOCK_ADMIN_USER_ID;
 
-    // TODO: Verify model access control
-    // TODO: If chat_id provided, verify ownership (unless admin)
-    // TODO: Process chat_id, id, session_id for async handling
-    // TODO: Call actual LLM completion via LlamaManager
+    // TODO - keeping tools out of the equation for now
+    // const request: proto.CompletionRequest = await tools.beforeRequest(req.body);
+    const ctrl = new AbortController();
 
-    // Mock response - return a simple completion
-    const mockResponse = {
-        id: 'chatcmpl-mock123',
-        object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000),
-        model: formData.model,
-        choices: [
-            {
-                index: 0,
-                message: {
-                    role: 'assistant',
-                    content: 'This is a mock response. The real implementation will call LlamaManager.'
-                },
-                finish_reason: 'stop'
+    req.once('aborted', () => {
+        console.log(chalk.dim.yellow(`client aborted request`));
+        ctrl.abort();
+    });
+
+    res.once('close', () => ctrl.abort());
+
+    try {
+        const llama = req.app.locals.llama as LlamaManager;
+
+        // Forward request to llama-server
+        const response: LlamaResponse = await llama.completions({
+            body: parsed.data,
+            signal: ctrl.signal,
+        });
+
+        const stream = response.stream;
+
+        // Once we have data back from llama-server, we can begin streaming it to the client
+        stream.once('readable', () => {
+            // Copy headers and status for client once we have confirmation we're getting data
+            response.headers.forEach((v, k) => res.setHeader(k, v));
+            res.status(response.status);
+
+            stream.pipe(res);
+        });
+
+        // This listener is triggered when llama-server is done streaming, or when the
+        // stream is cancelled prematurely due to:
+        // - client disconnects
+        // - llama-server errors
+        stream.once('stop', (result: proto.Result<proto.CompletionResponse, Error>) => {
+            // logger?.logs.push({
+            //     request: req.body,
+            //     response: result.ok ? result.value : result.value.message
+            // });
+
+            console.log(`stream stopped. result: ${result.ok}`);
+
+            // On success, end response and track stats for logs
+            if (result.ok) {
+                const tps = result.value.timings?.predicted_per_second;
+                const tokensOut = result.value.timings?.predicted_n;
+                const cacheIn = result.value.timings?.cache_n ?? 0;
+                const promptIn = result.value.timings?.prompt_n ?? 0;
+                const tokensIn = cacheIn + promptIn;
+
+                console.log(` - result: ${JSON.stringify(result.value, null, 2)}`);
+
+                // (res.locals.llama as middleware.LlamaStatus).usage = {
+                //     tps: tps ?? 0,
+                //     inputTokens: tokensIn ?? 0,
+                //     outputTokens: tokensOut ?? 0,
+                // }
+
+                res.end();
+            } else {
+                console.log(` - error: ${JSON.stringify(result.value, null, 2)}`);
+
+                next(result.value);
             }
-        ],
-        usage: {
-            prompt_tokens: 10,
-            completion_tokens: 15,
-            total_tokens: 25
-        }
-    };
-
-    res.json(mockResponse);
+        });
+    } catch (err: any) {
+        return next(err);
+    }
 });
 
 export default router;

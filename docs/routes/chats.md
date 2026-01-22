@@ -953,13 +953,13 @@ Form data for chat completion API - OpenAI-compatible with OpenWebUI extensions.
     parent_message?: object          // Full parent message object with files, etc.
     session_id?: string              // Session ID for async processing (requires chat_id + id)
     tool_ids?: string[]              // Tool IDs to enable for this completion
-    tool_servers?: object            // Tool server configurations
+    tool_servers?: array             // Tool server configurations
     files?: array                    // File attachments (with id, type, url, etc.)
     filter_ids?: string[]            // Filter IDs to apply
     features?: object                // Feature flags for completion behavior
     variables?: object               // Template variables for prompt substitution
     model_item?: {                   // Direct model configuration (bypasses model registry)
-        direct: boolean              // Whether this is a direct model
+        direct?: boolean             // Whether this is a direct model
         [key: string]: any           // Additional model configuration
     }
     background_tasks?: any           // Background task reference (internal use)

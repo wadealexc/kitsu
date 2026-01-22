@@ -15,7 +15,7 @@ export default class LlamaStream extends PassThrough {
 
     private chunks: Buffer<any>[] = [];
 
-    constructor(stream: NodeJS.ReadableStream, contentType: string, signal: AbortSignal) {
+    constructor(stream: NodeJS.ReadableStream, expectSSE: boolean, signal: AbortSignal) {
         super({ signal: signal });
 
         super.on('data', chunk => this.chunks.push(Buffer.from(chunk)));
@@ -31,7 +31,7 @@ export default class LlamaStream extends PassThrough {
             const responseString = Buffer.concat(this.chunks).toString('utf8');
 
             // Handle streamed vs static response
-            const result: proto.Result<proto.CompletionResponse, Error> = contentType.includes('text/event-stream')
+            const result: proto.Result<proto.CompletionResponse, Error> = expectSSE
                 ? handleStreamedResponse(responseString)
                 : handleStaticResponse(responseString);
 

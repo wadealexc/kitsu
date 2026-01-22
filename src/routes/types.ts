@@ -677,13 +677,13 @@ export const ChatCompletionFormSchema = z.object({
     parent_message: z.record(z.string(), z.any()).optional(),
     session_id: z.string().optional(),
     tool_ids: z.array(z.string()).optional(),
-    tool_servers: z.record(z.string(), z.any()).optional(),
+    tool_servers: z.array(z.any()).optional(),
     files: z.array(z.any()).optional(),
     filter_ids: z.array(z.string()).optional(),
     features: z.record(z.string(), z.any()).optional(),
     variables: z.record(z.string(), z.any()).optional(),
     model_item: z.object({
-        direct: z.boolean(),
+        // direct: z.boolean().optional(),
     }).passthrough().optional(),
     background_tasks: z.any().optional(),
     params: z.object({
