@@ -22,6 +22,9 @@ Returns empty array `[]` - Tags system not implemented
 ### GET `/api/v1/chats/pinned`
 Returns empty array `[]` - Pinned chats feature not implemented
 
+### GET `/api/v1/models/model/profile/image`
+Returns 'mock profile image'
+
 ---
 
 ## GET `/api/config`
