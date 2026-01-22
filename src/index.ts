@@ -82,7 +82,7 @@ const llama = new LlamaManager({
     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
     models: cfg.models,
 });
-await llama.startDefault();
+// await llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */
 
@@ -106,6 +106,11 @@ app.get('/api/v1/chats/all/tags', (_req, res) => {
 
 app.get('/api/v1/chats/pinned', (_req, res) => {
     res.json([]);
+});
+
+app.get('/api/v1/models/model/profile/image', (_req, res) => {
+    res.setHeader('Content-Type', 'image/png');
+    return res.status(200).send(Buffer.from('mock-default-user-image'));
 });
 
 app.use('/api/v1/auths', authsRouter);

@@ -269,8 +269,6 @@ export class LlamaManager {
         llama.active.requests++;
         llama.active.sleepTimer.reset();
 
-        // console.log(`starting request to ${chalk.dim.magenta(llama.model.name)} (${llama.active.requests} active requests)`);
-
         let stream: LlamaStream | null = null;
 
         // When running close to context window limit, a prompt will sometimes crash
@@ -311,7 +309,6 @@ export class LlamaManager {
 
             stream.once('stop', () => {
                 if (llama.active) {
-                    // console.log(`ending request to ${chalk.dim.magenta(llama.model.name)} (${llama.active!.requests} active requests)`);
                     llama.active.requests--;
                     llama.active.proc.removeListener('exit', prematureExit);
                 }
