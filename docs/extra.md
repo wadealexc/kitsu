@@ -46,11 +46,11 @@ Response (200): [`BackendConfig`](#backendconfig)
 ### Notes
 
 - _Reference Implementation:_
-  - File: `/home/fox/open-webui/backend/open_webui/main.py:1878-2047`
+  - File: `/open-webui/backend/open_webui/main.py:1878-2047`
   - Method: `get_app_config()`
-  - Frontend Type: `/home/fox/open-webui/src/lib/stores/index.ts:255-291` (type Config)
-  - Frontend API Call: `/home/fox/open-webui/src/lib/apis/index.ts:1355-1380` (getBackendConfig)
-  - Frontend Usage: `/home/fox/open-webui/src/routes/+layout.svelte:746` (loads on app initialization)
+  - Frontend Type: `/open-webui/src/lib/stores/index.ts:255-291` (type Config)
+  - Frontend API Call: `/open-webui/src/lib/apis/index.ts:1355-1380` (getBackendConfig)
+  - Frontend Usage: `/open-webui/src/routes/+layout.svelte:746` (loads on app initialization)
 
 - _Security:_
   - Public endpoint - no authentication required for basic config
@@ -83,8 +83,8 @@ Response (200): [`BackendConfig`](#backendconfig)
 Backend configuration object. Structure varies based on authentication status.
 
 **Source:**
-- Backend: `/home/fox/open-webui/backend/open_webui/main.py:1910-2047` (return statement)
-- Frontend Type: `/home/fox/open-webui/src/lib/stores/index.ts:255-291`
+- Backend: `/open-webui/backend/open_webui/main.py:1910-2047` (return statement)
+- Frontend Type: `/open-webui/src/lib/stores/index.ts:255-291`
 
 **Base fields (always present):**
 ```typescript
@@ -211,8 +211,8 @@ Backend configuration object. Structure varies based on authentication status.
 Default prompt suggestion for UI.
 
 **Source:**
-- Frontend Type: `/home/fox/open-webui/src/lib/stores/index.ts:293-296`
-- Backend Usage: `/home/fox/open-webui/backend/open_webui/main.py:1971` (default_prompt_suggestions)
+- Frontend Type: `open-webui/src/lib/stores/index.ts:293-296`
+- Backend Usage: `open-webui/backend/open_webui/main.py:1971` (default_prompt_suggestions)
 
 ```typescript
 {
@@ -228,6 +228,149 @@ Default prompt suggestion for UI.
     "title": ["Fun", "Tell me a joke"]
 }
 ```
+
+### `UserSettings`
+
+User settings object stored in `user.settings` column as JSON. Flexible structure with intentionally minimal schema to allow dynamic properties.
+
+**Source:**
+- Backend Model: `open-webui/backend/open_webui/models/users.py:40-43` (UserSettings Pydantic model with `extra="allow"`)
+- Backend Column: `open-webui/backend/open_webui/models/users.py:70` (SQLAlchemy JSON column)
+- Frontend Type: `open-webui/src/lib/stores/index.ts:155-217` (Settings type definition)
+- Backend API - Get: `open-webui/backend/open_webui/routers/users.py:272-285` (`GET /users/user/settings`)
+- Backend API - Update: `open-webui/backend/open_webui/routers/users.py:297-326` (`POST /users/user/settings/update`)
+- Frontend API: `open-webui/src/lib/apis/users/index.ts:247-301` (getUserSettings, updateUserSettings)
+
+**Structure:**
+```typescript
+{
+    // UI settings (60+ display, behavior, and preference properties)
+    ui?: {
+        // Notifications
+        notifications?: {
+            webhook_url?: string;  // Webhook URL for user notifications
+        };
+
+        // Tool configuration
+        toolServers?: string[];    // Allowed tool server URLs (admin permission required)
+
+        // Display settings
+        detectArtifacts?: boolean;
+        showUpdateToast?: boolean;
+        showChangelog?: boolean;
+        chatBubble?: boolean;
+        highContrastMode?: boolean;
+        textScale?: number;
+        chatDirection?: 'LTR' | 'RTL' | 'auto';
+        widescreenMode?: null;
+        backgroundImageUrl?: null;
+        landingPageMode?: string;
+        showUsername?: boolean;
+        showChatTitleInTab?: boolean;
+
+        // Model configuration
+        pinnedModels?: string[];   // Pinned model IDs
+        models?: string[];          // Available model IDs
+
+        // Chat parameters
+        system?: string;            // Default system prompt
+        temperature?: string;       // Default temperature
+        seed?: number;              // Random seed
+        repeat_penalty?: string;
+        top_k?: string;
+        top_p?: string;
+        num_ctx?: string;           // Context window size
+        num_batch?: string;
+        num_keep?: string;
+        params?: {
+            stop?: string[];        // Stop sequences
+        };
+
+        // Feature toggles
+        memory?: boolean;           // Conversation memory
+        autoTags?: boolean;         // Automatic tagging
+        autoFollowUps?: boolean;    // Auto-generate follow-up questions
+        webSearch?: any;            // Web search settings
+        userLocation?: any;         // User geolocation for {{USER_LOCATION}} template
+
+        // Audio settings
+        audio?: {
+            stt?: any;              // Speech-to-text settings
+            tts?: {
+                engine?: string;
+                playbackRate?: number;
+                nonLocalVoices?: boolean;
+                engineConfig?: {
+                    dtype?: string;
+                };
+            };
+            STTEngine?: string;
+            TTSEngine?: string;
+            speaker?: string;
+            model?: string;
+        };
+
+        // Title generation
+        title?: {
+            auto?: boolean;         // Auto-generate chat titles
+            model?: string;         // Model for title generation
+            modelExternal?: string;
+            prompt?: string;        // Custom title generation prompt
+        };
+
+        // Additional UI properties (60+ total in OWUI)
+        // Full list includes: collapseCodeBlocks, expandDetails, notificationSound,
+        // stylizedPdfExport, imageCompression, promptAutocomplete, hapticFeedback,
+        // richTextInput, scrollOnBranchChange, copyFormatted, ctrlEnterToSend,
+        // floatingActionButtons, voiceInterruption, conversationMode, etc.
+        [key: string]: any;
+    };
+
+    // Function valves (user-specific function configurations)
+    functions?: {
+        valves?: {
+            [functionId: string]: any;  // Per-function configuration
+        };
+    };
+
+    // Tool valves (user-specific tool configurations)
+    tools?: {
+        valves?: {
+            [toolId: string]: any;      // Per-tool configuration
+        };
+    };
+
+    // Allow additional properties (matches backend ConfigDict(extra="allow"))
+    [key: string]: any;
+}
+```
+
+**Key Usage Examples:**
+
+1. **Webhook Notifications**
+   - Backend: `open-webui/backend/open_webui/models/users.py:501-517` (get_user_webhook_url_by_id)
+   - Frontend: `open-webui/src/lib/components/chat/Settings/Account.svelte:52-58`
+   - Used in: `open-webui/backend/open_webui/routers/channels.py:945-960` (send_notification)
+
+2. **Tool Server Configuration**
+   - Permission check: `open-webui/backend/open_webui/routers/users.py:309-316`
+   - Requires `features.direct_tool_servers` permission for non-admin users
+   - Stripped from updates if user lacks permission
+
+3. **Function/Tool Valves**
+   - Functions: `open-webui/backend/open_webui/models/functions.py:331-365`
+   - Tools: `open-webui/backend/open_webui/models/tools.py:222-257`
+   - User-specific configuration storage for functions and tools
+
+4. **Settings Modal**
+   - Frontend: `open-webui/src/lib/components/chat/SettingsModal.svelte:531-536`
+   - Saves settings via `updateUserSettings(token, { ui: $settings })`
+
+**Notes:**
+- Flexible schema allows frontend to add new settings without backend changes
+- Backend enforces permission controls on specific properties (e.g., `toolServers`)
+- Stored as JSON in database, validated via Pydantic on backend
+- Frontend stores settings in Svelte store and syncs to backend
 
 ---
 

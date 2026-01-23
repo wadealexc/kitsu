@@ -1,1 +1,58 @@
-// TODO
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+
+/* -------------------- USER TABLE -------------------- */
+
+export type UserRole = 'admin' | 'user' | 'pending';
+export const DEFAULT_USER_ROLE: UserRole = 'pending';
+
+export type UserSettings = {
+    ui?: Record<string, any>;
+    // TODO: See /docs/extra.md for full UserSettings specification with source locations
+};
+
+export const users = sqliteTable('user', {
+    // Identity
+    id: text('id').primaryKey().notNull(),
+    username: text('username').notNull().unique(),
+    role: text('role').notNull().default(DEFAULT_USER_ROLE),
+
+    // Profile
+    profileImageUrl: text('profile_image_url').notNull().default('/user.png'),
+    profileBannerImageUrl: text('profile_banner_image_url'),
+
+    // Settings & Metadata (JSON)
+    info: text('info', { mode: 'json' }).$type<Record<string, any>>(),
+    settings: text('settings', { mode: 'json' }).$type<UserSettings>(),
+
+    // Timestamps (unix seconds)
+    lastActiveAt: integer('last_active_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+}, (table) => [
+    uniqueIndex('idx_user_username').on(table.username),
+    index('idx_user_role').on(table.role),
+    index('idx_user_last_active_at').on(table.lastActiveAt),
+    index('idx_user_created_at').on(table.createdAt),
+]);
+
+/* -------------------- AUTH TABLE -------------------- */
+
+export const auths = sqliteTable('auth', {
+    id: text('id')
+        .primaryKey()
+        .notNull()
+        .references(() => users.id, { onDelete: 'cascade' }),
+    username: text('username').notNull().unique(),
+    password: text('password').notNull(),
+}, (table) => [
+    uniqueIndex('idx_auth_username').on(table.username),
+]);
+
+/* -------------------- TYPE EXPORTS -------------------- */
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+export type Auth = typeof auths.$inferSelect;
+export type NewAuth = typeof auths.$inferInsert;
+
