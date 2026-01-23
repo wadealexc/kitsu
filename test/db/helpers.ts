@@ -1,43 +1,58 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+
+import * as Users from '../../src/db/operations/users.js';
+import * as Auths from '../../src/db/operations/auths.js';
 import * as schema from '../../src/db/schema.js';
 
 /**
  * Creates an in-memory SQLite database with the full schema applied.
  * Each test file should create its own database for isolation.
+ *
+ * Uses Drizzle's migrate() to apply migration files from ./drizzle folder,
+ * ensuring tests stay in sync with src/db/schema.ts.
+ *
+ * Migration files are generated via: npm run db:generate
  */
 export function createTestDatabase() {
     const sqlite = new Database(':memory:');
     const db = drizzle(sqlite, { schema });
 
-    // Apply schema: Create tables with indexes
-    sqlite.exec(`
-        CREATE TABLE user (
-            id TEXT PRIMARY KEY NOT NULL,
-            username TEXT NOT NULL UNIQUE,
-            role TEXT NOT NULL DEFAULT 'pending',
-            profile_image_url TEXT NOT NULL DEFAULT '/user.png',
-            profile_banner_image_url TEXT,
-            info TEXT,
-            settings TEXT,
-            last_active_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            created_at INTEGER NOT NULL
-        );
-
-        CREATE UNIQUE INDEX idx_user_username ON user(username);
-        CREATE INDEX idx_user_role ON user(role);
-        CREATE INDEX idx_user_last_active_at ON user(last_active_at);
-        CREATE INDEX idx_user_created_at ON user(created_at);
-
-        CREATE TABLE auth (
-            id TEXT PRIMARY KEY NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-            username TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL
-        );
-
-        CREATE UNIQUE INDEX idx_auth_username ON auth(username);
-    `);
+    // Apply migrations from ./drizzle folder
+    migrate(db, { migrationsFolder: './drizzle' });
 
     return db;
+}
+
+export type TestDatabase = ReturnType<typeof createTestDatabase>;
+
+/* -------------------- TEST FIXTURES -------------------- */
+
+let userNonce = 0;
+
+const TEST_PASSWORD = 'password123';
+
+const TEST_ADMIN = newUserParams('admin');
+const TEST_USER = newUserParams();
+
+export function newUserParams(role: schema.UserRole = 'user'): Users.CreateUserParams {
+    const id = userNonce + '';
+    userNonce++;
+
+    return {
+        id: id,
+        username: `${role}-${id}`,
+        role: role,
+    }
+}
+
+// Create a new test db with a single admin user
+export async function newDBWithAdmin() {
+    const testDb = createTestDatabase();
+
+    await Users.createUser(TEST_ADMIN, testDb);
+    await Auths.createAuth(TEST_ADMIN.id, TEST_ADMIN.username, TEST_PASSWORD, testDb);
+
+    return testDb;
 }

@@ -1,6 +1,6 @@
 import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
 import { db } from '../client.js';
-import { users, DEFAULT_USER_ROLE, type User, type UserRole, type UserSettings } from '../schema.js';
+import { users, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User, type UserRole, type UserSettings } from '../schema.js';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { validateUsername } from './auths.js';
 
@@ -28,7 +28,7 @@ export type CreateUserParams = {
  * Typically combined with auth creation in a transaction.
  *
  * Required fields: id, username, role
- * Auto-generated: createdAt, updatedAt, lastActiveAt, profileImageUrl (defaults to '/user.png')
+ * Auto-generated: createdAt, updatedAt, lastActiveAt
  */
 export async function createUser(
     data: CreateUserParams,
@@ -47,7 +47,7 @@ export async function createUser(
             createdAt: now,
             updatedAt: now,
             lastActiveAt: now,
-            profileImageUrl: data.profileImageUrl ?? '/user.png',
+            profileImageUrl: data.profileImageUrl ?? DEFAULT_USER_IMAGE,
         })
         .returning();
 

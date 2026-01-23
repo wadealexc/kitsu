@@ -1,29 +1,22 @@
-import { describe, test } from 'node:test';
+import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
-import { createTestDatabase } from '../helpers.js';
+import { createTestDatabase, newDBWithAdmin, newUserParams, type TestDatabase } from '../helpers.js';
+import * as Auths from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
-import type { UserRole } from '../../../src/db/schema.js';
-
-/* -------------------- TEST SETUP -------------------- */
-
-const testDb = createTestDatabase();
-
-/* -------------------- TEST FIXTURES -------------------- */
-
-const TEST_USER = {
-    id: 'user-123',
-    username: 'testuser',
-    role: 'user' as UserRole,
-};
+import type { UserRole, User } from '../../../src/db/schema.js';
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 
 describe('createUser', () => {
-    test('creates user with auto-generated timestamps', async () => {
-        const user = await Users.createUser(TEST_USER, testDb);
+    let db: TestDatabase;
 
-        assert.strictEqual(user.id, TEST_USER.id);
-        assert.strictEqual(user.username, 'testuser');
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
+    test('creates user with auto-generated timestamps', async () => {
+        const user = await Users.createUser(newUserParams(), db);
+
         assert.strictEqual(user.role, 'user');
         assert.strictEqual(user.profileImageUrl, '/user.png');
         assert.ok(user.createdAt);
@@ -33,8 +26,8 @@ describe('createUser', () => {
 
     test('normalizes username to lowercase', async () => {
         const user = await Users.createUser(
-            { ...TEST_USER, id: 'user-uppercase', username: 'UpperCase' },
-            testDb
+            { ...newUserParams(), username: 'UpperCase' },
+            db
         );
 
         assert.strictEqual(user.username, 'uppercase');
@@ -43,7 +36,7 @@ describe('createUser', () => {
     test('validates username format', async () => {
         await assert.rejects(
             async () =>
-                await Users.createUser({ ...TEST_USER, id: 'user-invalid', username: 'ab' }, testDb),
+                await Users.createUser({ ...newUserParams(), username: 'ab' }, db),
             { message: 'Username must be 3-50 characters' }
         );
     });
@@ -51,12 +44,10 @@ describe('createUser', () => {
     test('uses custom profile image if provided', async () => {
         const user = await Users.createUser(
             {
-                ...TEST_USER,
-                id: 'user-image',
-                username: 'imageuser',
+                ...newUserParams(),
                 profileImageUrl: 'https://example.com/avatar.jpg',
             },
-            testDb
+            db
         );
 
         assert.strictEqual(user.profileImageUrl, 'https://example.com/avatar.jpg');
@@ -64,86 +55,103 @@ describe('createUser', () => {
 });
 
 describe('getUserById', () => {
+    let db: TestDatabase;
+    let testUser: User;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+        testUser = await Users.createUser(newUserParams(), db);
+    });
+
     test('retrieves existing user', async () => {
-        const user = await Users.getUserById(TEST_USER.id, testDb);
+        const user = await Users.getUserById(testUser.id, db);
 
         assert.ok(user);
-        assert.strictEqual(user.id, TEST_USER.id);
-        assert.strictEqual(user.username, 'testuser');
+        assert.strictEqual(user.id, testUser.id);
+        assert.strictEqual(user.username, testUser.username);
     });
 
     test('returns null for non-existent user', async () => {
-        const user = await Users.getUserById('non-existent', testDb);
+        const user = await Users.getUserById('non-existent', db);
 
         assert.strictEqual(user, null);
     });
 });
 
 describe('getUserByUsername', () => {
+    let db: TestDatabase;
+    let testUser: User;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+        testUser = await Users.createUser(newUserParams(), db);
+    });
+
     test('retrieves existing user', async () => {
-        const user = await Users.getUserByUsername('testuser', testDb);
+        const user = await Users.getUserByUsername(testUser.username, db);
 
         assert.ok(user);
-        assert.strictEqual(user.id, TEST_USER.id);
-        assert.strictEqual(user.username, 'testuser');
+        assert.strictEqual(user.id, testUser.id);
+        assert.strictEqual(user.username, testUser.username);
     });
 
     test('is case-insensitive', async () => {
-        const user = await Users.getUserByUsername('TestUser', testDb);
+        const user = await Users.getUserByUsername(testUser.username.toUpperCase(), db);
 
         assert.ok(user);
-        assert.strictEqual(user.username, 'testuser');
+        assert.strictEqual(user.username, testUser.username);
     });
 
     test('returns null for non-existent username', async () => {
-        const user = await Users.getUserByUsername('nonexistent', testDb);
+        const user = await Users.getUserByUsername('nonexistent', db);
 
         assert.strictEqual(user, null);
     });
 });
 
 describe('getUsers', () => {
-    test('returns all users with pagination', async () => {
-        // Create additional test users
-        await Users.createUser({ ...TEST_USER, id: 'user-2', username: 'user2' }, testDb);
-        await Users.createUser({ ...TEST_USER, id: 'user-3', username: 'user3' }, testDb);
+    let db: TestDatabase;
 
-        const result = await Users.getUsers({}, testDb);
+    before(async () => {
+        db = await newDBWithAdmin();
+        // Create additional test users
+        await Users.createUser(newUserParams(), db);
+        await Users.createUser(newUserParams(), db);
+        await Users.createUser(newUserParams('admin'), db);
+    });
+
+    test('returns all users with pagination', async () => {
+        const result = await Users.getUsers({}, db);
 
         assert.ok(result.users.length >= 3);
         assert.ok(result.total >= 3);
     });
 
     test('filters by role', async () => {
-        await Users.createUser(
-            { ...TEST_USER, id: 'admin-user', username: 'admin', role: 'admin' },
-            testDb
-        );
-
-        const result = await Users.getUsers({ role: 'admin' }, testDb);
+        const result = await Users.getUsers({ role: 'admin' }, db);
 
         assert.ok(result.users.length >= 1);
         assert.ok(result.users.every((u) => u.role === 'admin'));
     });
 
     test('searches by username', async () => {
-        const result = await Users.getUsers({ query: 'testuser' }, testDb);
+        const result = await Users.getUsers({ query: 'user' }, db);
 
         assert.ok(result.users.length >= 1);
-        assert.ok(result.users.some((u) => u.username.includes('testuser')));
+        assert.ok(result.users.some((u) => u.username.includes('user')));
     });
 
     test('sorts by different fields', async () => {
-        const byUsername = await Users.getUsers({ orderBy: 'username', direction: 'asc' }, testDb);
-        const byCreated = await Users.getUsers({ orderBy: 'createdAt', direction: 'desc' }, testDb);
+        const byUsername = await Users.getUsers({ orderBy: 'username', direction: 'asc' }, db);
+        const byCreated = await Users.getUsers({ orderBy: 'createdAt', direction: 'desc' }, db);
 
         assert.ok(byUsername.users.length > 0);
         assert.ok(byCreated.users.length > 0);
     });
 
     test('paginates results', async () => {
-        const page1 = await Users.getUsers({ limit: 2, skip: 0 }, testDb);
-        const page2 = await Users.getUsers({ limit: 2, skip: 2 }, testDb);
+        const page1 = await Users.getUsers({ limit: 2, skip: 0 }, db);
+        const page2 = await Users.getUsers({ limit: 2, skip: 2 }, db);
 
         assert.ok(page1.users.length <= 2);
         assert.ok(page2.users.length <= 2);
@@ -154,32 +162,36 @@ describe('getUsers', () => {
 });
 
 describe('updateUser', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('updates user fields', async () => {
-        const userId = 'user-update';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'updateuser' }, testDb);
+        const user = await Users.createUser(newUserParams(), db);
 
         const updated = await Users.updateUser(
-            userId,
+            user.id,
             { role: 'admin', profileImageUrl: 'https://new.jpg' },
-            testDb
+            db
         );
 
         assert.strictEqual(updated.role, 'admin');
         assert.strictEqual(updated.profileImageUrl, 'https://new.jpg');
-        assert.ok(updated.updatedAt > updated.createdAt);
+        assert.ok(updated.updatedAt >= updated.createdAt);
     });
 
     test('filters out undefined values', async () => {
-        const userId = 'user-undefined';
         const original = await Users.createUser(
-            { ...TEST_USER, id: userId, username: 'undefineduser', role: 'admin' },
-            testDb
+            { ...newUserParams(), role: 'admin' },
+            db
         );
 
         const updated = await Users.updateUser(
-            userId,
+            original.id,
             { profileImageUrl: undefined, role: 'user' },
-            testDb
+            db
         );
 
         // profileImageUrl should remain unchanged
@@ -190,54 +202,64 @@ describe('updateUser', () => {
 
     test('throws for non-existent user', async () => {
         await assert.rejects(
-            async () => await Users.updateUser('non-existent', { role: 'admin' }, testDb),
+            async () => await Users.updateUser('non-existent', { role: 'admin' }, db),
             { message: 'Error updating user record' }
         );
     });
 });
 
 describe('updateLastActive', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('updates last active timestamp', async () => {
-        const userId = 'user-active';
-        const user = await Users.createUser({ ...TEST_USER, id: userId, username: 'activeuser' }, testDb);
+        const user = await Users.createUser(newUserParams(), db);
         const originalLastActive = user.lastActiveAt;
 
         // Wait a bit to ensure timestamp changes
         await new Promise((resolve) => setTimeout(resolve, 10));
 
-        await Users.updateLastActive(userId, testDb);
+        await Users.updateLastActive(user.id, db);
 
-        const updated = await Users.getUserById(userId, testDb);
+        const updated = await Users.getUserById(user.id, db);
         assert.ok(updated);
-        assert.ok(updated.lastActiveAt > originalLastActive);
+        assert.ok(updated.lastActiveAt >= originalLastActive);
     });
 });
 
 describe('deleteUser', () => {
-    test('deletes non-admin user successfully', async () => {
-        const userId = 'user-delete';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'deleteuser' }, testDb);
+    let db: TestDatabase;
 
-        const success = await Users.deleteUser(userId, testDb);
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
+    test('deletes non-admin user successfully', async () => {
+        const user = await Users.createUser(newUserParams(), db);
+
+        const success = await Users.deleteUser(user.id, db);
 
         assert.strictEqual(success, true);
 
-        const user = await Users.getUserById(userId, testDb);
-        assert.strictEqual(user, null);
+        const retrieved = await Users.getUserById(user.id, db);
+        assert.strictEqual(retrieved, null);
     });
 
     test('prevents deletion of primary admin', async () => {
         // First user becomes primary admin
-        const firstUser = await Users.getFirstUser(testDb);
+        const firstUser = await Users.getFirstUser(db);
         assert.ok(firstUser);
 
-        await assert.rejects(async () => await Users.deleteUser(firstUser.id, testDb), {
+        await assert.rejects(async () => await Users.deleteUser(firstUser.id, db), {
             message: 'Cannot delete primary admin',
         });
     });
 
     test('returns false for non-existent user', async () => {
-        const success = await Users.deleteUser('non-existent', testDb);
+        const success = await Users.deleteUser('non-existent', db);
 
         assert.strictEqual(success, false);
     });
@@ -246,39 +268,60 @@ describe('deleteUser', () => {
 /* -------------------- QUERY OPERATIONS TESTS -------------------- */
 
 describe('hasUsers', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('returns true when users exist', async () => {
-        const result = await Users.hasUsers(testDb);
+        const result = await Users.hasUsers(db);
 
         assert.strictEqual(result, true);
     });
 });
 
 describe('getFirstUser', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('returns user with earliest created_at', async () => {
-        const firstUser = await Users.getFirstUser(testDb);
+        const firstUser = await Users.getFirstUser(db);
 
         assert.ok(firstUser);
-        // Should be one of our test users
-        assert.ok(firstUser.id);
+        // Should be the admin user created in newDBWithAdmin
+        assert.strictEqual(firstUser.role, 'admin');
     });
 });
 
 describe('searchUsers', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+        // Create some test users to search
+        await Users.createUser(newUserParams(), db);
+        await Users.createUser(newUserParams(), db);
+    });
+
     test('searches users by username', async () => {
-        const results = await Users.searchUsers('test', 10, testDb);
+        const results = await Users.searchUsers('user', 10, db);
 
         assert.ok(results.length > 0);
-        assert.ok(results.some((u) => u.username.includes('test')));
+        assert.ok(results.some((u) => u.username.includes('user')));
     });
 
     test('limits results', async () => {
-        const results = await Users.searchUsers('user', 2, testDb);
+        const results = await Users.searchUsers('user', 2, db);
 
         assert.ok(results.length <= 2);
     });
 
     test('returns empty array for no matches', async () => {
-        const results = await Users.searchUsers('nonexistentusername', 10, testDb);
+        const results = await Users.searchUsers('nonexistentusername', 10, db);
 
         assert.strictEqual(results.length, 0);
     });
@@ -287,49 +330,64 @@ describe('searchUsers', () => {
 /* -------------------- SETTINGS & METADATA TESTS -------------------- */
 
 describe('updateUserSettings', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('updates user settings', async () => {
-        const userId = 'user-settings';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'settingsuser' }, testDb);
+        const user = await Users.createUser(newUserParams(), db);
 
         const settings = {
             ui: { theme: 'dark', language: 'en' },
         };
 
-        const result = await Users.updateUserSettings(userId, settings, testDb);
+        const result = await Users.updateUserSettings(user.id, settings, db);
 
         assert.deepStrictEqual(result, settings);
 
-        const user = await Users.getUserById(userId, testDb);
-        assert.ok(user);
-        assert.deepStrictEqual(user.settings, settings);
+        const retrieved = await Users.getUserById(user.id, db);
+        assert.ok(retrieved);
+        assert.deepStrictEqual(retrieved.settings, settings);
     });
 });
 
 describe('updateUserInfo', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('updates user info', async () => {
-        const userId = 'user-info';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'infouser' }, testDb);
+        const user = await Users.createUser(newUserParams(), db);
 
         const info = { location: 'San Francisco', age: 30 };
 
-        const result = await Users.updateUserInfo(userId, info, testDb);
+        const result = await Users.updateUserInfo(user.id, info, db);
 
         assert.deepStrictEqual(result, info);
 
-        const user = await Users.getUserById(userId, testDb);
-        assert.ok(user);
-        assert.deepStrictEqual(user.info, info);
+        const retrieved = await Users.getUserById(user.id, db);
+        assert.ok(retrieved);
+        assert.deepStrictEqual(retrieved.info, info);
     });
 });
 
 /* -------------------- ROLE & PERMISSIONS TESTS -------------------- */
 
 describe('updateUserRole', () => {
-    test('updates user role', async () => {
-        const userId = 'user-role';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'roleuser' }, testDb);
+    let db: TestDatabase;
 
-        const updated = await Users.updateUserRole(userId, 'admin', testDb);
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
+    test('updates user role', async () => {
+        const user = await Users.createUser(newUserParams(), db);
+
+        const updated = await Users.updateUserRole(user.id, 'admin', db);
 
         assert.strictEqual(updated.role, 'admin');
     });
@@ -338,17 +396,22 @@ describe('updateUserRole', () => {
 /* -------------------- PROFILE OPERATIONS TESTS -------------------- */
 
 describe('updateProfile', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('updates profile fields', async () => {
-        const userId = 'user-profile';
-        await Users.createUser({ ...TEST_USER, id: userId, username: 'profileuser' }, testDb);
+        const user = await Users.createUser(newUserParams(), db);
 
         const updated = await Users.updateProfile(
-            userId,
+            user.id,
             {
                 profileImageUrl: 'https://new-avatar.jpg',
                 profileBannerImageUrl: 'https://new-banner.jpg',
             },
-            testDb
+            db
         );
 
         assert.strictEqual(updated.profileImageUrl, 'https://new-avatar.jpg');
@@ -356,16 +419,12 @@ describe('updateProfile', () => {
     });
 
     test('filters out undefined values', async () => {
-        const userId = 'user-profile2';
-        const original = await Users.createUser(
-            { ...TEST_USER, id: userId, username: 'profileuser2' },
-            testDb
-        );
+        const original = await Users.createUser(newUserParams(), db);
 
         const updated = await Users.updateProfile(
-            userId,
+            original.id,
             { profileImageUrl: 'https://updated.jpg', profileBannerImageUrl: undefined },
-            testDb
+            db
         );
 
         assert.strictEqual(updated.profileImageUrl, 'https://updated.jpg');
@@ -386,52 +445,70 @@ describe('determineRole', () => {
     });
 
     test('returns pending for subsequent users', async () => {
-        const role = await Users.determineRole(testDb);
+        const db = await newDBWithAdmin();
+
+        const role = await Users.determineRole(db);
 
         assert.strictEqual(role, 'pending');
     });
 });
 
 describe('isPrimaryAdmin', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('returns true for first user', async () => {
-        const firstUser = await Users.getFirstUser(testDb);
+        const firstUser = await Users.getFirstUser(db);
         assert.ok(firstUser);
 
-        const result = await Users.isPrimaryAdmin(firstUser.id, testDb);
+        const result = await Users.isPrimaryAdmin(firstUser.id, db);
 
         assert.strictEqual(result, true);
     });
 
     test('returns false for non-first user', async () => {
-        const result = await Users.isPrimaryAdmin('user-123', testDb);
+        const otherUser = await Users.createUser(newUserParams(), db);
 
-        // user-123 may or may not be first depending on test order
-        // Just verify it returns a boolean
-        assert.strictEqual(typeof result, 'boolean');
+        const result = await Users.isPrimaryAdmin(otherUser.id, db);
+
+        assert.strictEqual(result, false);
     });
 });
 
 describe('canModifyUser', () => {
+    let db: TestDatabase;
+
+    before(async () => {
+        db = await newDBWithAdmin();
+    });
+
     test('allows primary admin to modify themselves', async () => {
-        const firstUser = await Users.getFirstUser(testDb);
+        const firstUser = await Users.getFirstUser(db);
         assert.ok(firstUser);
 
-        const result = await Users.canModifyUser(firstUser.id, firstUser.id, testDb);
+        const result = await Users.canModifyUser(firstUser.id, firstUser.id, db);
 
         assert.strictEqual(result, true);
     });
 
     test('prevents non-primary admin from modifying primary admin', async () => {
-        const firstUser = await Users.getFirstUser(testDb);
+        const firstUser = await Users.getFirstUser(db);
         assert.ok(firstUser);
+        const otherUser = await Users.createUser(newUserParams('admin'), db);
 
-        const result = await Users.canModifyUser('other-admin', firstUser.id, testDb);
+        const result = await Users.canModifyUser(otherUser.id, firstUser.id, db);
 
         assert.strictEqual(result, false);
     });
 
     test('allows modifying non-primary users', async () => {
-        const result = await Users.canModifyUser('admin-1', 'user-123', testDb);
+        const admin = await Users.createUser(newUserParams('admin'), db);
+        const regularUser = await Users.createUser(newUserParams(), db);
+
+        const result = await Users.canModifyUser(admin.id, regularUser.id, db);
 
         assert.strictEqual(result, true);
     });

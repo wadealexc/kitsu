@@ -4,6 +4,7 @@ import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqli
 
 export type UserRole = 'admin' | 'user' | 'pending';
 export const DEFAULT_USER_ROLE: UserRole = 'pending';
+export const DEFAULT_USER_IMAGE = '/user.png';
 
 export type UserSettings = {
     ui?: Record<string, any>;
@@ -17,7 +18,7 @@ export const users = sqliteTable('user', {
     role: text('role').notNull().default(DEFAULT_USER_ROLE),
 
     // Profile
-    profileImageUrl: text('profile_image_url').notNull().default('/user.png'),
+    profileImageUrl: text('profile_image_url').notNull().default(DEFAULT_USER_IMAGE),
     profileBannerImageUrl: text('profile_banner_image_url'),
 
     // Settings & Metadata (JSON)
