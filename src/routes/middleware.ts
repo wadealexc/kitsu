@@ -1,85 +1,121 @@
-import type { Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+
+import './express.d.ts'; // Ensure Express.Request.user type is loaded
+
 import type { TypedRequest } from './types.js';
 import * as Types from './types.js';
+import * as JWT from './jwt.js';
+import * as Users from '../db/operations/users.js';
+import { db } from '../db/client.js';
 
 /* -------------------- AUTHENTICATION MIDDLEWARE -------------------- */
 
 /**
  * Middleware that requires a valid Bearer token in the Authorization header OR cookie.
- * Validates the token format.
+ * Verifies JWT signature, checks expiration, and looks up user in database.
  *
  * This dual approach is necessary because:
  * - JavaScript fetch/XHR can send Authorization headers
  * - Browser <img>, <script>, <link> tags cannot send custom headers
  * - Cookies are automatically sent by browsers for all requests
  *
- * @returns 401 if no valid token is found
+ * On success: Attaches user to req.user and updates lastActiveAt
+ * On failure: Clears token cookie and returns 401
+ *
+ * @returns 401 if authentication fails
  */
-export const requireAuth = <P = {}, B = any, Q = any>(
+export const requireAuth = async <P = {}, B = any, Q = any>(
     req: TypedRequest<P, B, Q>,
     res: Response,
     next: NextFunction
-): void => {
-    let token: string | undefined;
+): Promise<void> => {
+    try {
+        const token = JWT.extractToken(req as Request);
+        if (!token) {
+            res.status(401).json({ detail: 'Not authenticated' });
+            return;
+        }
 
-    // Check Authorization header first
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-        token = authHeader.substring(7); // Remove "Bearer " prefix
+        // Verify token signature and expiration (throws if invalid)
+        const decoded = JWT.verifyToken(token);
+
+        // Fetch user from database
+        const user = await Users.getUserById(decoded.id, db);
+        if (!user) {
+            JWT.clearTokenCookie(res);
+            res.status(401).json({ detail: 'User not found' });
+            return;
+        }
+
+        // Attach user to request
+        req.user = user;
+
+        // Update last active (async, don't wait)
+        Users.updateLastActive(user.id, db).catch((err) => {
+            console.error('Failed to update last active:', err);
+        });
+
+        next();
+    } catch (error) {
+        console.error('Authentication error:', error);
+        JWT.clearTokenCookie(res);
+        res.status(401).json({ detail: 'Authentication failed' });
     }
-
-    // Fallback to cookie if no Authorization header
-    if (!token && req.cookies?.token) {
-        token = req.cookies.token;
-    }
-
-    if (!token) {
-        res.status(401).json({ detail: 'Missing or invalid authorization' });
-        return;
-    }
-
-    // TODO: Verify JWT token signature and expiration
-    // TODO: Extract user info from JWT payload (id, email, role)
-    // TODO: Look up user in database to ensure they still exist and are active
-
-    next();
 };
 
 /**
  * Middleware that requires a valid Bearer token (header or cookie) AND admin role.
- * First validates authentication, then checks if user has admin role.
+ * Performs authentication (via requireAuth) then checks for admin role.
  *
- * @returns 401 if authentication fails
+ * @returns 401 if not authenticated
  * @returns 403 if user is not an admin
  */
-export const requireAdmin = <P = {}, B = any, Q = any>(
+export const requireAdmin = async <P = {}, B = any, Q = any>(
     req: TypedRequest<P, B, Q>,
     res: Response,
     next: NextFunction
-): void => {
-    let token: string | undefined;
+): Promise<void> => {
+    // First authenticate the user
+    await requireAuth(req, res, () => {
+        if (!req.user) {
+            res.status(401).json({ detail: 'Not authenticated' });
+            return;
+        }
 
-    // Check Authorization header first
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-        token = authHeader.substring(7); // Remove "Bearer " prefix
-    }
+        if (req.user.role !== 'admin') {
+            res.status(403).json({ detail: 'Admin access required' });
+            return;
+        }
 
-    // Fallback to cookie if no Authorization header
-    if (!token && req.cookies?.token) {
-        token = req.cookies.token;
-    }
+        next();
+    });
+};
 
-    if (!token) {
-        res.status(401).json({ detail: 'Missing or invalid authorization' });
-        return;
-    }
+/**
+ * Middleware that requires a verified user (admin or user role, not pending).
+ * Should be chained after requireAuth middleware.
+ *
+ * @returns 401 if not authenticated
+ * @returns 403 if user is pending verification
+ */
+export const requireVerified = async <P = {}, B = any, Q = any>(
+    req: TypedRequest<P, B, Q>,
+    res: Response,
+    next: NextFunction
+): Promise<void> => {
+    await requireAuth(req, res, () => {
+        if (!req.user) {
+            res.status(401).json({ detail: 'Not authenticated' });
+            return;
+        }
 
-    // TODO: Verify JWT token signature and expiration
-    // TODO: Extract user info from JWT payload (id, email, role)
-    // TODO: Check if user has admin role (for now, mock allows all)
+        if (req.user.role === 'pending') {
+            res.status(403).json({ detail: 'Account pending verification' });
+            return;
+        }
 
-    next();
+        next();
+    });
 };
 
 /* -------------------- PARAMETER VALIDATION MIDDLEWARE -------------------- */

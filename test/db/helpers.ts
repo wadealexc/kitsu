@@ -31,10 +31,9 @@ export type TestDatabase = ReturnType<typeof createTestDatabase>;
 
 let userNonce = 0;
 
-const TEST_PASSWORD = 'password123';
+export const TEST_PASSWORD = 'password123';
 
 const TEST_ADMIN = newUserParams('admin');
-const TEST_USER = newUserParams();
 
 export function newUserParams(role: schema.UserRole = 'user'): Users.CreateUserParams {
     const id = userNonce + '';
