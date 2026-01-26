@@ -15,7 +15,7 @@ export const users = sqliteTable('user', {
     // Identity
     id: text('id').primaryKey().notNull(),
     username: text('username').notNull().unique(),
-    role: text('role').notNull().default(DEFAULT_USER_ROLE),
+    role: text('role').$type<UserRole>().notNull().default(DEFAULT_USER_ROLE),
 
     // Profile
     profileImageUrl: text('profile_image_url').notNull().default(DEFAULT_USER_IMAGE),
