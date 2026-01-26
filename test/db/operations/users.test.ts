@@ -156,7 +156,7 @@ describe('getUsers', () => {
         assert.ok(page1.users.length <= 2);
         assert.ok(page2.users.length <= 2);
         if (page1.users.length > 0 && page2.users.length > 0) {
-            assert.notStrictEqual(page1.users[0].id, page2.users[0].id);
+            assert.notStrictEqual(page1.users[0]!.id, page2.users[0]!.id);
         }
     });
 });

@@ -8,7 +8,7 @@
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import type { Request, Response, CookieOptions } from 'express';
-import type { StringValue } from 'ms';
+import { type StringValue } from 'ms';
 
 /* -------------------- TYPES -------------------- */
 
@@ -42,7 +42,7 @@ if (!process.env.WEBUI_SECRET_KEY) {
  */
 export function createToken(
     userId: string,
-    expiresIn: StringValue | number = '4w'
+    expiresIn: StringValue = '7d'
 ): string {
     const payload: JWTPayload = {
         id: userId,
@@ -54,7 +54,7 @@ export function createToken(
     };
 
     // Handle special expiration values
-    if (expiresIn === '-1' || expiresIn === '0') {
+    if (expiresIn === '-1') {
         // Permanent token (no expiration)
         // Security warning: should be avoided in production
         console.warn('WARNING: Creating permanent JWT token (no expiration)');

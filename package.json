@@ -2,12 +2,12 @@
   "name": "llama-shim",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "scratch": "tsx src/scratch.ts",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "test": "tsx --test 'test/**/*.test.ts'",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -39,6 +39,7 @@
     "drizzle-orm": "^0.45.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.3",
+    "ms": "^2.1.3",
     "node-fetch": "^3.3.2",
     "puppeteer": "^24.30.0",
     "sharp": "^0.34.5",

@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { type Request } from 'express';
+import parse, { type StringValue } from 'ms';
 
 /* -------------------- HELPER TYPES -------------------- */
 
@@ -179,6 +180,19 @@ export const SigninResponseSchema = z.object({
 export type SigninResponse = z.infer<typeof SigninResponseSchema>;
 
 // Admin config
+const MsStringValueSchema = z.custom<StringValue>((v) => {
+  if (v === '-1') return true;
+
+  try {
+    const n = parse(v as StringValue);
+    return typeof n === "number" && Number.isFinite(n);
+  } catch {
+    return false;
+  }
+}, {
+  message: 'Must be a valid ms time string (e.g. "1d", "2h", "30m", "2 days", "1 mo")',
+});
+
 export const AdminConfigSchema = z.object({
     SHOW_ADMIN_DETAILS: z.boolean(),
     ADMIN_EMAIL: z.string().nullable().optional(),
@@ -189,7 +203,7 @@ export const AdminConfigSchema = z.object({
     API_KEYS_ALLOWED_ENDPOINTS: z.string(),
     DEFAULT_USER_ROLE: z.enum(['pending', 'user', 'admin']),
     DEFAULT_GROUP_ID: z.string(),
-    JWT_EXPIRES_IN: z.string().regex(/^(-1|0|(-?\d+(\.\d+)?)(ms|s|m|h|d|w))$/),
+    JWT_EXPIRES_IN: MsStringValueSchema,
     ENABLE_COMMUNITY_SHARING: z.boolean(),
     ENABLE_MESSAGE_RATING: z.boolean(),
     ENABLE_FOLDERS: z.boolean(),
