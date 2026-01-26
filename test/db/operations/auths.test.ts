@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { createTestDatabase, newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
 import * as Auths from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
-import type { Auth } from '../../../src/db/schema.js';
+import { validateUsername, type Auth } from '../../../src/db/schema.js';
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 
@@ -279,47 +279,50 @@ describe('authenticateUser', () => {
 
 describe('validateUsername', () => {
     test('accepts valid usernames', () => {
-        assert.strictEqual(Auths.validateUsername('john'), 'john');
-        assert.strictEqual(Auths.validateUsername('john_doe'), 'john_doe');
-        assert.strictEqual(Auths.validateUsername('john-doe'), 'john-doe');
-        assert.strictEqual(Auths.validateUsername('john123'), 'john123');
+        assert.strictEqual(validateUsername('john'), 'john');
+        assert.strictEqual(validateUsername('john_doe'), 'john_doe');
+        assert.strictEqual(validateUsername('john-doe'), 'john-doe');
+        assert.strictEqual(validateUsername('john123'), 'john123');
     });
 
     test('normalizes to lowercase', () => {
-        assert.strictEqual(Auths.validateUsername('JohnDoe'), 'johndoe');
-        assert.strictEqual(Auths.validateUsername('ADMIN'), 'admin');
+        assert.strictEqual(validateUsername('JohnDoe'), 'johndoe');
+        assert.strictEqual(validateUsername('ADMIN'), 'admin');
     });
 
     test('rejects too short usernames', () => {
-        assert.throws(() => Auths.validateUsername('ab'), {
+        assert.throws(() => validateUsername('ab'), {
             message: 'Username must be 3-50 characters',
         });
     });
 
     test('rejects too long usernames', () => {
         const longUsername = 'a'.repeat(51);
-        assert.throws(() => Auths.validateUsername(longUsername), {
+        assert.throws(() => validateUsername(longUsername), {
             message: 'Username must be 3-50 characters',
         });
     });
 
-    test('rejects invalid characters', () => {
-        assert.throws(() => Auths.validateUsername('john@doe'), {
-            message: 'Username can only contain letters, numbers, underscore, and dash',
-        });
-        assert.throws(() => Auths.validateUsername('john.doe'), {
-            message: 'Username can only contain letters, numbers, underscore, and dash',
-        });
-    });
-
-    test('rejects usernames starting with special char', () => {
-        assert.throws(() => Auths.validateUsername('_john'), {
-            message: 'Username must start with a letter or number',
-        });
-        assert.throws(() => Auths.validateUsername('-john'), {
-            message: 'Username must start with a letter or number',
-        });
-    });
+    // TODO: Re-enable these tests once alphanumeric constraint is restored
+    // (currently disabled for email-based signup compatibility)
+    //
+    // test('rejects invalid characters', () => {
+    //     assert.throws(() => validateUsername('john@doe'), {
+    //         message: 'Username can only contain letters, numbers, underscore, and dash',
+    //     });
+    //     assert.throws(() => validateUsername('john.doe'), {
+    //         message: 'Username can only contain letters, numbers, underscore, and dash',
+    //     });
+    // });
+    //
+    // test('rejects usernames starting with special char', () => {
+    //     assert.throws(() => validateUsername('_john'), {
+    //         message: 'Username must start with a letter or number',
+    //     });
+    //     assert.throws(() => validateUsername('-john'), {
+    //         message: 'Username must start with a letter or number',
+    //     });
+    // });
 });
 
 describe('validatePasswordFormat', () => {

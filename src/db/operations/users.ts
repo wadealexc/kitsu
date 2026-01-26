@@ -1,8 +1,7 @@
 import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
 import { db } from '../client.js';
-import { users, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User, type UserRole, type UserSettings } from '../schema.js';
+import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User, type UserRole, type UserSettings } from '../schema.js';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { validateUsername } from './auths.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
 

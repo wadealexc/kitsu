@@ -49,6 +49,40 @@ export const auths = sqliteTable('auth', {
     uniqueIndex('idx_auth_username').on(table.username),
 ]);
 
+/* -------------------- VALIDATION -------------------- */
+
+/**
+ * Validate and normalize username.
+ *
+ * @param username - Username to validate
+ * @returns Normalized username (lowercase, trimmed)
+ * @throws {Error} if username is invalid
+ */
+export function validateUsername(username: string): string {
+    const trimmed = username.trim();
+
+    // Length check: 3-50 characters
+    if (trimmed.length < 3 || trimmed.length > 50) {
+        throw new Error('Username must be 3-50 characters');
+    }
+
+    // TODO: Temporarily disabled alphanumeric constraint for email-based signup compatibility
+    // Once we migrate to proper username-based auth, uncomment these validations:
+    //
+    // // Format check: alphanumeric + underscore + dash only
+    // if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    //     throw new Error('Username can only contain letters, numbers, underscore, and dash');
+    // }
+    //
+    // // Must start with alphanumeric
+    // if (!/^[a-zA-Z0-9]/.test(trimmed)) {
+    //     throw new Error('Username must start with a letter or number');
+    // }
+
+    // Normalize to lowercase for case-insensitive uniqueness
+    return trimmed.toLowerCase();
+}
+
 /* -------------------- TYPE EXPORTS -------------------- */
 
 export type User = typeof users.$inferSelect;

@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
 import { db } from '../client.js';
-import { auths, users, type Auth, type User } from '../schema.js';
+import { auths, users, validateUsername, type Auth, type User } from '../schema.js';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
@@ -181,40 +181,6 @@ export async function authenticateUser(
 }
 
 /* -------------------- VALIDATION UTILITIES -------------------- */
-
-/**
- * Validates and normalizes username format.
- *
- * Rules:
- * - Length: 3-50 characters
- * - Characters: Alphanumeric + underscore + dash only (a-zA-Z0-9_-)
- * - Must start with alphanumeric
- * - Normalized to lowercase for consistency
- *
- * @throws Error if validation fails
- * @returns Normalized (lowercase) username
- */
-export function validateUsername(username: string): string {
-    const trimmed = username.trim();
-
-    // Length check: 3-50 characters
-    if (trimmed.length < 3 || trimmed.length > 50) {
-        throw new Error('Username must be 3-50 characters');
-    }
-
-    // Format check: alphanumeric + underscore + dash only
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
-        throw new Error('Username can only contain letters, numbers, underscore, and dash');
-    }
-
-    // Must start with alphanumeric
-    if (!/^[a-zA-Z0-9]/.test(trimmed)) {
-        throw new Error('Username must start with a letter or number');
-    }
-
-    // Normalize to lowercase for case-insensitive uniqueness
-    return trimmed.toLowerCase();
-}
 
 /**
  * Validates password meets security requirements.

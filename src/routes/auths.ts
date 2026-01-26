@@ -6,11 +6,45 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import type { StringValue } from 'ms';
+
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin } from './middleware.js';
+import { db } from '../db/client.js';
+import * as Users from '../db/operations/users.js';
+import * as Auths from '../db/operations/auths.js';
+import * as JWT from './jwt.js';
+import { DEFAULT_USER_ROLE, type User, type UserRole } from '../db/schema.js';
 
 const router = Router();
+
+/* -------------------- MODULE-LEVEL CONFIG -------------------- */
+
+let adminConfig: Types.AdminConfig = {
+    SHOW_ADMIN_DETAILS: true,
+    ADMIN_EMAIL: null,
+    WEBUI_URL: 'http://192.168.87.30:5050',
+    ENABLE_SIGNUP: true,
+    ENABLE_API_KEYS: false,
+    ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
+    API_KEYS_ALLOWED_ENDPOINTS: '',
+    DEFAULT_USER_ROLE: DEFAULT_USER_ROLE,
+    DEFAULT_GROUP_ID: '',
+    JWT_EXPIRES_IN: '7d',
+    ENABLE_COMMUNITY_SHARING: false,
+    ENABLE_MESSAGE_RATING: false,
+    ENABLE_FOLDERS: true,
+    FOLDER_MAX_FILE_COUNT: null,
+    ENABLE_CHANNELS: false,
+    ENABLE_MEMORIES: false,
+    ENABLE_NOTES: false,
+    ENABLE_USER_WEBHOOKS: false,
+    ENABLE_USER_STATUS: false,
+    PENDING_USER_OVERLAY_TITLE: null,
+    PENDING_USER_OVERLAY_CONTENT: null,
+    RESPONSE_WATERMARK: null,
+};
 
 /* -------------------- PUBLIC ENDPOINTS -------------------- */
 
@@ -19,47 +53,47 @@ const router = Router();
  * Access Control: Public
  *
  * Authenticate a user with email and password, returning a session token.
- * 
+ *
  * @param {Types.SigninForm} - email and password
  * @returns {Types.SessionUserResponse} - user info with JWT token
  */
-router.post('/signin', (
-    req: Types.TypedRequest<{},Types.SigninForm>,
+router.post('/signin', async (
+    req: Types.TypedRequest<{}, Types.SigninForm>,
     res: Response<Types.SessionUserResponse | Types.ErrorResponse>
 ) => {
     const parsed = Types.SigninFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
     const { email, password } = parsed.data;
 
-    // Mock response
-    const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
+    try {
+        // Authenticate user (email is used as username)
+        const result = await Auths.authenticateUser(email, password, db);
+        if (!result) {
+            return res.status(400).json({ detail: 'Invalid credentials' });
+        }
 
-    const response: Types.SessionUserResponse = {
-        id: MockData.mockUserId,
-        name: 'Mock User',
-        role: 'user',
-        email: email,
-        profile_image_url: '/user.png',
-        token: MockData.mockToken,
-        token_type: 'Bearer',
-        expires_at: expiresAt,
-        permissions: {
-            workspace: { models: true, knowledge: false, prompts: false },
-        },
-    };
+        const { user } = result;
 
-    // Set httponly cookie for browser-based auth
-    res.cookie('token', MockData.mockToken, {
-        expires: new Date(expiresAt * 1000),
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-    });
+        // Generate JWT token
+        const expiresIn = getJWTExpiration();
+        const token = JWT.createToken(user.id, expiresIn);
+        const expiresAt = JWT.getTokenExpiration(token);
 
-    res.status(200).json(response);
+        // Set cookie
+        JWT.setTokenCookie(res, token, expiresAt ?? undefined);
+
+        // Return session user response
+        return res.json(toSessionUserResponse(user, token, expiresAt));
+    } catch (error) {
+        console.error('Signin error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -71,43 +105,52 @@ router.post('/signin', (
  * @param {Types.SignupForm} - name, email, password, and optional profile image URL
  * @returns {Types.SessionUserResponse} - user info with JWT token
  */
-router.post('/signup', (
-    req: Types.TypedRequest<{},Types.SignupForm>,
+router.post('/signup', async (
+    req: Types.TypedRequest<{}, Types.SignupForm>,
     res: Response<Types.SessionUserResponse | Types.ErrorResponse>
 ) => {
     const parsed = Types.SignupFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    const { name, email, profile_image_url } = parsed.data;
+    const { email, password, profile_image_url } = parsed.data;
 
-    // Mock response (simulating first user = admin)
-    const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
+    try {
+        const user = await db.transaction(async (tx) => {
+            // Determine role (first user is admin)
+            const role = await Users.determineRole(tx);
 
-    const response: Types.SessionUserResponse = {
-        id: MockData.mockUserId,
-        name: name,
-        role: 'admin',
-        email: email,
-        profile_image_url: profile_image_url,
-        token: MockData.mockToken,
-        token_type: 'Bearer',
-        expires_at: expiresAt,
-        permissions: {
-            workspace: { models: true, knowledge: true, prompts: true },
-        },
-    };
+            // Create user (email used as username)
+            const newUser = await Users.createUser({
+                id: crypto.randomUUID(),
+                username: email,
+                role,
+                profileImageUrl: profile_image_url,
+            }, tx);
 
-    // Set httponly cookie for browser-based auth
-    res.cookie('token', MockData.mockToken, {
-        expires: new Date(expiresAt * 1000),
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-    });
+            // Create auth credentials
+            await Auths.createAuth(newUser.id, email, password, tx);
 
-    res.status(200).json(response);
+            return newUser;
+        });
+
+        // Generate token
+        const expiresIn = getJWTExpiration();
+        const token = JWT.createToken(user.id, expiresIn);
+        const expiresAt = JWT.getTokenExpiration(token);
+
+        // Set cookie
+        JWT.setTokenCookie(res, token, expiresAt ?? undefined);
+
+        return res.json(toSessionUserResponse(user, token, expiresAt));
+    } catch (error: any) {
+        console.error('Signup error:', error);
+        return res.status(400).json({ detail: error.message || 'Signup failed' });
+    }
 });
 
 /**
@@ -122,11 +165,9 @@ router.get('/signout', (
     req: Request,
     res: Response<Types.SignoutResponse | Types.ErrorResponse>
 ) => {
-    // Clear the token cookie
-    res.clearCookie('token');
-
-    // Mock response (no redirect)
-    res.status(200).json({ status: true });
+    // TODO: Implement token blacklisting/revocation
+    JWT.clearTokenCookie(res);
+    return res.json({ status: true });
 });
 
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
@@ -144,41 +185,26 @@ router.get('/', requireAuth, (
     req: Request,
     res: Response<Types.SessionUserInfoResponse | Types.ErrorResponse>
 ) => {
-    // Extract token from Authorization header (already validated by middleware)
-    const authHeader = req.headers.authorization!;
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
+    const user = req.user!;
 
-    // Mock response
-    const response: Types.SessionUserInfoResponse = {
-        id: MockData.mockUserId,
-        name: 'Mock User',
-        role: 'user',
-        email: 'user@example.com',
-        profile_image_url: '/user.png',
-        token: token,
+    // Extract token and refresh cookie
+    const token = JWT.extractToken(req);
+    if (token) {
+        const expiresAt = JWT.getTokenExpiration(token);
+        JWT.setTokenCookie(res, token, expiresAt ?? undefined);
+    }
+
+    return res.json({
+        id: user.id,
+        name: user.username,
+        role: user.role,
+        email: user.username,
+        profile_image_url: user.profileImageUrl,
+        token: token || '',
         token_type: 'Bearer',
-        expires_at: expiresAt,
-        permissions: {
-            workspace: { models: true, knowledge: false, prompts: false },
-        },
-        bio: 'This is my bio',
-        gender: null,
-        date_of_birth: null,
-        status_emoji: '🚀',
-        status_message: 'Working on something cool',
-        status_expires_at: null,
-    };
-
-    // Refresh/extend the cookie on each session check
-    res.cookie('token', token, {
-        expires: new Date(expiresAt * 1000),
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
+        expires_at: token ? JWT.getTokenExpiration(token) : null,
+        permissions: getDefaultPermissions(user.role),
     });
-
-    res.status(200).json(response);
 });
 
 /**
@@ -349,6 +375,71 @@ router.post('/admin/config', requireAdmin, (
     // For now, just echo back the submitted configuration
     res.status(200).json(parsed.data);
 });
+
+/* -------------------- HELPER FUNCTIONS -------------------- */
+
+/**
+ * Convert user to SessionUserResponse format
+ * Handles field translation from DB schema to API schema
+ */
+function toSessionUserResponse(
+    user: User,
+    token: string,
+    expiresAt: number | null
+): Types.SessionUserResponse {
+    return {
+        id: user.id,
+        name: user.username,  // Use username as name
+        role: user.role,
+        email: user.username,  // Use username as email
+        profile_image_url: user.profileImageUrl,
+        token,
+        token_type: 'Bearer',
+        expires_at: expiresAt,
+        permissions: getDefaultPermissions(user.role),
+    };
+}
+
+/**
+ * Convert user to SigninResponse format (for admin-created users)
+ */
+function toSigninResponse(
+    user: User,
+    token: string,
+    expiresAt: number | null
+): Types.SigninResponse {
+    return {
+        id: user.id,
+        name: user.username,
+        role: user.role,
+        email: user.username,
+        profile_image_url: user.profileImageUrl,
+        token,
+        token_type: 'Bearer',
+    };
+}
+
+/**
+ * Get default permissions based on user role
+ * TODO: Move to database once permissions table exists
+ */
+function getDefaultPermissions(role: UserRole): Record<string, any> {
+    const isAdmin = role === 'admin';
+    return {
+        workspace: {
+            models: isAdmin,
+            knowledge: isAdmin,
+            prompts: isAdmin,
+        },
+    };
+}
+
+/**
+ * Get JWT expiration duration from admin config
+ */
+function getJWTExpiration(): StringValue {
+    return adminConfig.JWT_EXPIRES_IN;
+}
 
 /* -------------------- EXPORT -------------------- */
 

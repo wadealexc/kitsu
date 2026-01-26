@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import { type Request } from 'express';
 import parse, { type StringValue } from 'ms';
+import { DEFAULT_USER_IMAGE, DEFAULT_USER_ROLE } from '../db/schema.js';
 
 /* -------------------- HELPER TYPES -------------------- */
 
@@ -91,7 +92,7 @@ export const SignupFormSchema = z.object({
     name: z.string(),
     email: z.email(),
     password: z.string(),
-    profile_image_url: z.string().default('/user.png'),
+    profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
 });
 export type SignupForm = z.infer<typeof SignupFormSchema>;
 
@@ -163,8 +164,8 @@ export const AddUserFormSchema = z.object({
     name: z.string(),
     email: z.email(),
     password: z.string(),
-    profile_image_url: z.string().default('/user.png'),
-    role: z.enum(['pending', 'user', 'admin']).default('pending'),
+    profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
+    role: z.enum(['pending', 'user', 'admin']).default(DEFAULT_USER_ROLE),
 });
 export type AddUserForm = z.infer<typeof AddUserFormSchema>;
 
@@ -336,7 +337,7 @@ export const UserModelSchema = z.object({
     id: UserIdSchema,
     email: z.email(),
     username: z.string().optional(),
-    role: z.string().default('pending'),
+    role: z.string().default(DEFAULT_USER_ROLE),
     name: z.string(),
     profile_image_url: z.string(),
     profile_banner_image_url: z.string().optional(),
