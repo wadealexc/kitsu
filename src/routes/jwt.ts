@@ -21,12 +21,14 @@ export type JWTPayload = {
 
 /* -------------------- CONFIGURATION -------------------- */
 
-// Validate secret key at module load
-const SESSION_SECRET = process.env.WEBUI_SECRET_KEY 
-    ?? (() => { throw new Error('WEBUI_SECRET_KEY environment variable is required') })();
+// Load secret key (use dev default if not set)
+const DEV_ONLY_SECRET = 'dev-only-secret-key-NOT-FOR-PROD!';
+const SESSION_SECRET = process.env.WEBUI_SECRET_KEY ?? DEV_ONLY_SECRET;
 
-if (SESSION_SECRET.length < 32) {
-    console.warn('WARNING: WEBUI_SECRET_KEY should be at least 32 characters for security');
+if (!process.env.WEBUI_SECRET_KEY) {
+    console.warn('⚠️  WARNING: Using dev-only JWT secret! Set WEBUI_SECRET_KEY environment variable for production.');
+} else if (SESSION_SECRET.length < 32) {
+    console.warn('⚠️  WARNING: WEBUI_SECRET_KEY should be at least 32 characters for security');
 }
 
 /* -------------------- TOKEN OPERATIONS -------------------- */
