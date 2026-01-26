@@ -2,9 +2,10 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
-import * as schema from '../../src/db/schema.js';
+import * as Users from '../src/db/operations/users.js';
+import * as Auths from '../src/db/operations/auths.js';
+import * as schema from '../src/db/schema.js';
+import { sqliteInstance } from '../src/db/client.js';
 
 /**
  * Creates an in-memory SQLite database with the full schema applied.
@@ -54,4 +55,23 @@ export async function newDBWithAdmin() {
     await Auths.createAuth(TEST_ADMIN.id, TEST_ADMIN.username, TEST_PASSWORD, testDb);
 
     return testDb;
+}
+
+/* -------------------- TEST SAFETY -------------------- */
+
+/**
+ * Assert that the global db from client.ts is in-memory.
+ * This prevents tests from accidentally modifying the production database.
+ *
+ * @throws {Error} if the database is not in-memory
+ */
+export function assertInMemoryDatabase(): void {
+    const dbName = sqliteInstance.name;
+    if (dbName !== ':memory:') {
+        throw new Error(
+            `SAFETY CHECK FAILED: Database is not in-memory (name: ${dbName}). ` +
+            'Tests must use in-memory database to prevent modifying production data. ' +
+            'Set NODE_ENV=test to use in-memory database.'
+        );
+    }
 }

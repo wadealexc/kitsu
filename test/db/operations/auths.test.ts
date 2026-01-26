@@ -1,6 +1,6 @@
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
-import { createTestDatabase, newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
+import { createTestDatabase, newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../../helpers.js';
 import * as Auths from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
 import { validateUsername, type Auth } from '../../../src/db/schema.js';

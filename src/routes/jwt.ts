@@ -93,7 +93,8 @@ export function verifyToken(token: string): JWTPayload {
 export function extractToken(req: Request): string | null {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        return authHeader.substring(7); // Remove 'Bearer ' prefix
+        const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+        return token || null; // Treat empty string as no token
     }
 
     const cookieToken = req.cookies?.token;
