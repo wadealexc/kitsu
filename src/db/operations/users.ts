@@ -1,7 +1,6 @@
 import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
 import { db } from '../client.js';
 import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User, type UserRole, type UserSettings } from '../schema.js';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
 
@@ -31,7 +30,7 @@ export type CreateUserParams = {
  */
 export async function createUser(
     data: CreateUserParams,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User> {
     const now = currentUnixTimestamp();
 
@@ -59,7 +58,7 @@ export async function createUser(
  */
 export async function getUserById(
     id: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User | null> {
     const [user] = await txOrDb
         .select()
@@ -76,7 +75,7 @@ export async function getUserById(
  */
 export async function getUserByUsername(
     username: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User | null> {
     const normalizedUsername = username.toLowerCase();
 
@@ -106,7 +105,7 @@ export type GetUsersOptions = {
  */
 export async function getUsers(
     options: GetUsersOptions = {},
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<{ users: User[]; total: number }> {
     const {
         query,
@@ -164,7 +163,7 @@ export async function getUsers(
 export async function updateUser(
     id: string,
     updates: Partial<User>,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User> {
     // Filter out undefined values to avoid overwriting with NULL
     const filteredUpdates: Partial<User> = { updatedAt: currentUnixTimestamp() };
@@ -190,7 +189,7 @@ export async function updateUser(
  */
 export async function updateLastActive(
     id: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<void> {
     await txOrDb
         .update(users)
@@ -204,7 +203,7 @@ export async function updateLastActive(
  */
 export async function deleteUser(
     id: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<boolean> {
     // Protect primary admin from deletion
     const isPrimary = await isPrimaryAdmin(id, txOrDb);
@@ -214,7 +213,7 @@ export async function deleteUser(
         .delete(users)
         .where(eq(users.id, id));
 
-    return result.changes > 0;
+    return result.rowsAffected > 0;
 }
 
 /* -------------------- USER QUERIES -------------------- */
@@ -224,7 +223,7 @@ export async function deleteUser(
  * Used to determine if first signup should be admin.
  */
 export async function hasUsers(
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<boolean> {
     const [result] = await txOrDb
         .select({ exists: sql<number>`1` })
@@ -239,7 +238,7 @@ export async function hasUsers(
  * Used to identify primary admin for protection logic.
  */
 export async function getFirstUser(
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User | null> {
     const [user] = await txOrDb
         .select()
@@ -256,7 +255,7 @@ export async function getFirstUser(
 export async function searchUsers(
     query: string,
     limit: number = 10,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User[]> {
     return await txOrDb
         .select()
@@ -273,7 +272,7 @@ export async function searchUsers(
 export async function updateUserSettings(
     id: string,
     settings: UserSettings,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<UserSettings> {
     const [user] = await txOrDb
         .update(users)
@@ -294,7 +293,7 @@ export async function updateUserSettings(
 export async function updateUserInfo(
     id: string,
     info: Record<string, any>,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<Record<string, any>> {
     const [user] = await txOrDb
         .update(users)
@@ -318,7 +317,7 @@ export async function updateUserInfo(
 export async function updateUserRole(
     id: string,
     role: UserRole,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User> {
     const [user] = await txOrDb
         .update(users)
@@ -347,7 +346,7 @@ export type UpdateProfileData = {
 export async function updateProfile(
     id: string,
     profile: UpdateProfileData,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<User> {
     // Filter out undefined values to avoid overwriting with NULL
     const updates: Partial<User> = { updatedAt: currentUnixTimestamp() };
@@ -374,7 +373,7 @@ export async function updateProfile(
  * First user is admin, subsequent users get DEFAULT_USER_ROLE.
  */
 export async function determineRole(
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<UserRole> {
     const hasExistingUsers = await hasUsers(txOrDb);
     return hasExistingUsers ? DEFAULT_USER_ROLE : 'admin';
@@ -385,7 +384,7 @@ export async function determineRole(
  */
 export async function isPrimaryAdmin(
     userId: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<boolean> {
     const firstUser = await getFirstUser(txOrDb);
     return firstUser?.id === userId;
@@ -398,7 +397,7 @@ export async function isPrimaryAdmin(
 export async function canModifyUser(
     actorId: string,
     targetId: string,
-    txOrDb: BetterSQLite3Database<any> = db
+    txOrDb: any = db
 ): Promise<boolean> {
     const isPrimary = await isPrimaryAdmin(targetId, txOrDb);
 

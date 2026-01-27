@@ -3,7 +3,7 @@ import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqli
 /* -------------------- USER TABLE -------------------- */
 
 export type UserRole = 'admin' | 'user' | 'pending';
-export const DEFAULT_USER_ROLE: UserRole = 'pending';
+export const DEFAULT_USER_ROLE: UserRole = 'user';
 export const DEFAULT_USER_IMAGE = '/user.png';
 
 export type UserSettings = {

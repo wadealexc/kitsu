@@ -1,11 +1,11 @@
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { drizzle } from 'drizzle-orm/libsql';
+import { createClient } from '@libsql/client';
+import { migrate } from 'drizzle-orm/libsql/migrator';
 
 import * as Users from '../src/db/operations/users.js';
 import * as Auths from '../src/db/operations/auths.js';
 import * as schema from '../src/db/schema.js';
-import { sqliteInstance } from '../src/db/client.js';
+import { databasePath } from '../src/db/client.js';
 
 /**
  * Creates an in-memory SQLite database with the full schema applied.
@@ -16,17 +16,17 @@ import { sqliteInstance } from '../src/db/client.js';
  *
  * Migration files are generated via: npm run db:generate
  */
-export function createTestDatabase() {
-    const sqlite = new Database(':memory:');
-    const db = drizzle(sqlite, { schema });
+export async function createTestDatabase() {
+    const client = createClient({ url: ':memory:' });
+    const db = drizzle(client, { schema });
 
     // Apply migrations from ./drizzle folder
-    migrate(db, { migrationsFolder: './drizzle' });
+    await migrate(db, { migrationsFolder: './drizzle' });
 
     return db;
 }
 
-export type TestDatabase = ReturnType<typeof createTestDatabase>;
+export type TestDatabase = Awaited<ReturnType<typeof createTestDatabase>>;
 
 /* -------------------- TEST FIXTURES -------------------- */
 
@@ -49,7 +49,7 @@ export function newUserParams(role: schema.UserRole = 'user'): Users.CreateUserP
 
 // Create a new test db with a single admin user
 export async function newDBWithAdmin() {
-    const testDb = createTestDatabase();
+    const testDb = await createTestDatabase();
 
     await Users.createUser(TEST_ADMIN, testDb);
     await Auths.createAuth(TEST_ADMIN.id, TEST_ADMIN.username, TEST_PASSWORD, testDb);
@@ -66,10 +66,10 @@ export async function newDBWithAdmin() {
  * @throws {Error} if the database is not in-memory
  */
 export function assertInMemoryDatabase(): void {
-    const dbName = sqliteInstance.name;
-    if (dbName !== ':memory:') {
+    // Check if the database path is :memory:
+    if (databasePath !== 'file::memory:?cache=shared') {
         throw new Error(
-            `SAFETY CHECK FAILED: Database is not in-memory (name: ${dbName}). ` +
+            `SAFETY CHECK FAILED: Database is not in-memory (path: ${databasePath}). ` +
             'Tests must use in-memory database to prevent modifying production data. ' +
             'Set NODE_ENV=test to use in-memory database.'
         );

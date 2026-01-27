@@ -437,7 +437,7 @@ describe('updateProfile', () => {
 describe('determineRole', () => {
     test('returns admin for first user', async () => {
         // Create empty in-memory DB for this test
-        const emptyDb = createTestDatabase();
+        const emptyDb = await createTestDatabase();
 
         const role = await Users.determineRole(emptyDb);
 
@@ -449,7 +449,7 @@ describe('determineRole', () => {
 
         const role = await Users.determineRole(db);
 
-        assert.strictEqual(role, 'pending');
+        assert.strictEqual(role, 'user');
     });
 });
 
