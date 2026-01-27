@@ -1,6 +1,7 @@
 import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
 import { db } from '../client.js';
-import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User, type UserRole, type UserSettings } from '../schema.js';
+import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User } from '../schema.js';
+import type { UserSettings, UserRole } from '../../routes/types.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
 
@@ -97,11 +98,12 @@ export type GetUsersOptions = {
     orderBy?: 'role' | 'username' | 'lastActiveAt' | 'createdAt';  // Sort field (default: 'createdAt')
     direction?: 'asc' | 'desc';                                    // Sort direction (default: 'desc')
     skip?: number;                                                 // Offset for pagination
-    limit?: number;                                                // Page size (default: 30)
+    limit?: number;                                                // Page size (optional, no default)
 };
 
 /**
  * Lists users with pagination, filtering, and sorting.
+ * If limit is not provided, returns all matching users.
  */
 export async function getUsers(
     options: GetUsersOptions = {},
@@ -113,7 +115,7 @@ export async function getUsers(
         orderBy = 'createdAt',
         direction = 'desc',
         skip = 0,
-        limit = 30,
+        limit,
     } = options;
 
     // Build where conditions
@@ -133,13 +135,17 @@ export async function getUsers(
     // Execute query
     const whereClause = conditions.length > 0 ? or(...conditions) : undefined;
 
-    const usersList = await txOrDb
+    let queryBuilder = txOrDb
         .select()
         .from(users)
         .where(whereClause)
-        .orderBy(sortFn(sortColumn))
-        .limit(limit)
-        .offset(skip);
+        .orderBy(sortFn(sortColumn));
+
+    if (limit !== undefined) {
+        queryBuilder = queryBuilder.limit(limit);
+    }
+
+    const usersList = await queryBuilder.offset(skip);
 
     // Get total count
     const countResult = await txOrDb

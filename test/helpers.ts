@@ -6,6 +6,7 @@ import * as Users from '../src/db/operations/users.js';
 import * as Auths from '../src/db/operations/auths.js';
 import * as schema from '../src/db/schema.js';
 import { databasePath } from '../src/db/client.js';
+import type { UserRole } from '../src/routes/types.js';
 
 /**
  * Creates an in-memory SQLite database with the full schema applied.
@@ -30,19 +31,16 @@ export type TestDatabase = Awaited<ReturnType<typeof createTestDatabase>>;
 
 /* -------------------- TEST FIXTURES -------------------- */
 
-let userNonce = 0;
-
 export const TEST_PASSWORD = 'password123';
 
 const TEST_ADMIN = newUserParams('admin');
 
-export function newUserParams(role: schema.UserRole = 'user'): Users.CreateUserParams {
-    const id = userNonce + '';
-    userNonce++;
+export function newUserParams(role: UserRole = 'user'): Users.CreateUserParams {
+    const id = crypto.randomUUID();
 
     return {
         id: id,
-        username: `${role}-${id}`,
+        username: `${role}-${id}@gg.com`,
         role: role,
     }
 }

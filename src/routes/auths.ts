@@ -15,7 +15,9 @@ import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
 import * as JWT from './jwt.js';
-import { DEFAULT_USER_ROLE, type User, type UserRole } from '../db/schema.js';
+import { DEFAULT_USER_ROLE, type User } from '../db/schema.js';
+import type { UserRole } from './types.js';
+import { HttpError, BadRequestError, NotFoundError } from './errors.js';
 
 const router = Router();
 
@@ -75,7 +77,7 @@ router.post('/signin', async (
         // Authenticate user (email is used as username)
         const result = await Auths.authenticateUser(email, password, db);
         if (!result) {
-            return res.status(400).json({ detail: 'Invalid credentials' });
+            throw BadRequestError('Invalid credentials');
         }
 
         const { user } = result;
@@ -90,7 +92,11 @@ router.post('/signin', async (
 
         // Return session user response
         return res.json(toSessionUserResponse(user, token, expiresAt));
-    } catch (error) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
         console.error('Signin error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
@@ -147,9 +153,18 @@ router.post('/signup', async (
         JWT.setTokenCookie(res, token, expiresAt ?? undefined);
 
         return res.json(toSessionUserResponse(user, token, expiresAt));
-    } catch (error: any) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
         console.error('Signup error:', error);
-        return res.status(400).json({ detail: error.message || 'Signup failed' });
+        return res.status(500).json({ detail: 'Internal server error' });
     }
 });
 
@@ -238,7 +253,7 @@ router.post('/update/profile', requireAuth, async (
         }, db);
 
         if (!updatedUser) {
-            return res.status(404).json({ detail: 'User not found' });
+            throw NotFoundError('User not found');
         }
 
         return res.json({
@@ -248,7 +263,11 @@ router.post('/update/profile', requireAuth, async (
             email: updatedUser.username,
             profile_image_url: updatedUser.profileImageUrl,
         });
-    } catch (error) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
         console.error('Update profile error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
@@ -282,16 +301,20 @@ router.post('/update/password', requireAuth, async (
         // Verify current password
         const isValid = await Auths.authenticateUser(user.username, password, db);
         if (!isValid) {
-            return res.status(400).json({ detail: 'Current password is incorrect' });
+            throw BadRequestError('Current password is incorrect');
         }
 
         // Update to new password
         await Auths.updatePassword(user.id, new_password, db);
 
         return res.json(true);
-    } catch (error: any) {
-        // Handle validation errors
-        if (error.message?.startsWith('Password too')) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
             return res.status(400).json({ detail: error.message });
         }
 
@@ -333,14 +356,18 @@ router.get('/admin/details', requireAuth, async (
     try {
         const firstUser = await Users.getFirstUser(db);
         if (!firstUser) {
-            return res.status(404).json({ detail: 'No users found' });
+            throw NotFoundError('No users found');
         }
 
         return res.json({
             name: firstUser.username,
             email: firstUser.username,
         });
-    } catch (error) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
         console.error('Get admin details error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
@@ -393,9 +420,18 @@ router.post('/add', requireAdmin, async (
         const expiresAt = JWT.getTokenExpiration(token);
 
         return res.json(toSigninResponse(user, token, expiresAt));
-    } catch (error: any) {
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
         console.error('Add user error:', error);
-        return res.status(400).json({ detail: error.message || 'Add user failed' });
+        return res.status(500).json({ detail: 'Internal server error' });
     }
 });
 

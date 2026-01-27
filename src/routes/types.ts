@@ -80,6 +80,10 @@ export type AdminDetailsResponse = z.infer<typeof AdminDetailsResponseSchema>;
 
 /* -------------------- AUTH SCHEMAS -------------------- */
 
+// User role enum
+export const UserRoleSchema = z.enum(['admin', 'user', 'pending']);
+export type UserRole = z.infer<typeof UserRoleSchema>;
+
 // Signin
 export const SigninFormSchema = z.object({
     email: z.email(),
@@ -107,7 +111,7 @@ export type SignoutResponse = z.infer<typeof SignoutResponseSchema>;
 export const SessionUserResponseSchema = z.object({
     id: UserIdSchema,
     name: z.string(),
-    role: z.string(),
+    role: UserRoleSchema,
     email: z.email(),
     profile_image_url: z.string(),
     token: z.string(),
@@ -140,7 +144,7 @@ export type UpdateProfileForm = z.infer<typeof UpdateProfileFormSchema>;
 export const UserProfileImageResponseSchema = z.object({
     id: UserIdSchema,
     name: z.string(),
-    role: z.string(),
+    role: UserRoleSchema,
     email: z.email(),
     profile_image_url: z.string(),
 });
@@ -165,14 +169,14 @@ export const AddUserFormSchema = z.object({
     email: z.email(),
     password: z.string(),
     profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
-    role: z.enum(['pending', 'user', 'admin']).default(DEFAULT_USER_ROLE),
+    role: UserRoleSchema.default(DEFAULT_USER_ROLE),
 });
 export type AddUserForm = z.infer<typeof AddUserFormSchema>;
 
 export const SigninResponseSchema = z.object({
     id: UserIdSchema,
     name: z.string(),
-    role: z.string(),
+    role: UserRoleSchema,
     email: z.email(),
     profile_image_url: z.string(),
     token: z.string(),
@@ -248,6 +252,7 @@ export type SetBannersForm = z.infer<typeof SetBannersFormSchema>;
 /* -------------------- USER SCHEMAS -------------------- */
 
 // User settings (UI preferences)
+// TODO: See /docs/extra.md for full UserSettings specification with source locations
 export const UserSettingsSchema = z.object({
     ui: z.record(z.string(), z.any()).optional().default({}),
 }).passthrough();  // Allow additional properties
@@ -337,7 +342,7 @@ export const UserModelSchema = z.object({
     id: UserIdSchema,
     email: z.email(),
     username: z.string().optional(),
-    role: z.string().default(DEFAULT_USER_ROLE),
+    role: UserRoleSchema.default(DEFAULT_USER_ROLE),
     name: z.string(),
     profile_image_url: z.string(),
     profile_banner_image_url: z.string().optional(),
@@ -363,7 +368,7 @@ export const UserInfoResponseSchema = z.object({
     id: UserIdSchema,
     name: z.string(),
     email: z.email(),
-    role: z.string(),
+    role: UserRoleSchema,
     status_emoji: z.string().optional(),
     status_message: z.string().optional(),
     status_expires_at: z.number().optional(),
@@ -404,7 +409,7 @@ export type UserActiveResponse = z.infer<typeof UserActiveResponseSchema>;
 
 // User update form (admin operation)
 export const UserUpdateFormSchema = z.object({
-    role: z.string(),
+    role: UserRoleSchema,
     name: z.string(),
     email: z.email(),
     profile_image_url: z.string(),
@@ -415,7 +420,7 @@ export type UserUpdateForm = z.infer<typeof UserUpdateFormSchema>;
 // User list/search query parameters
 export const UserListQuerySchema = z.object({
     query: z.string().optional(),
-    order_by: z.string().optional(),
+    order_by: z.enum(['role', 'username', 'lastActiveAt', 'createdAt']).optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
 });
@@ -454,7 +459,7 @@ export const UserResponseSchema = z.object({
     id: UserIdSchema,
     name: z.string(),
     email: z.email(),
-    role: z.string(),
+    role: UserRoleSchema,
     profile_image_url: z.string(),
 });
 export type UserResponse = z.infer<typeof UserResponseSchema>;

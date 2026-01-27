@@ -9,8 +9,78 @@ import { Router, type Response, type NextFunction } from 'express';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
+import { db } from '../db/client.js';
+import * as Users from '../db/operations/users.js';
+import * as Auths from '../db/operations/auths.js';
+import type { User } from '../db/schema.js';
+import type { UserRole } from './types.js';
+import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
 
 const router = Router();
+
+/* -------------------- MODULE-LEVEL CONFIG -------------------- */
+
+let defaultPermissions: Types.UserPermissions = {
+    workspace: {
+        models: false,
+        knowledge: false,
+        prompts: false,
+        tools: false,
+        models_import: false,
+        models_export: false,
+        prompts_import: false,
+        prompts_export: false,
+        tools_import: false,
+        tools_export: false,
+    },
+    sharing: {
+        models: false,
+        public_models: false,
+        knowledge: false,
+        public_knowledge: false,
+        prompts: false,
+        public_prompts: false,
+        tools: false,
+        public_tools: false,
+        notes: false,
+        public_notes: false,
+    },
+    chat: {
+        controls: true,
+        valves: true,
+        system_prompt: true,
+        params: true,
+        file_upload: true,
+        delete: true,
+        delete_message: true,
+        continue_response: true,
+        regenerate_response: true,
+        rate_response: true,
+        edit: true,
+        share: true,
+        export: true,
+        stt: true,
+        tts: true,
+        call: true,
+        multiple_models: true,
+        temporary: true,
+        temporary_enforced: false,
+    },
+    features: {
+        api_keys: false,
+        notes: false,
+        channels: false,
+        folders: true,
+        direct_tool_servers: false,
+        web_search: true,
+        image_generation: false,
+        code_interpreter: false,
+        memories: false,
+    },
+    settings: {
+        interface: true,
+    },
+};
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */
 
@@ -23,29 +93,53 @@ const router = Router();
  * @query {Types.UserListQuery} - query parameters for filtering and pagination
  * @returns {Types.UserGroupIdsListResponse} - paginated list of users with group IDs
  */
-router.get('/', requireAdmin, (
+router.get('/', requireAdmin, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
     res: Response<Types.UserGroupIdsListResponse | Types.ErrorResponse>
 ) => {
-    // Validate query parameters
     const queryValidation = Types.UserListQuerySchema.safeParse(req.query);
     if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid query parameters',
+            errors: queryValidation.error.issues
+        });
     }
 
-    const { page } = queryValidation.data;
+    const { page, query, order_by, direction } = queryValidation.data;
     const pageSize = 30;
+    const skip = (page - 1) * pageSize;
 
-    // Convert users to UserGroupIdsModel format
-    const usersWithGroups: Types.UserGroupIdsModel[] = MockData.mockUsers.map(user => ({
-        ...user,
-        group_ids: [],
-    }));
+    try {
+        const { users, total } = await Users.getUsers({
+            query,
+            orderBy: order_by as any,
+            direction,
+            skip,
+            limit: pageSize,
+        }, db);
 
-    res.status(200).json({
-        users: usersWithGroups,
-        total: usersWithGroups.length,
-    });
+        // Convert to UserGroupIdsModel format
+        const usersWithGroups: Types.UserGroupIdsModel[] = users.map(user => ({
+            id: user.id,
+            email: user.username,
+            name: user.username,
+            role: user.role,
+            profile_image_url: user.profileImageUrl,
+            profile_banner_image_url: user.profileBannerImageUrl || undefined,
+            last_active_at: user.lastActiveAt,
+            updated_at: user.updatedAt,
+            created_at: user.createdAt,
+            group_ids: [],
+        }));
+
+        return res.json({
+            users: usersWithGroups,
+            total,
+        });
+    } catch (error) {
+        console.error('Get users error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -56,24 +150,31 @@ router.get('/', requireAdmin, (
  *
  * @returns {Types.UserInfoListResponse} - list of all users
  */
-router.get('/all', requireAdmin, (
+router.get('/all', requireAdmin, async (
     req: Types.TypedRequest,
     res: Response<Types.UserInfoListResponse | Types.ErrorResponse>
 ) => {
-    const userInfos: Types.UserInfoResponse[] = MockData.mockUsers.map(user => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status_emoji: user.status_emoji,
-        status_message: user.status_message,
-        status_expires_at: user.status_expires_at,
-    }));
+    try {
+        const { users, total } = await Users.getUsers({}, db);
 
-    res.status(200).json({
-        users: userInfos,
-        total: userInfos.length,
-    });
+        const userInfos: Types.UserInfoResponse[] = users.map(user => ({
+            id: user.id,
+            name: user.username,
+            email: user.username,
+            role: user.role,
+            status_emoji: undefined,
+            status_message: undefined,
+            status_expires_at: undefined,
+        }));
+
+        return res.json({
+            users: userInfos,
+            total,
+        });
+    } catch (error) {
+        console.error('Get all users error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -86,32 +187,90 @@ router.get('/all', requireAdmin, (
  * @param {Types.UserUpdateForm} - Updated user data
  * @returns {Types.UserModel | null} - updated user or null
  */
-router.post('/:user_id/update', validateUserId, requireAdmin, (
+router.post('/:user_id/update', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
     res: Response<Types.UserModel | null | Types.ErrorResponse>
 ) => {
-    const userId = req.params.user_id;
     const parsed = Types.UserUpdateFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    // Find user
-    const user = MockData.mockUsers.find(u => u.id === userId);
-    if (!user) {
-        return res.status(404).json({ detail: 'User not found' });
-    }
+    const userId = req.params.user_id;
+    const { role, email, profile_image_url, password } = parsed.data;
 
-    // TODO: Update user in database
-    // Return updated user
-    res.status(200).json({
-        ...user,
-        role: parsed.data.role,
-        name: parsed.data.name,
-        email: parsed.data.email,
-        profile_image_url: parsed.data.profile_image_url,
-        updated_at: Math.floor(Date.now() / 1000),
-    });
+    try {
+        const updatedUser = await db.transaction(async (tx) => {
+            // Get existing user
+            const user = await Users.getUserById(userId, tx);
+            if (!user) {
+                throw NotFoundError('User not found');
+            }
+
+            // Check if can modify (primary admin protection)
+            const canModify = await Users.canModifyUser(req.user!.id, userId, tx);
+            if (!canModify) {
+                throw ForbiddenError('Cannot modify primary admin');
+            }
+
+            // Check if trying to change primary admin's role
+            const isPrimary = await Users.isPrimaryAdmin(userId, tx);
+            if (isPrimary && role !== 'admin') {
+                throw ForbiddenError('Cannot change primary admin role');
+            }
+
+            // Check if email is already taken by another user
+            if (email !== user.username) {
+                const existingUser = await Users.getUserByUsername(email, tx);
+                if (existingUser && existingUser.id !== userId) {
+                    throw BadRequestError('Email already taken');
+                }
+            }
+
+            // Update user table
+            const updated = await Users.updateUser(userId, {
+                role: role,
+                username: email,
+                profileImageUrl: profile_image_url,
+            }, tx);
+
+            // Update auth table (username and optionally password)
+            await Auths.updateUsername(userId, email, tx);
+            if (password) {
+                await Auths.updatePassword(userId, password, tx);
+            }
+
+            return updated;
+        });
+
+        // Convert to response format
+        return res.json({
+            id: updatedUser.id,
+            email: updatedUser.username,
+            name: updatedUser.username,
+            role: updatedUser.role,
+            profile_image_url: updatedUser.profileImageUrl,
+            profile_banner_image_url: updatedUser.profileBannerImageUrl || undefined,
+            last_active_at: updatedUser.lastActiveAt,
+            updated_at: updatedUser.updatedAt,
+            created_at: updatedUser.createdAt,
+        });
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update user error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -123,26 +282,36 @@ router.post('/:user_id/update', validateUserId, requireAdmin, (
  * @param {Types.UserIdParams} - User ID to delete
  * @returns {boolean} - true if deletion successful
  */
-router.delete('/:user_id', validateUserId, requireAdmin, (
+router.delete('/:user_id', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
     const userId = req.params.user_id;
 
-    // Prevent deleting first user (primary admin)
-    if (userId === MockData.MOCK_ADMIN_USER_ID) {
-        return res.status(403).json({ detail: 'Cannot delete primary admin' });
-    }
+    try {
+        // Check if user exists
+        const user = await Users.getUserById(userId, db);
+        if (!user) {
+            throw NotFoundError('User not found');
+        }
 
-    // TODO: Delete user from database
-    // Check if user exists
-    const userIndex = MockData.mockUsers.findIndex(u => u.id === userId);
-    if (userIndex === -1) {
-        return res.status(404).json({ detail: 'User not found' });
-    }
+        // Delete user (automatically checks primary admin protection)
+        const success = await Users.deleteUser(userId, db);
 
-    // Return success
-    res.status(200).json(true);
+        return res.json(success);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Probably triggered by admin protection -- TODO clean up
+        if (error instanceof Error) {
+            return res.status(403).json({ detail: error.message });
+        }
+
+        console.error('Delete user error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -157,7 +326,7 @@ router.get('/default/permissions', requireAdmin, (
     req: Types.TypedRequest,
     res: Response<Types.UserPermissions | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockDefaultPermissions);
+    return res.json(defaultPermissions);
 });
 
 /**
@@ -175,12 +344,16 @@ router.post('/default/permissions', requireAdmin, (
 ) => {
     const parsed = Types.UserPermissionsSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    // TODO: Update default permissions in database
-    // For now, just return empty object
-    res.status(200).json({});
+    // Update in-memory config
+    defaultPermissions = { ...defaultPermissions, ...parsed.data };
+
+    return res.json({});
 });
 
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
@@ -194,30 +367,47 @@ router.post('/default/permissions', requireAdmin, (
  * @param {Types.UserIdParams} - User ID to retrieve
  * @returns {Types.UserActiveResponse} - user details with active status
  */
-router.get('/:user_id', validateUserId, requireAuth, (
+router.get('/:user_id', validateUserId, requireAuth, async (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<Types.UserActiveResponse | Types.ErrorResponse>
 ) => {
-    const userId = req.params.user_id;
+    let userId = req.params.user_id;
 
-    // Find user
-    const user = MockData.mockUsers.find(u => u.id === userId);
-    if (!user) {
-        return res.status(404).json({ detail: 'User not found' });
+    try {
+        // TODO: Special handling for shared chat IDs (implement when chats added)
+        // if (userId.startsWith('shared-')) {
+        //     const chatId = userId.substring(7);
+        //     const chat = await Chats.getChatById(chatId, db);
+        //     if (!chat) return res.status(400).json({ detail: 'User not found' });
+        //     userId = chat.user_id;
+        // }
+
+        const user = await Users.getUserById(userId, db);
+        if (!user) {
+            return res.status(400).json({ detail: 'User not found' });
+        }
+
+        // TODO: Fetch user's groups when groups implemented
+        // const groups = await Groups.getGroupsByMemberId(userId, db);
+
+        // TODO: Check if user is active when activity tracking implemented
+        // const isActive = await Users.isUserActive(userId, db);
+
+        const response: Types.UserActiveResponse = {
+            name: user.username,
+            profile_image_url: user.profileImageUrl,
+            groups: [],  // TODO: Replace with actual groups
+            is_active: true,  // TODO: Replace with actual activity check
+            status_emoji: undefined,
+            status_message: undefined,
+            status_expires_at: undefined,
+        };
+
+        return res.json(response);
+    } catch (error) {
+        console.error('Get user by id error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // Build response
-    const response: Types.UserActiveResponse = {
-        name: user.name,
-        profile_image_url: user.profile_image_url,
-        groups: [],
-        is_active: true,  // Mock: all users are active
-        status_emoji: user.status_emoji,
-        status_message: user.status_message,
-        status_expires_at: user.status_expires_at,
-    };
-
-    res.status(200).json(response);
 });
 
 /**
@@ -229,32 +419,49 @@ router.get('/:user_id', validateUserId, requireAuth, (
  * @query {Types.UserListQuery} - query parameters for filtering and pagination
  * @returns {Types.UserInfoListResponse} - paginated list of users
  */
-router.get('/search', requireAuth, (
+router.get('/search', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
     res: Response<Types.UserInfoListResponse | Types.ErrorResponse>
 ) => {
-    // Validate query parameters
     const queryValidation = Types.UserListQuerySchema.safeParse(req.query);
     if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid query parameters',
+            errors: queryValidation.error.issues
+        });
     }
 
-    const { page } = queryValidation.data;
+    const { page, query, order_by, direction } = queryValidation.data;
+    const pageSize = 30;
+    const skip = (page - 1) * pageSize;
 
-    const userInfos: Types.UserInfoResponse[] = MockData.mockUsers.map(user => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status_emoji: user.status_emoji,
-        status_message: user.status_message,
-        status_expires_at: user.status_expires_at,
-    }));
+    try {
+        const { users, total } = await Users.getUsers({
+            query,
+            orderBy: order_by,
+            direction,
+            skip,
+            limit: pageSize,
+        }, db);
 
-    res.status(200).json({
-        users: userInfos,
-        total: userInfos.length,
-    });
+        const userInfos: Types.UserInfoResponse[] = users.map(user => ({
+            id: user.id,
+            name: user.username,
+            email: user.username,
+            role: user.role,
+            status_emoji: undefined,
+            status_message: undefined,
+            status_expires_at: undefined,
+        }));
+
+        return res.json({
+            users: userInfos,
+            total,
+        });
+    } catch (error) {
+        console.error('Search users error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -269,8 +476,7 @@ router.get('/permissions', requireAuth, (
     req: Types.TypedRequest,
     res: Response<Types.UserPermissions | Types.ErrorResponse>
 ) => {
-    // Mock: return default permissions (in real impl, would compute based on user/group)
-    res.status(200).json(MockData.mockDefaultPermissions);
+    return res.json(getPermissions(req.user!.role));
 });
 
 /**
@@ -285,7 +491,7 @@ router.get('/user/settings', requireAuth, (
     req: Types.TypedRequest,
     res: Response<Types.UserSettings | null | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockUserSettings);
+    return res.json(req.user!.settings);
 });
 
 /**
@@ -297,18 +503,37 @@ router.get('/user/settings', requireAuth, (
  * @param {Types.UserSettings} - updated settings
  * @returns {Types.UserSettings} - updated settings
  */
-router.post('/user/settings/update', requireAuth, (
+router.post('/user/settings/update', requireAuth, async (
     req: Types.TypedRequest<{}, Types.UserSettings>,
     res: Response<Types.UserSettings | Types.ErrorResponse>
 ) => {
     const parsed = Types.UserSettingsSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    // TODO: Update user settings in database
-    // For now, just echo back the submitted settings
-    res.status(200).json(parsed.data);
+    const userId = req.user!.id;
+    let settings = parsed.data;
+
+    try {
+        // TODO: Check actual permissions when permissions system implemented
+        // Permission check: Remove toolServers if user lacks permission
+        // const userRole = req.user!.role;
+        // if (userRole !== 'admin') {
+        //     if (settings.ui?.toolServers) {
+        //         delete settings.ui.toolServers;
+        //     }
+        // }
+
+        const updatedSettings = await Users.updateUserSettings(userId, settings, db);
+        return res.json(updatedSettings);
+    } catch (error) {
+        console.error('Update user settings error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -323,7 +548,7 @@ router.get('/user/info', requireAuth, (
     req: Types.TypedRequest,
     res: Response<Record<string, any> | null | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockUserInfo);
+    return res.json(req.user!.info);
 });
 
 /**
@@ -335,13 +560,20 @@ router.get('/user/info', requireAuth, (
  * @param {object} - updated info object
  * @returns {object | null} - updated info object
  */
-router.post('/user/info/update', requireAuth, (
+router.post('/user/info/update', requireAuth, async (
     req: Types.TypedRequest<{}, Record<string, any>>,
     res: Response<Record<string, any> | null | Types.ErrorResponse>
 ) => {
-    // TODO: Update user info in database
-    // For now, just echo back the submitted info
-    res.status(200).json(req.body);
+    const userId = req.user!.id;
+    const info = req.body;
+
+    try {
+        const updatedInfo = await Users.updateUserInfo(userId, info, db);
+        return res.json(updatedInfo);
+    } catch (error) {
+        console.error('Update user info error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -354,54 +586,134 @@ router.post('/user/info/update', requireAuth, (
  * @param {Types.UserIdParams} - User ID whose profile image to retrieve
  * @returns {Response} - 302 redirect, image stream, or default image file
  */
-router.get('/:user_id/profile/image', validateUserId, requireAuth, (
+router.get('/:user_id/profile/image', validateUserId, requireAuth, async (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response
 ) => {
     const userId = req.params.user_id;
 
-    // Find user
-    const user = MockData.mockUsers.find(u => u.id === userId);
-    if (!user) {
-        return res.status(400).json({ detail: 'User not found' });
-    }
-
-    // HTTP URL: return 302 redirect
-    if (user.profile_image_url.startsWith('http')) {
-        return res.redirect(302, user.profile_image_url);
-    }
-
-    // Data URI: decode and stream image
-    if (user.profile_image_url.startsWith('data:image')) {
-        try {
-            // Parse data URI: "data:image/png;base64,iVBORw0KG..."
-            const [header, base64Data] = user.profile_image_url.split(',', 2);
-            if (!header || !base64Data) {
-                throw new Error('Invalid data URI format');
-            }
-
-            // Extract media type from header (e.g., "image/png")
-            const mediaType = header.split(';')[0]?.replace('data:', '');
-            if (!mediaType) throw new Error('Invalid data URI format');
-
-            // Decode base64 data
-            const imageData = Buffer.from(base64Data, 'base64');
-
-            // Stream image with appropriate content type
-            res.setHeader('Content-Type', mediaType);
-            res.setHeader('Content-Disposition', 'inline');
-            return res.status(200).send(imageData);
-        } catch (error) {
-            // If data URI parsing fails, fall through to default image
+    try {
+        const user = await Users.getUserById(userId, db);
+        if (!user) {
+            return res.status(400).json({ detail: 'User not found' });
         }
+
+        const profileImageUrl = user.profileImageUrl;
+
+        // HTTP URL: return 302 redirect
+        if (profileImageUrl.startsWith('http')) {
+            return res.redirect(302, profileImageUrl);
+        }
+
+        // Data URI: decode and stream image
+        if (profileImageUrl.startsWith('data:image')) {
+            try {
+                // Parse data URI: "data:image/png;base64,iVBORw0KG..."
+                const [header, base64Data] = profileImageUrl.split(',', 2);
+                if (!header || !base64Data) {
+                    throw new Error('Invalid data URI format');
+                }
+
+                // Extract media type from header (e.g., "image/png")
+                const mediaType = header.split(';')[0]?.replace('data:', '');
+                if (!mediaType) throw new Error('Invalid data URI format');
+
+                // Decode base64 data
+                const imageData = Buffer.from(base64Data, 'base64');
+
+                // Stream image with appropriate content type
+                res.setHeader('Content-Type', mediaType);
+                res.setHeader('Content-Disposition', 'inline');
+                return res.status(200).send(imageData);
+            } catch (error) {
+                // If data URI parsing fails, fall through to default image
+            }
+        }
+
+        // Fallback: return default user.png
+        // TODO: In production, serve actual static file from STATIC_DIR
+        // For now, redirect to default image path
+        return res.redirect(302, '/user.png');
+    } catch (error) {
+        console.error('Get profile image error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
+});
+
+/* -------------------- HELPER FUNCTIONS -------------------- */
+
+/**
+ * Convert User to UserResponse format
+ * Handles field translation from DB schema to API schema
+ */
+function toUserResponse(user: User): Types.UserResponse {
+    return {
+        id: user.id,
+        name: user.username,
+        email: user.username,
+        role: user.role,
+        profile_image_url: user.profileImageUrl,
+    };
+}
+
+/**
+ * Convert User to UserModel format (complete user object)
+ * Handles field translation from DB schema to API schema
+ */
+function toUserModel(user: User): Types.UserModel {
+    return {
+        id: user.id,
+        email: user.username,
+        username: user.username,
+        role: user.role,
+        name: user.username,
+        profile_image_url: user.profileImageUrl,
+        profile_banner_image_url: user.profileBannerImageUrl || undefined,
+        info: user.info || undefined,
+        settings: user.settings || undefined,
+        last_active_at: user.lastActiveAt,
+        updated_at: user.updatedAt,
+        created_at: user.createdAt,
+    };
+}
+
+/**
+ * Get computed permissions for a user based on their role
+ * Merges default permissions with user-specific overrides
+ * TODO: Implement database-backed permissions with user/group overrides
+ */
+function getPermissions(role: UserRole): Types.UserPermissions {
+    const isAdmin = role === 'admin';
+
+    // Start with deep copy of default permissions
+    const permissions: Types.UserPermissions = {
+        workspace: { ...defaultPermissions.workspace },
+        sharing: { ...defaultPermissions.sharing },
+        chat: { ...defaultPermissions.chat },
+        features: { ...defaultPermissions.features },
+        settings: { ...defaultPermissions.settings },
+    };
+
+    // Admin overrides
+    if (isAdmin) {
+        permissions.workspace = {
+            models: true,
+            knowledge: true,
+            prompts: true,
+            tools: true,
+            models_import: true,
+            models_export: true,
+            prompts_import: true,
+            prompts_export: true,
+            tools_import: true,
+            tools_export: true,
+        };
+        permissions.features.api_keys = true;
+        permissions.features.direct_tool_servers = true;
     }
 
-    // Fallback: return default user.png
-    // TODO: In production, return actual static file
-    // For now, return mock response indicating fallback
-    res.setHeader('Content-Type', 'image/png');
-    return res.status(200).send(Buffer.from('mock-default-user-image'));
-});
+    return permissions;
+}
 
 /* -------------------- EXPORT -------------------- */
 

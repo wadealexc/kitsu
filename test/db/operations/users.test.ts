@@ -3,7 +3,8 @@ import assert from 'node:assert';
 import { createTestDatabase, newDBWithAdmin, newUserParams, type TestDatabase } from '../../helpers.js';
 import * as Auths from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
-import type { UserRole, User } from '../../../src/db/schema.js';
+import type { User } from '../../../src/db/schema.js';
+import type { UserRole } from '../../../src/routes/types.js';
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 

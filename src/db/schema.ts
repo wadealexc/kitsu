@@ -1,15 +1,10 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import type { UserSettings, UserRole } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */
 
-export type UserRole = 'admin' | 'user' | 'pending';
 export const DEFAULT_USER_ROLE: UserRole = 'user';
 export const DEFAULT_USER_IMAGE = '/user.png';
-
-export type UserSettings = {
-    ui?: Record<string, any>;
-    // TODO: See /docs/extra.md for full UserSettings specification with source locations
-};
 
 export const users = sqliteTable('user', {
     // Identity

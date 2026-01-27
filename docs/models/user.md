@@ -108,7 +108,7 @@ _Use case:_ Username uniqueness checks, lookup by username
 
 #### `getUsers(options: GetUsersOptions): Promise<{ users: User[], total: number }>`
 
-Lists users with pagination, filtering, and sorting.
+Lists users with pagination, filtering, and sorting. If limit is not provided, returns all matching users.
 
 _Use case:_ Admin user management, user search
 
@@ -120,7 +120,7 @@ type GetUsersOptions = {
     orderBy?: 'role' | 'username' | 'lastActiveAt' | 'createdAt'; // Sort field (default: 'createdAt')
     direction?: 'asc' | 'desc';                                  // Sort direction (default: 'desc')
     skip?: number;                                               // Offset for pagination
-    limit?: number;                                              // Page size (default: 30)
+    limit?: number;                                              // Page size (optional, no limit if not provided)
 };
 ```
 
@@ -304,12 +304,13 @@ await db.transaction(async (tx) => {
 
 When replacing mock user endpoints:
 
-1. _GET `/api/v1/users/`_ - Use `getUsers()` with pagination
-2. _GET `/api/v1/users/search`_ - Use `searchUsers()` or `getUsers()` with query filter
-3. _GET `/api/v1/users/{user_id}`_ - Use `getUserById()`
-4. _POST `/api/v1/users/{user_id}/update`_ - Use `updateUser()` with validation
-5. _DELETE `/api/v1/users/{user_id}`_ - Use `deleteUser()` with primary admin check
-6. _GET `/api/v1/users/user/settings`_ - Return `user.settings`
-7. _POST `/api/v1/users/user/settings/update`_ - Use `updateUserSettings()`
-8. _GET `/api/v1/users/user/info`_ - Return `user.info`
-9. _POST `/api/v1/users/user/info/update`_ - Use `updateUserInfo()`
+1. _GET `/api/v1/users/`_ - Use `getUsers()` with pagination (pass `limit`)
+2. _GET `/api/v1/users/all`_ - Use `getUsers()` without limit (returns all users)
+3. _GET `/api/v1/users/search`_ - Use `searchUsers()` or `getUsers()` with query filter
+4. _GET `/api/v1/users/{user_id}`_ - Use `getUserById()`
+5. _POST `/api/v1/users/{user_id}/update`_ - Use `updateUser()` with validation
+6. _DELETE `/api/v1/users/{user_id}`_ - Use `deleteUser()` with primary admin check
+7. _GET `/api/v1/users/user/settings`_ - Return `user.settings`
+8. _POST `/api/v1/users/user/settings/update`_ - Use `updateUserSettings()`
+9. _GET `/api/v1/users/user/info`_ - Return `user.info`
+10. _POST `/api/v1/users/user/info/update`_ - Use `updateUserInfo()`
