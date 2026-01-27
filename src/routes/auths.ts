@@ -216,27 +216,42 @@ router.get('/', requireAuth, (
  * @param {Types.UpdateProfileForm} - profile image URL, name, bio, gender, and date of birth
  * @returns {Types.UserProfileImageResponse} - updated user profile
  */
-router.post('/update/profile', requireAuth, (
+router.post('/update/profile', requireAuth, async (
     req: Types.TypedRequest<{},Types.UpdateProfileForm>,
     res: Response<Types.UserProfileImageResponse | Types.ErrorResponse>
 ) => {
     const parsed = Types.UpdateProfileFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    const { name, profile_image_url } = parsed.data;
+    const { profile_image_url } = parsed.data;
+    const userId = req.user!.id;
 
-    // Mock response
-    const response: Types.UserProfileImageResponse = {
-        id: MockData.mockUserId,
-        name: name,
-        role: 'user',
-        email: 'user@example.com',
-        profile_image_url: profile_image_url,
-    };
+    try {
+        // Only update profile image (other fields ignored)
+        const updatedUser = await Users.updateProfile(userId, {
+            profileImageUrl: profile_image_url,
+        }, db);
 
-    res.status(200).json(response);
+        if (!updatedUser) {
+            return res.status(404).json({ detail: 'User not found' });
+        }
+
+        return res.json({
+            id: updatedUser.id,
+            name: updatedUser.username,
+            role: updatedUser.role,
+            email: updatedUser.username,
+            profile_image_url: updatedUser.profileImageUrl,
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -248,17 +263,41 @@ router.post('/update/profile', requireAuth, (
  * @param {Types.UpdatePasswordForm} - current password and new password
  * @returns {boolean} - true if successful
  */
-router.post('/update/password', requireAuth, (
+router.post('/update/password', requireAuth, async (
     req: Types.TypedRequest<{},Types.UpdatePasswordForm>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
     const parsed = Types.UpdatePasswordFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    // Mock response (success)
-    res.status(200).json(true);
+    const { password, new_password } = parsed.data;
+    const user = req.user!;
+
+    try {
+        // Verify current password
+        const isValid = await Auths.authenticateUser(user.username, password, db);
+        if (!isValid) {
+            return res.status(400).json({ detail: 'Current password is incorrect' });
+        }
+
+        // Update to new password
+        await Auths.updatePassword(user.id, new_password, db);
+
+        return res.json(true);
+    } catch (error: any) {
+        // Handle validation errors
+        if (error.message?.startsWith('Password too')) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update password error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -274,13 +313,9 @@ router.post('/update/timezone', requireAuth, (
     req: Types.TypedRequest<{},Types.UpdateTimezoneForm>,
     res: Response<Types.StatusResponse | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UpdateTimezoneFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
-    }
-
-    // Mock response
-    res.status(200).json({ status: true });
+    // TODO: Timezone field removed from schema - this endpoint is a no-op
+    // Kept for backward compatibility with frontend
+    return res.json({ status: true });
 });
 
 /**
@@ -291,15 +326,24 @@ router.post('/update/timezone', requireAuth, (
  *
  * @returns {Types.AdminDetailsResponse} - admin name and email
  */
-router.get('/admin/details', requireAuth, (
+router.get('/admin/details', requireAuth, async (
     req: Request,
     res: Response<Types.AdminDetailsResponse | Types.ErrorResponse>
 ) => {
-    // Mock response
-    res.status(200).json({
-        name: 'Admin User',
-        email: 'admin@example.com',
-    });
+    try {
+        const firstUser = await Users.getFirstUser(db);
+        if (!firstUser) {
+            return res.status(404).json({ detail: 'No users found' });
+        }
+
+        return res.json({
+            name: firstUser.username,
+            email: firstUser.username,
+        });
+    } catch (error) {
+        console.error('Get admin details error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */
@@ -313,29 +357,46 @@ router.get('/admin/details', requireAuth, (
  * @param {Types.AddUserForm} - name, email, password, optional profile image URL and role
  * @returns {Types.SigninResponse} - created user info with token
  */
-router.post('/add', requireAdmin, (
+router.post('/add', requireAdmin, async (
     req: Types.TypedRequest<{},Types.AddUserForm>,
     res: Response<Types.SigninResponse | Types.ErrorResponse>
 ) => {
     const parsed = Types.AddUserFormSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    const { name, email, profile_image_url, role } = parsed.data;
+    const { email, password, role, profile_image_url } = parsed.data;
 
-    // Mock response
-    const response: Types.SigninResponse = {
-        id: MockData.mockUserId,
-        name: name,
-        role: role,
-        email: email,
-        profile_image_url: profile_image_url,
-        token: MockData.mockToken,
-        token_type: 'Bearer',
-    };
+    try {
+        const user = await db.transaction(async (tx) => {
+            // Create user with specified role
+            const newUser = await Users.createUser({
+                id: crypto.randomUUID(),
+                username: email,
+                role: role,
+                profileImageUrl: profile_image_url,
+            }, tx);
 
-    res.status(200).json(response);
+            // Create auth credentials
+            await Auths.createAuth(newUser.id, email, password, tx);
+
+            return newUser;
+        });
+
+        // Generate token (but don't set cookie for admin-created users)
+        const expiresIn = getJWTExpiration();
+        const token = JWT.createToken(user.id, expiresIn);
+        const expiresAt = JWT.getTokenExpiration(token);
+
+        return res.json(toSigninResponse(user, token, expiresAt));
+    } catch (error: any) {
+        console.error('Add user error:', error);
+        return res.status(400).json({ detail: error.message || 'Add user failed' });
+    }
 });
 
 /**
@@ -350,7 +411,7 @@ router.get('/admin/config', requireAdmin, (
     req: Request,
     res: Response<Types.AdminConfig | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockAdminConfig);
+    return res.json(adminConfig);
 });
 
 /**
@@ -368,12 +429,15 @@ router.post('/admin/config', requireAdmin, (
 ) => {
     const parsed = Types.AdminConfigSchema.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+        return res.status(400).json({
+            detail: 'Invalid request body',
+            errors: parsed.error.issues
+        });
     }
 
-    // TODO: Update admin config in database
-    // For now, just echo back the submitted configuration
-    res.status(200).json(parsed.data);
+    // Update in-memory config
+    adminConfig = { ...adminConfig, ...parsed.data };
+    return res.json(adminConfig);
 });
 
 /* -------------------- HELPER FUNCTIONS -------------------- */
