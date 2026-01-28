@@ -1,7 +1,8 @@
 import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
-import { db } from '../client.js';
+import { db, type DbOrTx } from '../client.js';
 import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User } from '../schema.js';
 import type { UserSettings, UserRole } from '../../routes/types.js';
+import { currentUnixTimestamp } from '../utils.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
 
@@ -31,7 +32,7 @@ export type CreateUserParams = {
  */
 export async function createUser(
     data: CreateUserParams,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User> {
     const now = currentUnixTimestamp();
 
@@ -59,7 +60,7 @@ export async function createUser(
  */
 export async function getUserById(
     id: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User | null> {
     const [user] = await txOrDb
         .select()
@@ -76,7 +77,7 @@ export async function getUserById(
  */
 export async function getUserByUsername(
     username: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User | null> {
     const normalizedUsername = username.toLowerCase();
 
@@ -107,7 +108,7 @@ export type GetUsersOptions = {
  */
 export async function getUsers(
     options: GetUsersOptions = {},
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<{ users: User[]; total: number }> {
     const {
         query,
@@ -135,17 +136,13 @@ export async function getUsers(
     // Execute query
     const whereClause = conditions.length > 0 ? or(...conditions) : undefined;
 
-    let queryBuilder = txOrDb
+    const usersList = await txOrDb
         .select()
         .from(users)
         .where(whereClause)
-        .orderBy(sortFn(sortColumn));
-
-    if (limit !== undefined) {
-        queryBuilder = queryBuilder.limit(limit);
-    }
-
-    const usersList = await queryBuilder.offset(skip);
+        .orderBy(sortFn(sortColumn))
+        .limit(limit ?? 999999)
+        .offset(skip);
 
     // Get total count
     const countResult = await txOrDb
@@ -169,7 +166,7 @@ export async function getUsers(
 export async function updateUser(
     id: string,
     updates: Partial<User>,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User> {
     // Filter out undefined values to avoid overwriting with NULL
     const filteredUpdates: Partial<User> = { updatedAt: currentUnixTimestamp() };
@@ -195,7 +192,7 @@ export async function updateUser(
  */
 export async function updateLastActive(
     id: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<void> {
     await txOrDb
         .update(users)
@@ -209,7 +206,7 @@ export async function updateLastActive(
  */
 export async function deleteUser(
     id: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     // Protect primary admin from deletion
     const isPrimary = await isPrimaryAdmin(id, txOrDb);
@@ -229,7 +226,7 @@ export async function deleteUser(
  * Used to determine if first signup should be admin.
  */
 export async function hasUsers(
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     const [result] = await txOrDb
         .select({ exists: sql<number>`1` })
@@ -244,7 +241,7 @@ export async function hasUsers(
  * Used to identify primary admin for protection logic.
  */
 export async function getFirstUser(
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User | null> {
     const [user] = await txOrDb
         .select()
@@ -261,7 +258,7 @@ export async function getFirstUser(
 export async function searchUsers(
     query: string,
     limit: number = 10,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User[]> {
     return await txOrDb
         .select()
@@ -278,7 +275,7 @@ export async function searchUsers(
 export async function updateUserSettings(
     id: string,
     settings: UserSettings,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<UserSettings> {
     const [user] = await txOrDb
         .update(users)
@@ -290,7 +287,8 @@ export async function updateUserSettings(
         .returning();
 
     if (!user) throw new Error('Error updating user record');
-    return user.settings || {};
+    if (!user.settings) throw new Error('Settings not found after update');
+    return user.settings;
 }
 
 /**
@@ -299,7 +297,7 @@ export async function updateUserSettings(
 export async function updateUserInfo(
     id: string,
     info: Record<string, any>,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<Record<string, any>> {
     const [user] = await txOrDb
         .update(users)
@@ -323,7 +321,7 @@ export async function updateUserInfo(
 export async function updateUserRole(
     id: string,
     role: UserRole,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User> {
     const [user] = await txOrDb
         .update(users)
@@ -352,7 +350,7 @@ export type UpdateProfileData = {
 export async function updateProfile(
     id: string,
     profile: UpdateProfileData,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<User> {
     // Filter out undefined values to avoid overwriting with NULL
     const updates: Partial<User> = { updatedAt: currentUnixTimestamp() };
@@ -379,7 +377,7 @@ export async function updateProfile(
  * First user is admin, subsequent users get DEFAULT_USER_ROLE.
  */
 export async function determineRole(
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<UserRole> {
     const hasExistingUsers = await hasUsers(txOrDb);
     return hasExistingUsers ? DEFAULT_USER_ROLE : 'admin';
@@ -390,7 +388,7 @@ export async function determineRole(
  */
 export async function isPrimaryAdmin(
     userId: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     const firstUser = await getFirstUser(txOrDb);
     return firstUser?.id === userId;
@@ -403,7 +401,7 @@ export async function isPrimaryAdmin(
 export async function canModifyUser(
     actorId: string,
     targetId: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     const isPrimary = await isPrimaryAdmin(targetId, txOrDb);
 
@@ -413,29 +411,6 @@ export async function canModifyUser(
     }
 
     return true;
-}
-
-/* -------------------- TIMESTAMP UTILITIES -------------------- */
-
-/**
- * Returns current timestamp in unix seconds (not milliseconds).
- */
-export function currentUnixTimestamp(): number {
-    return Math.floor(Date.now() / 1000);
-}
-
-/**
- * Converts Date to unix timestamp (seconds).
- */
-export function toUnixTimestamp(date: Date): number {
-    return Math.floor(date.getTime() / 1000);
-}
-
-/**
- * Converts unix timestamp (seconds) to Date.
- */
-export function fromUnixTimestamp(timestamp: number): Date {
-    return new Date(timestamp * 1000);
 }
 
 /* -------------------- VALIDATION UTILITIES -------------------- */

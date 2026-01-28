@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
-import { db } from '../client.js';
+import { db, type DbOrTx } from '../client.js';
 import { auths, users, validateUsername, type Auth, type User } from '../schema.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
@@ -18,7 +18,7 @@ export async function createAuth(
     id: string,
     username: string,
     plainPassword: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<Auth> {
     const normalizedUsername = validateUsername(username);
     validatePasswordFormat(plainPassword);
@@ -44,7 +44,7 @@ export async function createAuth(
  */
 export async function getAuthById(
     id: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<Auth | null> {
     const [auth] = await txOrDb
         .select()
@@ -61,7 +61,7 @@ export async function getAuthById(
  */
 export async function getAuthByUsername(
     username: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<Auth | null> {
     const normalizedUsername = username.toLowerCase();
 
@@ -85,7 +85,7 @@ export async function getAuthByUsername(
 export async function updatePassword(
     id: string,
     newPlainPassword: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     validatePasswordFormat(newPlainPassword);
 
@@ -106,7 +106,7 @@ export async function updatePassword(
 export async function updateUsername(
     id: string,
     newUsername: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     const normalizedUsername = validateUsername(newUsername);
 
@@ -124,7 +124,7 @@ export async function updateUsername(
  */
 export async function deleteAuth(
     id: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<boolean> {
     const result = await txOrDb
         .delete(auths)
@@ -151,7 +151,7 @@ export async function deleteAuth(
 export async function authenticateUser(
     username: string,
     plainPassword: string,
-    txOrDb: any = db
+    txOrDb: DbOrTx = db
 ): Promise<{ user: User; auth: Auth } | null> {
     // Lookup auth by username
     const auth = await getAuthByUsername(username, txOrDb);

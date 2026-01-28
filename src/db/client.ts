@@ -33,6 +33,11 @@ if (isTest) {
 // Create Drizzle instance with schema
 export const db = drizzle(client, { schema });
 
+// Export types for strongly-typed database operations
+export type Db = typeof db;
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbOrTx = Db | Tx;
+
 // Export the client and DB path for testing assertions
 export const libsqlClient = client;
 export const databasePath = dbPath;

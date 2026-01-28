@@ -5,6 +5,7 @@ import * as Auths from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
 import type { User } from '../../../src/db/schema.js';
 import type { UserRole } from '../../../src/routes/types.js';
+import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 
@@ -237,6 +238,8 @@ describe('deleteUser', () => {
     before(async () => {
         db = await newDBWithAdmin();
     });
+
+    // TODO - test cascading behavior
 
     test('deletes non-admin user successfully', async () => {
         const user = await Users.createUser(newUserParams(), db);
@@ -517,7 +520,7 @@ describe('canModifyUser', () => {
 
 describe('currentUnixTimestamp', () => {
     test('returns current timestamp in seconds', () => {
-        const timestamp = Users.currentUnixTimestamp();
+        const timestamp = currentUnixTimestamp();
         const now = Math.floor(Date.now() / 1000);
 
         // Should be within 1 second
@@ -525,7 +528,7 @@ describe('currentUnixTimestamp', () => {
     });
 
     test('returns integer', () => {
-        const timestamp = Users.currentUnixTimestamp();
+        const timestamp = currentUnixTimestamp();
 
         assert.strictEqual(timestamp % 1, 0);
     });

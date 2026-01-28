@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
 
 import * as JWT from '../../src/routes/jwt.js';
-import { currentUnixTimestamp } from '../../src/db/operations/users.js';
+import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST CONSTANTS -------------------- */
 
