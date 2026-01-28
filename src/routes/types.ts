@@ -441,8 +441,15 @@ export const AccessControlSchema = z.object({
 }).passthrough().nullable();
 export type AccessControl = z.infer<typeof AccessControlSchema>;
 
-// Model parameters (flexible JSON object)
-export const ModelParamsSchema = z.record(z.string(), z.any());
+// Model parameters
+// Based on OWUI chat structure - common model params
+export const ModelParamsSchema = z.object({
+    temperature: z.number().optional(),
+    top_p: z.number().optional(),
+    top_k: z.number().optional(),
+    max_tokens: z.number().optional(),
+    seed: z.number().optional(),
+}).passthrough();  // Allow additional model-specific params
 export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata
@@ -552,22 +559,6 @@ export type ModelIdQuery = z.infer<typeof ModelIdQuerySchema>;
 
 /* -------------------- CHAT SCHEMAS -------------------- */
 
-// Chat response (complete chat object with all fields)
-export const ChatResponseSchema = z.object({
-    id: ChatIdSchema,
-    user_id: UserIdSchema,
-    title: z.string(),
-    chat: z.record(z.string(), z.any()),  // Flexible structure containing messages
-    updated_at: z.number(),
-    created_at: z.number(),
-    share_id: z.string().nullable().optional(),
-    archived: z.boolean(),
-    pinned: z.boolean().optional().default(false),
-    meta: z.record(z.string(), z.any()).optional().default({}),
-    folder_id: FolderIdSchema.nullable().optional(),
-});
-export type ChatResponse = z.infer<typeof ChatResponseSchema>;
-
 // Chat title/ID response (minimal chat info for list views)
 export const ChatTitleIdResponseSchema = z.object({
     id: ChatIdSchema,
@@ -585,12 +576,130 @@ export const FolderChatListItemResponseSchema = z.object({
 });
 export type FolderChatListItemResponse = z.infer<typeof FolderChatListItemResponseSchema>;
 
+/* -------------------- CHAT DATA STRUCTURES -------------------- */
+
+// Chat message file attachment
+export const ChatMessageFileSchema = z.object({
+    id: z.string(),
+    type: z.string().optional(),
+    name: z.string().optional(),
+    url: z.string().optional(),
+}).passthrough();
+export type ChatMessageFile = z.infer<typeof ChatMessageFileSchema>;
+
+// Chat message citation/source
+export const ChatMessageSourceSchema = z.object({
+    source: z.string().optional(),
+    url: z.string().optional(),
+    title: z.string().optional(),
+}).passthrough();
+export type ChatMessageSource = z.infer<typeof ChatMessageSourceSchema>;
+
+// Chat message status history entry
+export const ChatMessageStatusSchema = z.object({
+    timestamp: z.number(),
+    status: z.string(),
+}).passthrough();
+export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
+
+// Chat message usage stats
+export const ChatMessageUsageSchema = z.object({
+    prompt_tokens: z.number().optional(),
+    completion_tokens: z.number().optional(),
+    total_tokens: z.number().optional(),
+}).passthrough();
+export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
+
+// Individual chat message in history
+// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 225-232
+// and /home/fox/open-webui/src/lib/utils/index.ts lines 186-217
+export const ChatMessageSchema = z.object({
+    id: z.string(),
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.string(),
+    parentId: z.string().nullable(),
+    childrenIds: z.array(z.string()).optional().default([]),
+    timestamp: z.number(),
+    model: z.string().nullable().optional(),
+    files: z.array(ChatMessageFileSchema).optional(),
+    favorite: z.boolean().optional(),
+    citation: ChatMessageSourceSchema.optional(),
+    sources: z.array(ChatMessageSourceSchema).optional(),
+    statusHistory: z.array(ChatMessageStatusSchema).optional(),
+    usage: ChatMessageUsageSchema.optional(),
+    done: z.boolean().optional(),
+}).passthrough();  // Allow additional fields for extensibility
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
+// Chat history structure (tree-structured messages)
+// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 225-232
+export const ChatHistorySchema = z.object({
+    messages: z.record(z.string(), ChatMessageSchema),  // message_id -> message
+    currentId: z.string().nullable().optional(),
+}).passthrough();
+export type ChatHistory = z.infer<typeof ChatHistorySchema>;
+
+// Flattened message (in messages array)
+export const FlattenedMessageSchema = z.object({
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.string(),
+    timestamp: z.number().optional(),
+    model: z.string().optional(),
+}).passthrough();
+export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
+
+// Complete chat object (the nested "chat" field)
+// Based on OWUI: /home/fox/open-webui/src/lib/components/chat/Chat.svelte lines 2541-2555
+// and /home/fox/open-webui/backend/open_webui/models/chats.py lines 36-66
+export const ChatObjectSchema = z.object({
+    id: z.string().optional(),  // Optional since it may be generated server-side
+    title: z.string(),
+    models: z.array(z.string()).optional().default([]),
+    system: z.string().nullable().optional(),
+    params: ModelParamsSchema.optional(),
+    history: ChatHistorySchema.optional(),
+    messages: z.array(FlattenedMessageSchema).optional().default([]),
+    timestamp: z.number().optional(),
+}).passthrough();  // Allow additional fields
+export type ChatObject = z.infer<typeof ChatObjectSchema>;
+
 // Chat form (for creating/updating chats)
+// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 125-128
+// and /home/fox/open-webui/src/lib/apis/chats/index.ts lines 4-34
 export const ChatFormSchema = z.object({
-    chat: z.record(z.string(), z.any()),  // Flexible chat data structure
+    chat: ChatObjectSchema,
     folder_id: FolderIdSchema.nullable().optional(),
 });
 export type ChatForm = z.infer<typeof ChatFormSchema>;
+
+// Chat response (complete chat object with all fields)
+export const ChatResponseSchema = z.object({
+    id: ChatIdSchema,
+    user_id: UserIdSchema,
+    title: z.string(),
+    chat: ChatObjectSchema,
+    updated_at: z.number(),
+    created_at: z.number(),
+    share_id: z.string().nullable().optional(),
+    archived: z.boolean(),
+    pinned: z.boolean().optional().default(false),
+    meta: z.record(z.string(), z.any()).optional().default({}),
+    folder_id: FolderIdSchema.nullable().optional(),
+});
+export type ChatResponse = z.infer<typeof ChatResponseSchema>;
+
+// Chat import form (for bulk importing chats with preserved timestamps)
+// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 130-138
+// and /home/fox/open-webui/src/lib/apis/chats/index.ts lines 68-97
+export const ChatImportFormSchema = z.object({
+    chat: ChatObjectSchema,
+    folder_id: FolderIdSchema.nullable().optional(),
+    meta: z.record(z.string(), z.any()).optional().default({}),
+    pinned: z.boolean().optional().default(false),
+    created_at: z.number().optional(),
+    updated_at: z.number().optional(),
+});
+export type ChatImportForm = z.infer<typeof ChatImportFormSchema>;
 
 // Clone form (for cloning chats)
 export const CloneFormSchema = z.object({
@@ -629,7 +738,6 @@ export const ChatUsageStatsResponseSchema = z.object({
     average_response_time: z.number(),
     average_user_message_content_length: z.number(),
     average_assistant_message_content_length: z.number(),
-    tags: z.array(z.string()).optional().default([]),
     last_message_at: z.number(),
     updated_at: z.number(),
     created_at: z.number(),

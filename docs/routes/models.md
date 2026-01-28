@@ -518,17 +518,25 @@ Form for syncing model list.
 
 ### `ModelParams`
 
-Model-specific parameters (flexible JSON object).
+Model parameters for chat completion and model configuration.
 
 ```typescript
 {
-    [key: string]: any;  // additionalProperties: true
+    temperature?: number    // Sampling temperature (0.0-2.0)
+    top_p?: number         // Nucleus sampling (0.0-1.0)
+    top_k?: number         // Top-k sampling
+    max_tokens?: number    // Maximum tokens to generate
+    seed?: number          // Random seed for reproducibility
+    [key: string]: any     // Additional model-specific parameters
 }
 ```
 
+**Required fields:** None (all optional)
+
 **Notes:**
-- Flexible schema - can contain any parameters
-- Common fields might include: temperature, max_tokens, top_p, etc.
+- All fields are optional
+- Uses `passthrough()` to allow additional model-specific parameters
+- Common across chat completion and model configuration
 - Specific to the model or backend being used
 
 ---

@@ -270,7 +270,6 @@ Response (200): `boolean` - Returns `true` if deletion successful
 - _OWUI Implementation Notes:_
   - **Admin path:** Calls `Chats.delete_chat_by_id(id, db=db)` - deletes by ID only, no user filter
   - **User path:** Calls `Chats.delete_chat_by_id_and_user_id(id, user.id, db=db)` - requires ownership
-  - Both paths clean up tags: if this was the last chat using a specific tag, deletes that tag
   - Returns 404 if chat not found
   - Returns 401 if regular user lacks `chat.delete` permission
 
@@ -724,7 +723,7 @@ Complete chat object with all fields including messages and metadata.
     id: string                  // Chat ID
     user_id: string             // Owner's user ID
     title: string               // Chat title
-    chat: object                // Chat data (messages, history) - flexible structure
+    chat: ChatObject            // Chat data (messages, history) - flexible structure
     updated_at: number          // Last update timestamp (unix seconds)
     created_at: number          // Creation timestamp (unix seconds)
     share_id?: string           // Public share ID if shared (null if not shared)
@@ -741,7 +740,7 @@ Complete chat object with all fields including messages and metadata.
 
 **Notes:**
 - `chat` field contains the actual conversation messages and history
-- `chat` structure is flexible and not strictly defined in the schema
+- See [`ChatObject`](#chatobject) for detailed structure of the `chat` field
 
 ---
 
@@ -791,7 +790,7 @@ Form data for creating or updating chats.
 
 ```typescript
 {
-    chat: object        // Chat data object (flexible structure)
+    chat: ChatObject    // Chat data object (see ChatObject definition)
     folder_id?: string  // Optional folder ID to organize chat
 }
 ```
@@ -801,8 +800,242 @@ Form data for creating or updating chats.
 **Optional fields:** `folder_id`
 
 **Notes:**
-- `chat` object structure is flexible
-- Typically contains messages, model, system prompt, etc.
+- See [`ChatObject`](#chatobject) for complete structure of the `chat` field
+- Based on OWUI: `/home/fox/open-webui/backend/open_webui/models/chats.py` lines 125-128
+- Based on OWUI: `/home/fox/open-webui/src/lib/apis/chats/index.ts` lines 4-34
+
+---
+
+### `ChatObject`
+
+Complete chat data object (the nested "chat" field in ChatForm and ChatResponse).
+
+```typescript
+{
+    id?: string                     // Optional chat ID (generated server-side if not provided)
+    title: string                   // Chat title
+    models?: string[]               // Array of model IDs used
+    system?: string | null          // System prompt/instructions
+    params?: ModelParams            // Model parameters (see ModelParams)
+    history?: ChatHistory           // Tree-structured message history (see ChatHistory)
+    messages?: FlattenedMessage[]   // Flattened messages array
+    timestamp?: number              // Chat timestamp (unix milliseconds)
+    [key: string]: any              // Additional fields allowed for extensibility
+}
+```
+
+**Required fields:** `title`
+
+**Optional fields:** All others
+
+**Notes:**
+- Based on OWUI: `/home/fox/open-webui/src/lib/components/chat/Chat.svelte` lines 2541-2555
+- Based on OWUI: `/home/fox/open-webui/backend/open_webui/models/chats.py` lines 36-66
+- Can contain either `history` (tree structure) or `messages` (flat array) or both
+- Uses `passthrough()` to allow additional fields for extensibility
+
+---
+
+### `ChatHistory`
+
+Tree-structured message history allowing branching conversations.
+
+```typescript
+{
+    messages: Record<string, ChatMessage>  // Map of message_id -> message object
+    currentId?: string | null               // Currently active message ID
+    [key: string]: any                      // Additional fields allowed
+}
+```
+
+**Required fields:** `messages`
+
+**Optional fields:** `currentId`
+
+**Notes:**
+- Based on OWUI: `/home/fox/open-webui/backend/open_webui/models/chats.py` lines 225-232
+- Enables branching conversations with parent-child relationships
+- Messages are stored as a map/dictionary keyed by message ID
+
+---
+
+### `ChatMessage`
+
+Individual message in the chat history tree.
+
+```typescript
+{
+    id: string                              // Message ID
+    role: "user" | "assistant" | "system"   // Message role
+    content: string                         // Message content/text
+    parentId: string | null                 // Parent message ID (null for root messages)
+    childrenIds?: string[]                  // Array of child message IDs
+    timestamp: number                       // Message timestamp (unix seconds)
+    model?: string | null                   // Model used for this message
+    files?: ChatMessageFile[]               // File attachments (see ChatMessageFile)
+    favorite?: boolean                      // Favorite flag
+    citation?: ChatMessageSource            // Single citation (see ChatMessageSource)
+    sources?: ChatMessageSource[]           // Multiple sources/citations
+    statusHistory?: ChatMessageStatus[]     // Status change history (see ChatMessageStatus)
+    usage?: ChatMessageUsage                // Token usage stats (see ChatMessageUsage)
+    done?: boolean                          // Completion flag
+    [key: string]: any                      // Additional fields allowed
+}
+```
+
+**Required fields:** `id`, `role`, `content`, `parentId`, `timestamp`
+
+**Optional fields:** All others
+
+**Notes:**
+- Based on OWUI: `/home/fox/open-webui/backend/open_webui/models/chats.py` lines 225-232
+- Tree structure via `parentId` and `childrenIds` enables conversation branching
+- Uses `passthrough()` for extensibility
+
+---
+
+### `ChatMessageFile`
+
+File attachment in a chat message.
+
+```typescript
+{
+    id: string          // File ID
+    type?: string       // File MIME type
+    name?: string       // File name
+    url?: string        // File URL
+    [key: string]: any  // Additional fields
+}
+```
+
+**Required fields:** `id`
+
+**Optional fields:** `type`, `name`, `url`
+
+---
+
+### `ChatMessageSource`
+
+Citation or source reference in a message.
+
+```typescript
+{
+    source?: string     // Source identifier
+    url?: string        // Source URL
+    title?: string      // Source title
+    [key: string]: any  // Additional fields
+}
+```
+
+**Required fields:** None (all optional)
+
+---
+
+### `ChatMessageStatus`
+
+Status history entry for a message.
+
+```typescript
+{
+    timestamp: number   // Status change timestamp (unix seconds)
+    status: string      // Status value
+    [key: string]: any  // Additional fields
+}
+```
+
+**Required fields:** `timestamp`, `status`
+
+---
+
+### `ChatMessageUsage`
+
+Token usage statistics for a message.
+
+```typescript
+{
+    prompt_tokens?: number      // Prompt tokens used
+    completion_tokens?: number  // Completion tokens used
+    total_tokens?: number       // Total tokens used
+    [key: string]: any          // Additional fields
+}
+```
+
+**Required fields:** None (all optional)
+
+---
+
+### `FlattenedMessage`
+
+Simplified message format (used in messages array).
+
+```typescript
+{
+    role: "user" | "assistant" | "system"  // Message role
+    content: string                        // Message content
+    timestamp?: number                     // Message timestamp (unix seconds)
+    model?: string                         // Model used
+    [key: string]: any                     // Additional fields
+}
+```
+
+**Required fields:** `role`, `content`
+
+**Optional fields:** `timestamp`, `model`
+
+**Notes:**
+- Used in `messages` array (flat structure)
+- Simpler than `ChatMessage` (no parent/child relationships)
+
+---
+
+### `ModelParams`
+
+Model parameters for chat completion and model configuration.
+
+```typescript
+{
+    temperature?: number    // Sampling temperature (0.0-2.0)
+    top_p?: number         // Nucleus sampling (0.0-1.0)
+    top_k?: number         // Top-k sampling
+    max_tokens?: number    // Maximum tokens to generate
+    seed?: number          // Random seed for reproducibility
+    [key: string]: any     // Additional model-specific parameters
+}
+```
+
+**Required fields:** None (all optional)
+
+**Notes:**
+- All fields are optional
+- Uses `passthrough()` to allow additional model-specific parameters
+- Common across chat completion and model configuration
+
+---
+
+### `ChatImportForm`
+
+Form data for bulk importing chats with preserved timestamps.
+
+```typescript
+{
+    chat: ChatObject                // Chat data (see ChatObject)
+    folder_id?: string | null       // Optional folder ID
+    meta?: object                   // Additional metadata
+    pinned?: boolean                // Pinned flag
+    created_at?: number             // Preserve original creation timestamp
+    updated_at?: number             // Preserve original update timestamp
+}
+```
+
+**Required fields:** `chat`
+
+**Optional fields:** All others
+
+**Notes:**
+- Used for importing chats from backups or other sources
+- Allows preserving original timestamps (unlike ChatForm which generates new ones)
+- Based on OWUI: `/home/fox/open-webui/backend/open_webui/models/chats.py` lines 130-138
+- Based on OWUI: `/home/fox/open-webui/src/lib/apis/chats/index.ts` lines 68-97
 
 ---
 
@@ -908,16 +1141,11 @@ Detailed usage statistics for a single chat.
     average_response_time: number                 // Average AI response time (seconds)
     average_user_message_content_length: number   // Average user message length (chars)
     average_assistant_message_content_length: number  // Average assistant message length (chars)
-    tags?: string[]                               // Associated tags (default: [])
     last_message_at: number                       // Last message timestamp (unix seconds)
     updated_at: number                            // Last update timestamp (unix seconds)
     created_at: number                            // Creation timestamp (unix seconds)
 }
 ```
-
-**Required fields:** `id`, `message_count`, `history_message_count`, `history_user_message_count`, `history_assistant_message_count`, `average_response_time`, `average_user_message_content_length`, `average_assistant_message_content_length`, `last_message_at`, `updated_at`, `created_at`
-
-**Optional fields:** `models`, `history_models`, `tags`
 
 **Notes:**
 - Uses `additionalProperties: true`, may include extra computed statistics
