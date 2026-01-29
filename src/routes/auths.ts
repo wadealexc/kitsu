@@ -63,15 +63,15 @@ router.post('/signin', async (
     req: Types.TypedRequest<{}, Types.SigninForm>,
     res: Response<Types.SessionUserResponse | Types.ErrorResponse>
 ) => {
-    const parsed = Types.SigninFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.SigninFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { email, password } = parsed.data;
+    const { email, password } = body.data;
 
     try {
         // Authenticate user (email is used as username)
@@ -115,15 +115,15 @@ router.post('/signup', async (
     req: Types.TypedRequest<{}, Types.SignupForm>,
     res: Response<Types.SessionUserResponse | Types.ErrorResponse>
 ) => {
-    const parsed = Types.SignupFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.SignupFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { email, password, profile_image_url } = parsed.data;
+    const { email, password, profile_image_url: profileImageUrl } = body.data;
 
     try {
         const user = await db.transaction(async (tx) => {
@@ -135,7 +135,7 @@ router.post('/signup', async (
                 id: crypto.randomUUID(),
                 username: email,
                 role,
-                profileImageUrl: profile_image_url,
+                profileImageUrl: profileImageUrl,
             }, tx);
 
             // Create auth credentials
@@ -232,24 +232,24 @@ router.get('/', requireAuth, (
  * @returns {Types.UserProfileImageResponse} - updated user profile
  */
 router.post('/update/profile', requireAuth, async (
-    req: Types.TypedRequest<{},Types.UpdateProfileForm>,
+    req: Types.TypedRequest<{}, Types.UpdateProfileForm>,
     res: Response<Types.UserProfileImageResponse | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UpdateProfileFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.UpdateProfileFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { profile_image_url } = parsed.data;
+    const profileImageUrl = body.data.profile_image_url;
     const userId = req.user!.id;
 
     try {
         // Only update profile image (other fields ignored)
         const updatedUser = await Users.updateProfile(userId, {
-            profileImageUrl: profile_image_url,
+            profileImageUrl: profileImageUrl,
         }, db);
 
         if (!updatedUser) {
@@ -283,18 +283,18 @@ router.post('/update/profile', requireAuth, async (
  * @returns {boolean} - true if successful
  */
 router.post('/update/password', requireAuth, async (
-    req: Types.TypedRequest<{},Types.UpdatePasswordForm>,
+    req: Types.TypedRequest<{}, Types.UpdatePasswordForm>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UpdatePasswordFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.UpdatePasswordFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { password, new_password } = parsed.data;
+    const { password, new_password: newPassword } = body.data;
     const user = req.user!;
 
     try {
@@ -305,7 +305,7 @@ router.post('/update/password', requireAuth, async (
         }
 
         // Update to new password
-        await Auths.updatePassword(user.id, new_password, db);
+        await Auths.updatePassword(user.id, newPassword, db);
 
         return res.json(true);
     } catch (error: unknown) {
@@ -333,7 +333,7 @@ router.post('/update/password', requireAuth, async (
  * @returns {Types.StatusResponse} - success status
  */
 router.post('/update/timezone', requireAuth, (
-    req: Types.TypedRequest<{},Types.UpdateTimezoneForm>,
+    req: Types.TypedRequest<{}, Types.UpdateTimezoneForm>,
     res: Response<Types.StatusResponse | Types.ErrorResponse>
 ) => {
     // TODO: Timezone field removed from schema - this endpoint is a no-op
@@ -385,18 +385,18 @@ router.get('/admin/details', requireAuth, async (
  * @returns {Types.SigninResponse} - created user info with token
  */
 router.post('/add', requireAdmin, async (
-    req: Types.TypedRequest<{},Types.AddUserForm>,
+    req: Types.TypedRequest<{}, Types.AddUserForm>,
     res: Response<Types.SigninResponse | Types.ErrorResponse>
 ) => {
-    const parsed = Types.AddUserFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.AddUserFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { email, password, role, profile_image_url } = parsed.data;
+    const { email, password, role, profile_image_url: profileImageUrl } = body.data;
 
     try {
         const user = await db.transaction(async (tx) => {
@@ -405,7 +405,7 @@ router.post('/add', requireAdmin, async (
                 id: crypto.randomUUID(),
                 username: email,
                 role: role,
-                profileImageUrl: profile_image_url,
+                profileImageUrl: profileImageUrl,
             }, tx);
 
             // Create auth credentials
@@ -460,19 +460,19 @@ router.get('/admin/config', requireAdmin, (
  * @returns {Types.AdminConfig} - echoes back the updated configuration
  */
 router.post('/admin/config', requireAdmin, (
-    req: Types.TypedRequest<{},Types.AdminConfig>,
+    req: Types.TypedRequest<{}, Types.AdminConfig>,
     res: Response<Types.AdminConfig | Types.ErrorResponse>
 ) => {
-    const parsed = Types.AdminConfigSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.AdminConfigSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
     // Update in-memory config
-    adminConfig = { ...adminConfig, ...parsed.data };
+    adminConfig = { ...adminConfig, ...body.data };
     return res.json(adminConfig);
 });
 

@@ -97,22 +97,22 @@ router.get('/', requireAdmin, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
     res: Response<Types.UserGroupIdsListResponse | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.UserListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.UserListQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { page, query, order_by, direction } = queryValidation.data;
+    const { page, query: searchQuery, order_by: orderBy, direction } = query.data;
     const pageSize = 30;
     const skip = (page - 1) * pageSize;
 
     try {
         const { users, total } = await Users.getUsers({
-            query,
-            orderBy: order_by as any,
+            query: searchQuery,
+            orderBy: orderBy,
             direction,
             skip,
             limit: pageSize,
@@ -191,16 +191,16 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
     res: Response<Types.UserModel | null | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UserUpdateFormSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.UserUpdateFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
     const userId = req.params.user_id;
-    const { role, email, profile_image_url, password } = parsed.data;
+    const { role, email, profile_image_url: profileImageUrl, password } = body.data;
 
     try {
         const updatedUser = await db.transaction(async (tx) => {
@@ -234,7 +234,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
             const updated = await Users.updateUser(userId, {
                 role: role,
                 username: email,
-                profileImageUrl: profile_image_url,
+                profileImageUrl: profileImageUrl,
             }, tx);
 
             // Update auth table (username and optionally password)
@@ -342,16 +342,16 @@ router.post('/default/permissions', requireAdmin, (
     req: Types.TypedRequest<{}, Types.UserPermissions>,
     res: Response<Record<string, never> | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UserPermissionsSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.UserPermissionsSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
     // Update in-memory config
-    defaultPermissions = { ...defaultPermissions, ...parsed.data };
+    defaultPermissions = { ...defaultPermissions, ...body.data };
 
     return res.json({});
 });
@@ -423,22 +423,22 @@ router.get('/search', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
     res: Response<Types.UserInfoListResponse | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.UserListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.UserListQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { page, query, order_by, direction } = queryValidation.data;
+    const { page, query: searchQuery, order_by: orderBy, direction } = query.data;
     const pageSize = 30;
     const skip = (page - 1) * pageSize;
 
     try {
         const { users, total } = await Users.getUsers({
-            query,
-            orderBy: order_by,
+            query: searchQuery,
+            orderBy: orderBy,
             direction,
             skip,
             limit: pageSize,
@@ -507,16 +507,16 @@ router.post('/user/settings/update', requireAuth, async (
     req: Types.TypedRequest<{}, Types.UserSettings>,
     res: Response<Types.UserSettings | Types.ErrorResponse>
 ) => {
-    const parsed = Types.UserSettingsSchema.safeParse(req.body);
-    if (!parsed.success) {
+    const body = Types.UserSettingsSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: parsed.error.issues
+            errors: body.error.issues
         });
     }
 
     const userId = req.user!.id;
-    let settings = parsed.data;
+    let settings = body.data;
 
     try {
         // TODO: Check actual permissions when permissions system implemented
