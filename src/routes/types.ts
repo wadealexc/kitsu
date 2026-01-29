@@ -442,7 +442,6 @@ export const AccessControlSchema = z.object({
 export type AccessControl = z.infer<typeof AccessControlSchema>;
 
 // Model parameters
-// Based on OWUI chat structure - common model params
 export const ModelParamsSchema = z.object({
     temperature: z.number().optional(),
     top_p: z.number().optional(),
@@ -611,8 +610,6 @@ export const ChatMessageUsageSchema = z.object({
 export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
 
 // Individual chat message in history
-// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 225-232
-// and /home/fox/open-webui/src/lib/utils/index.ts lines 186-217
 export const ChatMessageSchema = z.object({
     id: z.string(),
     role: z.enum(['user', 'assistant', 'system']),
@@ -632,7 +629,6 @@ export const ChatMessageSchema = z.object({
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 // Chat history structure (tree-structured messages)
-// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 225-232
 export const ChatHistorySchema = z.object({
     messages: z.record(z.string(), ChatMessageSchema),  // message_id -> message
     currentId: z.string().nullable().optional(),
@@ -649,10 +645,20 @@ export const FlattenedMessageSchema = z.object({
 export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
 
 // Complete chat object (the nested "chat" field)
-// Based on OWUI: /home/fox/open-webui/src/lib/components/chat/Chat.svelte lines 2541-2555
-// and /home/fox/open-webui/backend/open_webui/models/chats.py lines 36-66
-export const ChatObjectSchema = z.object({
-    id: z.string().optional(),  // Optional since it may be generated server-side
+export interface ChatObject {
+    id?: string;
+    title: string;
+    models: string[];
+    system?: string | null;
+    params?: ModelParams;
+    history?: ChatHistory;
+    messages: FlattenedMessage[];
+    timestamp?: number;
+    [key: string]: any;
+}
+
+export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
+    id: z.string().optional(),
     title: z.string(),
     models: z.array(z.string()).optional().default([]),
     system: z.string().nullable().optional(),
@@ -660,12 +666,9 @@ export const ChatObjectSchema = z.object({
     history: ChatHistorySchema.optional(),
     messages: z.array(FlattenedMessageSchema).optional().default([]),
     timestamp: z.number().optional(),
-}).passthrough();  // Allow additional fields
-export type ChatObject = z.infer<typeof ChatObjectSchema>;
+}).passthrough();
 
 // Chat form (for creating/updating chats)
-// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 125-128
-// and /home/fox/open-webui/src/lib/apis/chats/index.ts lines 4-34
 export const ChatFormSchema = z.object({
     chat: ChatObjectSchema,
     folder_id: FolderIdSchema.nullable().optional(),
@@ -689,8 +692,6 @@ export const ChatResponseSchema = z.object({
 export type ChatResponse = z.infer<typeof ChatResponseSchema>;
 
 // Chat import form (for bulk importing chats with preserved timestamps)
-// Based on OWUI: /home/fox/open-webui/backend/open_webui/models/chats.py lines 130-138
-// and /home/fox/open-webui/src/lib/apis/chats/index.ts lines 68-97
 export const ChatImportFormSchema = z.object({
     chat: ChatObjectSchema,
     folder_id: FolderIdSchema.nullable().optional(),

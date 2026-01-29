@@ -9,6 +9,7 @@
     "scratch": "tsx src/scratch.ts",
     "start": "node dist/src/index.js",
     "test": "NODE_ENV=test tsx --test 'test/**/*.test.ts'",
+    "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },

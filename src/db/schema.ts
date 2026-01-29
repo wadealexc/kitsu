@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import type { UserSettings, UserRole } from '../routes/types.js';
+import type { UserSettings, UserRole, ChatObject } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */
 
@@ -55,7 +55,7 @@ export const chats = sqliteTable('chat', {
 
     // Content
     title: text('title').notNull(),
-    chat: text('chat', { mode: 'json' }).$type<Record<string, any>>().notNull(),
+    chat: text('chat', { mode: 'json' }).$type<ChatObject>().notNull(),
 
     // Organization
     folderId: text('folder_id')

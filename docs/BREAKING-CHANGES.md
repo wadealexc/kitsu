@@ -159,6 +159,98 @@ For a local setup, account suspension can be handled by:
 
 ---
 
+## Removed Features: Tags, Channels, Knowledge Bases, Annotations
+
+**Date:** 2026-01-28
+
+**Change:** Several organizational and content features from OpenWebUI are not implemented.
+
+### What's Removed
+
+#### Tags System
+**Database:**
+- No `tags` table
+- No `meta.tags` array on chat records
+- No tag relationships or junction tables
+
+**API Endpoints:**
+- No tag CRUD operations (`/api/v1/chats/tags/*`)
+- No tag-based filtering endpoints
+- Chat search syntax `tag:<name>` not supported
+
+**Operations:**
+- `addChatTag()` - Not implemented
+- `deleteChatTag()` - Not implemented
+- `getChatTags()` - Not implemented
+- `getChatsByUserIdAndTag()` - Not implemented
+
+#### Channels
+**Database:**
+- No `channels` table
+- No `channel_file` junction table
+- Files cannot be associated with channels
+
+**API:**
+- No channel endpoints
+- File `meta.data.channelId` field not used
+- File access control doesn't check channel membership
+
+#### Knowledge Bases
+**Database:**
+- No `knowledge` table
+- No `knowledge_file` junction table
+- Files cannot be associated with knowledge bases
+
+**API:**
+- No knowledge base endpoints
+- File access control doesn't check knowledge membership
+
+#### Message Annotations/Ratings
+**Database:**
+- Messages don't have `annotation` field in chat JSON
+- No rating/feedback storage
+
+**API:**
+- No message rating endpoints
+- No annotation CRUD operations
+
+### Frontend Impact
+
+**UI Removals:**
+- Tag picker/selector components
+- Tag management interface
+- Tag-based filters in chat list
+- Channel file associations
+- Knowledge base file browser
+- Message rating buttons (thumbs up/down)
+- Message annotation UI
+
+**Search Changes:**
+- Remove `tag:name` search syntax support
+- Simplify search to title/content only with folder/pinned/archived filters
+
+### Rationale
+
+These features are designed for team/enterprise deployments with:
+- Multiple users sharing knowledge bases
+- Organizational channels for file sharing
+- User feedback on AI responses
+
+For a **3-user local deployment**, these features add unnecessary complexity:
+- Folders provide sufficient chat organization
+- File sharing happens through chat associations
+- Simplifies both backend and frontend code
+
+### Implementation Status
+
+- [x] Database models specified without these features
+- [x] Database schemas created without these tables
+- [x] Documentation updated
+- [ ] Mock endpoints removed (currently return empty arrays)
+- [ ] Frontend UI simplified
+
+---
+
 ## Future Breaking Changes (Planned)
 
 ### Remove snake_case from API Responses
@@ -218,18 +310,6 @@ These differences don't break compatibility but are worth noting:
 **Compatibility:** Frontend adapted to support both Socket.IO and SSE paths. Original Socket.IO code preserved for potential future collaborative features.
 
 **Details:** See `.claude/DESIGN.md` for full rationale.
-
----
-
-### Database Schema Uses snake_case
-
-**Status:** Implemented (not a breaking change)
-
-**Change:** Database column names use `snake_case` (e.g., `profile_image_url`, `created_at`).
-
-**Why:** Matches SQL conventions and OpenWebUI's database schema.
-
-**Compatibility:** Not a breaking change - internal to backend. API responses can be transformed to camelCase independently.
 
 ---
 
