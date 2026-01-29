@@ -10,6 +10,10 @@ import { Router, type Response, type NextFunction } from 'express';
 import * as Types from './types.js';
 import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateUserId, validateChatId, validateShareId, validateFolderId, validateChatAndMessageId } from './middleware.js';
+import { db } from '../db/client.js';
+import * as Chats from '../db/operations/chats.js';
+import type { Chat } from '../db/schema.js';
+import { HttpError, NotFoundError, ForbiddenError, BadRequestError, UnauthorizedError } from './errors.js';
 
 const router = Router();
 
@@ -24,54 +28,58 @@ const router = Router();
  * @query {Types.ChatListQuery} - pagination and filter parameters
  * @returns {Types.ChatTitleIdResponse[]} - minimal chat info (ID, title, timestamps)
  */
-router.get(['/', '/list'], requireAuth, (
+router.get(['/', '/list'], requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.ChatListQuery>,
     res: Response<Types.ChatTitleIdResponse[] | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.ChatListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.ChatListQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { page, include_pinned, include_folders } = queryValidation.data;
+    const userId = req.user!.id;
+    const { page, include_pinned: includePinned, include_folders: includeFolders } = query.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        let options: Chats.ListOptions = {
+            includeArchived: false,
+            includeFolders: includeFolders,
+            includePinned: includePinned,
+        };
 
-    // TODO: Query chats from database filtered by user_id
-    // Filter chats by user
-    let chats = MockData.mockChats.filter(chat => chat.user_id === userId);
+        // Apply pagination if page is provided
+        if (page !== undefined) {
+            const pageSize = 60;
+            options.skip = (page - 1) * pageSize;
+            options.limit = pageSize;
+        }
 
-    // Filter by pinned/folders flags
-    if (!include_pinned) {
-        chats = chats.filter(chat => !chat.pinned);
+        const chats = await Chats.getChatTitleIdListByUserId(userId, options, db);
+
+        // Map to response format
+        const response: Types.ChatTitleIdResponse[] = chats.map(chat => ({
+            id: chat.id,
+            title: chat.title,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+        }));
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get chat list error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-    if (!include_folders) {
-        chats = chats.filter(chat => !chat.folder_id);
-    }
-
-    // Filter out archived chats
-    chats = chats.filter(chat => !chat.archived);
-
-    // Apply pagination if page is provided
-    if (page !== undefined) {
-        const skip = (page - 1) * 60;
-        const limit = 60;
-        chats = chats.slice(skip, skip + limit);
-    }
-
-    // Map to minimal response
-    const response: Types.ChatTitleIdResponse[] = chats.map(chat => ({
-        id: chat.id,
-        title: chat.title,
-        updated_at: chat.updated_at,
-        created_at: chat.created_at,
-    }));
-
-    res.json(response);
 });
 
 /**
@@ -82,17 +90,43 @@ router.get(['/', '/list'], requireAuth, (
  *
  * @returns {Types.ChatResponse[]} - full chat objects (no pagination)
  */
-router.get('/all', requireAuth, (
+router.get('/all', requireAuth, async (
     req: Types.TypedRequest,
     res: Response<Types.ChatResponse[] | Types.ErrorResponse>
 ) => {
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    const userId = req.user!.id;
 
-    // TODO: Query all chats from database filtered by user_id
-    const chats = MockData.mockChats.filter(chat => chat.user_id === userId);
+    try {
+        const { items } = await Chats.getChatsByUserId(userId, {}, db);
 
-    res.json(chats);
+        // Map to response format
+        const response: Types.ChatResponse[] = items.map(chat => ({
+            id: chat.id,
+            user_id: chat.userId,
+            title: chat.title,
+            chat: chat.chat,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+            share_id: chat.shareId,
+            archived: chat.archived,
+            pinned: chat.pinned ?? false,
+            meta: chat.meta || {},
+            folder_id: chat.folderId,
+        }));
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get all chats error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -131,25 +165,44 @@ router.get('/all/db', requireAdmin, (
  * @param {Types.ChatIdParams} - path parameters with chat ID
  * @returns {Types.ChatResponse | null} - full chat object or null if not found
  */
-router.get('/:id', validateChatId, requireAuth, (
+router.get('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!chat) throw NotFoundError('Chat not found or unauthorized');
 
-    // TODO: Query chat from database by id and user_id
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+        const response: Types.ChatResponse = {
+            id: chat.id,
+            user_id: chat.userId,
+            title: chat.title,
+            chat: chat.chat,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+            share_id: chat.shareId || undefined,
+            archived: chat.archived,
+            pinned: chat.pinned ?? false,
+            meta: chat.meta || {},
+            folder_id: chat.folderId || undefined,
+        };
 
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get chat by id error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    res.json(chat);
 });
 
 /**
@@ -166,17 +219,16 @@ router.get('/list/user/:user_id', validateUserId, requireAdmin, (
     req: Types.TypedRequest<Types.UserIdParams, any, Types.UserChatListQuery>,
     res: Response<Types.ChatTitleIdResponse[] | Types.ErrorResponse>
 ) => {
-    const { user_id } = req.params;
-
-    const queryValidation = Types.UserChatListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.UserChatListQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { page, query, order_by, direction } = queryValidation.data;
+    const userId = req.params.user_id;
+    const { page, query: searchQuery, order_by, direction } = query.data;
 
     // TODO: Check ENABLE_ADMIN_CHAT_ACCESS config flag
     const adminChatAccessEnabled = true;  // Mock value
@@ -188,11 +240,11 @@ router.get('/list/user/:user_id', validateUserId, requireAdmin, (
     }
 
     // TODO: Query chats from database filtered by user_id (including archived)
-    let chats = MockData.mockChats.filter(chat => chat.user_id === user_id);
+    let chats = MockData.mockChats.filter(chat => chat.user_id === userId);
 
     // Apply filtering by query if provided
-    if (query) {
-        chats = chats.filter(chat => chat.title.toLowerCase().includes(query.toLowerCase()));
+    if (searchQuery) {
+        chats = chats.filter(chat => chat.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }
 
     // Apply sorting if provided
@@ -224,40 +276,50 @@ router.get('/list/user/:user_id', validateUserId, requireAdmin, (
  * @body {Types.ChatForm} - chat data and optional folder ID
  * @returns {Types.ChatResponse | null} - created chat object
  */
-router.post('/new', requireAuth, (
+router.post('/new', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ChatForm>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const bodyValidation = Types.ChatFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.ChatFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { chat, folder_id } = bodyValidation.data;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const newChat = await Chats.createChat(userId, body.data, db);
 
-    // TODO: Insert new chat into database
-    const now = Math.floor(Date.now() / 1000);
-    const newChat: Types.ChatResponse = {
-        id: crypto.randomUUID(),
-        user_id: userId,
-        title: 'New Chat',
-        chat: chat,
-        updated_at: now,
-        created_at: now,
-        share_id: null,
-        archived: false,
-        pinned: false,
-        meta: {},
-        folder_id: folder_id ?? null,
-    };
+        const response: Types.ChatResponse = {
+            id: newChat.id,
+            user_id: newChat.userId,
+            title: newChat.title,
+            chat: newChat.chat,
+            updated_at: newChat.updatedAt,
+            created_at: newChat.createdAt,
+            share_id: newChat.shareId,
+            archived: newChat.archived,
+            pinned: newChat.pinned ?? false,
+            meta: newChat.meta || {},
+            folder_id: newChat.folderId,
+        };
 
-    res.json(newChat);
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Create chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -270,96 +332,91 @@ router.post('/new', requireAuth, (
  * @body {Types.ChatForm} - updated chat data and optional folder ID
  * @returns {Types.ChatResponse | null} - updated chat object or null if unauthorized
  */
-router.post('/:id', validateChatId, requireAuth, (
+router.post('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.ChatForm>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
-
-    const bodyValidation = Types.ChatFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.ChatFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { chat, folder_id } = bodyValidation.data;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Verify ownership
+        const existingChat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!existingChat) throw NotFoundError('Chat not found or unauthorized');
 
-    // TODO: Query chat from database to verify ownership
-    let existingChat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+        // Update chat
+        const updatedChat = await Chats.updateChat(chatId, body.data, db);
+        if (!updatedChat) throw NotFoundError('Chat not found');
 
-    if (!existingChat) {
-        existingChat = MockData.mockChats.at(0)!;
-        // return res.status(401).json({
-        //     detail: 'Chat not found or unauthorized'
-        // });
+        const response: Types.ChatResponse = {
+            id: updatedChat.id,
+            user_id: updatedChat.userId,
+            title: updatedChat.title,
+            chat: updatedChat.chat,
+            updated_at: updatedChat.updatedAt,
+            created_at: updatedChat.createdAt,
+            share_id: updatedChat.shareId,
+            archived: updatedChat.archived,
+            pinned: updatedChat.pinned ?? false,
+            meta: updatedChat.meta || {},
+            folder_id: updatedChat.folderId,
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Update chat in database
-    const updatedChat: Types.ChatResponse = {
-        ...existingChat,
-        chat: { ...existingChat.chat, ...chat },
-        folder_id: folder_id ?? existingChat.folder_id,
-        updated_at: Math.floor(Date.now() / 1000),
-    };
-
-    res.json(updatedChat);
 });
 
 /**
  * DELETE /api/v1/chats/:id
- * Access Control: User can delete own chats (requires chat.delete permission); Admin can delete any chat
+ * Access Control: Any authenticated user can delete their own chats
  *
- * Delete a specific chat by ID. Admins can delete ANY chat; regular users can only delete their own chats.
+ * Delete a specific chat by ID. Users can only delete chats they own.
  *
  * @param {Types.ChatIdParams} - path parameters with chat ID
- * @returns {boolean} - true if deletion successful
+ * @returns {boolean} - true if deletion successful, 404 if chat not found or not owned by user
  */
-router.delete('/:id', validateChatId, requireAuth, (
+router.delete('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true;  // Mock value
+    try {
+        const success = await Chats.deleteChatByIdAndUserId(chatId, userId, db);
+        if (!success) throw NotFoundError('Chat not found.');
 
-    if (isAdmin) {
-        // TODO: Admin path - delete chat by ID without user filter
-        const chatExists = MockData.mockChats.some(c => c.id === id);
-        if (!chatExists) {
-            return res.status(404).json({
-                detail: 'Chat not found'
-            });
+        return res.json(success);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
         }
 
-        // TODO: Clean up tags if this was the last chat using specific tags
-        res.json(true);
-    } else {
-        // TODO: Check user has chat.delete permission
-        const hasDeletePermission = true;  // Mock value
-
-        if (!hasDeletePermission) {
-            return res.status(401).json({
-                detail: 'Missing chat.delete permission'
-            });
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
         }
 
-        // TODO: User path - delete chat by ID and user_id
-        const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-        if (!chat) {
-            return res.status(404).json({
-                detail: 'Chat not found'
-            });
-        }
-
-        // TODO: Clean up tags
-        res.json(true);
+        console.error('Delete chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
 });
 
@@ -369,18 +426,29 @@ router.delete('/:id', validateChatId, requireAuth, (
  *
  * Delete all chats for the current user (cannot be undone).
  *
- * @returns {boolean} - true if deletion successful
+ * @returns {boolean} - true if db call does not fail (even if nothing was deleted)
  */
-router.delete('/', requireAuth, (
+router.delete('/', requireAuth, async (
     req: Types.TypedRequest,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    const userId = req.user!.id;
 
-    // TODO: Delete all chats for user from database
-    // This cannot be undone
-    res.json(true);
+    try {
+        await Chats.deleteAllChatsByUserId(userId, db);
+        return res.json(true);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Delete all chats error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /* -------------------- SHARING & CLONING -------------------- */
@@ -555,15 +623,15 @@ router.post('/:id/clone', validateChatId, requireAuth, (
 ) => {
     const { id } = req.params;
 
-    const bodyValidation = Types.CloneFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.CloneFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { title } = bodyValidation.data;
+    const { title } = body.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -609,15 +677,15 @@ router.post('/:id/folder', validateChatId, requireAuth, (
 ) => {
     const { id } = req.params;
 
-    const bodyValidation = Types.ChatFolderIdFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.ChatFolderIdFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { folder_id } = bodyValidation.data;
+    const { folder_id } = body.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -683,15 +751,15 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, (
 ) => {
     const { folder_id } = req.params;
 
-    const queryValidation = Types.FolderChatListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.FolderChatListQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { page } = queryValidation.data;
+    const { page } = query.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -734,15 +802,15 @@ router.post('/:id/messages/:message_id', validateChatAndMessageId, requireAuth, 
 ) => {
     const { id, message_id } = req.params;
 
-    const bodyValidation = Types.MessageFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.MessageFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { content } = bodyValidation.data;
+    const { content } = body.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -782,15 +850,15 @@ router.post('/:id/messages/:message_id/event', validateChatAndMessageId, require
 ) => {
     const { id, message_id } = req.params;
 
-    const bodyValidation = Types.EventFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.EventFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { type, data } = bodyValidation.data;
+    const { type, data } = body.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -824,15 +892,15 @@ router.get('/stats/usage', requireAuth, (
     req: Types.TypedRequest<{}, any, Types.ChatUsageStatsQuery>,
     res: Response<Types.ChatUsageStatsListResponse | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.ChatUsageStatsQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.ChatUsageStatsQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { items_per_page, page } = queryValidation.data;
+    const { items_per_page, page } = query.data;
 
     // TODO: Get user ID from JWT token
     const userId = MockData.MOCK_ADMIN_USER_ID;
@@ -869,5 +937,80 @@ router.get('/stats/usage', requireAuth, (
 
     res.json(response);
 });
+
+/* -------------------- HELPER FUNCTIONS -------------------- */
+
+/**
+ * Get computed permissions for a user based on their role
+ * TODO: Implement database-backed permissions with user/group overrides
+ */
+function getPermissions(role: Types.UserRole): Types.UserPermissions {
+    const isAdmin = role === 'admin';
+
+    // TODO: Load default permissions from config or database
+    const permissions: Types.UserPermissions = {
+        workspace: {
+            models: isAdmin,
+            knowledge: isAdmin,
+            prompts: isAdmin,
+            tools: isAdmin,
+            models_import: isAdmin,
+            models_export: isAdmin,
+            prompts_import: isAdmin,
+            prompts_export: isAdmin,
+            tools_import: isAdmin,
+            tools_export: isAdmin,
+        },
+        sharing: {
+            models: false,
+            public_models: false,
+            knowledge: false,
+            public_knowledge: false,
+            prompts: false,
+            public_prompts: false,
+            tools: false,
+            public_tools: false,
+            notes: false,
+            public_notes: false,
+        },
+        chat: {
+            controls: true,
+            valves: true,
+            system_prompt: true,
+            params: true,
+            file_upload: true,
+            delete: true,
+            delete_message: true,
+            continue_response: true,
+            regenerate_response: true,
+            rate_response: true,
+            edit: true,
+            share: true,
+            export: true,
+            stt: true,
+            tts: true,
+            call: true,
+            multiple_models: true,
+            temporary: true,
+            temporary_enforced: false,
+        },
+        features: {
+            api_keys: isAdmin,
+            notes: false,
+            channels: false,
+            folders: true,
+            direct_tool_servers: isAdmin,
+            web_search: true,
+            image_generation: false,
+            code_interpreter: false,
+            memories: false,
+        },
+        settings: {
+            interface: true,
+        },
+    };
+
+    return permissions;
+}
 
 export default router;

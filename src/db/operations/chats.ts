@@ -139,7 +139,7 @@ export async function getChatsByUserId(
 ): Promise<{ items: Chat[]; total: number }> {
     const {
         skip = 0,
-        limit = 50,
+        limit,
         filter = {},
     } = options;
 
@@ -177,7 +177,7 @@ export async function getChatsByUserId(
         .from(chats)
         .where(whereClause)
         .orderBy(sortFn(sortColumn))
-        .limit(limit)
+        .limit(limit ?? 999999)
         .offset(skip);
 
     // Get total count
@@ -186,7 +186,7 @@ export async function getChatsByUserId(
         .from(chats)
         .where(whereClause);
 
-    const total = countResult.at(0)?.count ?? 0;
+    const total = countResult[0]?.count ?? 0;
     return { items, total };
 }
 
@@ -226,7 +226,7 @@ export async function getChatTitleIdListByUserId(
         includeFolders = false,
         includePinned = false,
         skip = 0,
-        limit = 60,
+        limit,
     } = options;
 
     // Build where conditions
@@ -261,7 +261,7 @@ export async function getChatTitleIdListByUserId(
         .from(chats)
         .where(whereClause)
         .orderBy(desc(chats.updatedAt))
-        .limit(limit)
+        .limit(limit ?? 999999)
         .offset(skip);
 
     return result;

@@ -61,6 +61,7 @@ Response (200): [`ChatTitleIdResponse[]`](#chattitleidresponse)
 - _OWUI Implementation Notes:_
   - Exact same implementation as `GET /api/v1/chats/`
   - Both endpoints decorated on same function
+- **⚠️ Frontend Usage:** NOT used by frontend - frontend only calls `/api/v1/chats/` (non-aliased version)
 
 ---
 
@@ -246,7 +247,7 @@ Response (200): [`ChatResponse`](#chatresponse) or `null`
 
 ### DELETE `/api/v1/chats/{id}`
 
-Delete a specific chat by ID. **Admins can delete ANY chat; regular users can only delete their own chats.**
+Delete a specific chat by ID. Users can only delete chats they own.
 
 #### Inputs
 
@@ -264,9 +265,7 @@ Response (200): `boolean` - Returns `true` if deletion successful
   - Method: `delete_chat_by_id()`
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - **Admin behavior:** Admins can delete ANY chat in the system (no ownership check)
-  - **Regular user behavior:** Users can only delete their own chats (filtered by user_id)
-  - Regular users also need `chat.delete` permission (checked via `has_permission()`)
+  - Users can only delete their own chats (ownership enforced by database query)
 - _OWUI Implementation Notes:_
   - **Admin path:** Calls `Chats.delete_chat_by_id(id, db=db)` - deletes by ID only, no user filter
   - **User path:** Calls `Chats.delete_chat_by_id_and_user_id(id, user.id, db=db)` - requires ownership
@@ -545,7 +544,9 @@ Response (200): [`FolderChatListItemResponse[]`](#folderchatlistitemresponse)
 
 ### POST `/api/v1/chats/{id}/messages/{message_id}`
 
-Update the content of a specific message in a chat.
+Update a specific message's content within a chat.
+
+**⚠️ Implementation Note:** This endpoint is primarily used internally by OpenWebUI's backend systems (streaming, error tracking, metadata updates). The frontend does NOT use this endpoint - it updates entire chats via `POST /api/v1/chats/{id}` instead.
 
 #### Inputs
 
@@ -564,19 +565,36 @@ Response (200): [`ChatResponse`](#chatresponse) or `null`
 - _Reference Implementation:_
   - File: `/home/fox/open-webui/backend/open_webui/routers/chats.py:973`
   - Method: `update_chat_message_by_id()`
+  - Database operation: `/home/fox/open-webui/backend/open_webui/models/chats.py:428`
+  - Method: `upsert_message_to_chat_by_id_and_message_id()`
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - User must own the chat
+  - User must own the chat (or be admin)
 - _OWUI Implementation Notes:_
-  - Updates message content within chat's messages array
-  - Returns updated full chat object
-  - Used for editing messages after they're sent
+  - **Frontend does NOT call this endpoint** - uses full chat update (`POST /api/v1/chats/{id}`) instead
+  - **Backend uses the database operation 17 times internally:**
+    - Real-time streaming saves (saves message content incrementally during LLM streaming)
+    - WebSocket event handling (processes "message", "replace", "embeds", "files", "source" events)
+    - Error tracking (records failures in messages)
+    - Metadata updates (stores model ID, parent references, follow-ups)
+  - HTTP endpoint is a thin wrapper around database operation + Socket.IO event emission
+  - Merges new content with existing message (preserves role, timestamp, parentId, childrenIds, files, etc.)
+  - Only updates the `content` field by default
+  - Emits Socket.IO event `chat:message` for real-time updates across clients
+- **⚠️ Frontend Usage:** NOT used by frontend - backend-internal only
+  - Returns full updated chat object
+- _Implementation Requirements:_
+  - Database operation: `upsert_message_to_chat_by_id_and_message_id()` (merge message fields)
+  - Socket.IO broadcasting for real-time updates
+  - Used during streaming to save partial message content
 
 ---
 
 ### POST `/api/v1/chats/{id}/messages/{message_id}/event`
 
-Send an event related to a message (e.g., typing indicators, reactions).
+Send events from backend functions/tools/pipelines to update message content in real-time.
+
+**⚠️ Implementation Note:** This endpoint is only needed if implementing OpenWebUI's functions/tools/pipelines system. It requires Socket.IO for real-time event broadcasting to the frontend.
 
 #### Inputs
 
@@ -595,13 +613,27 @@ Response (200): `boolean` or `null`
 - _Reference Implementation:_
   - File: `/home/fox/open-webui/backend/open_webui/routers/chats.py:1036`
   - Method: `send_chat_message_event_by_id()`
+  - Socket.IO implementation: `/home/fox/open-webui/backend/open_webui/socket/main.py:699-816`
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - User must have access to the chat
 - _OWUI Implementation Notes:_
-  - Used for real-time events like typing indicators
-  - Event type and data determined by form_data
-  - Returns success boolean
+  - **NOT called from frontend** - Used by backend functions/tools/pipelines only
+  - Backend functions receive an `__event_emitter__` parameter that calls this endpoint
+  - Events are broadcast to frontend via Socket.IO (`"events"` event to `user:{user_id}` room)
+  - Supports 6 event types with automatic database persistence:
+    - `status` - Update message processing status
+    - `message` - Append content (for streaming responses)
+    - `replace` - Replace entire message content
+    - `embeds` - Add images/videos/links to message
+    - `files` - Add file references to message
+    - `source`/`citation` - Add RAG sources to message
+  - Each event type automatically updates the message in the database
+  - Database updates are skipped for temporary chats (IDs starting with `"local:"`)
+- _Architecture:_
+  - Flow: Backend Function → POST event → Socket.IO broadcast → Frontend receives
+  - Requires Socket.IO server (`sio.emit()`) for real-time updates
+  - Without Socket.IO, only database persistence would occur (no real-time updates)
 
 ---
 
@@ -631,6 +663,7 @@ Response (200): [`ChatUsageStatsListResponse`](#chatusagestatslistresponse)
   - **EXPERIMENTAL:** May be removed in future releases
   - Returns aggregated statistics per chat
   - Includes message counts, models used, response times, message lengths
+- **⚠️ Frontend Usage:** NOT used by frontend - frontend uses different stats endpoints (`/chats/stats/export`)
 
 ---
 
@@ -1093,18 +1126,29 @@ Form data for updating a message's content.
 
 ### `EventForm`
 
-Form data for sending message events.
+Form data for sending message events from backend functions/tools/pipelines.
 
 ```typescript
 {
-    type: string  // Event type (e.g., "typing", "reaction")
-    data: object  // Event data (flexible structure)
+    type: string  // Event type: "status" | "message" | "replace" | "embeds" | "files" | "source" | "citation"
+    data: object  // Event data (structure depends on event type)
 }
 ```
 
 **Required fields:** `type`, `data`
 
-**Notes:** Used for real-time features like typing indicators.
+**Event Types:**
+- `"status"` - Update message status (e.g., `{"status": "processing"}`)
+- `"message"` - Append content to message (streaming) (e.g., `{"content": "chunk"}`)
+- `"replace"` - Replace entire message content (e.g., `{"content": "new text"}`)
+- `"embeds"` - Add embeds to message (e.g., `{"embeds": [{type, url}]}`)
+- `"files"` - Add file references (e.g., `{"files": [{id, name}]}`)
+- `"source"` or `"citation"` - Add RAG sources (e.g., `{"title": "...", "url": "..."}`)
+
+**Notes:**
+- Used exclusively by backend functions/tools/pipelines (not frontend)
+- Requires Socket.IO for real-time event broadcasting
+- Each event type triggers automatic database persistence
 
 ---
 

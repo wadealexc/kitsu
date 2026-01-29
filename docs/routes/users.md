@@ -259,6 +259,7 @@ Response (200): `object` (generic JSON object) or `null`
   - Returns `user.info` field from database
   - Info is flexible JSON object - no strict schema
   - Returns 400 if user not found
+- **⚠️ Frontend Usage:** NOT used by frontend - API function exists (`getUserInfo()`) but is never called
 
 ---
 
@@ -315,6 +316,7 @@ Response (200): [`UserPermissions`](#userpermissions)
   - Calls `get_permissions()` with user ID and `request.app.state.config.USER_PERMISSIONS`
   - Computes final permissions by merging default permissions with user/group-specific overrides
   - Returns computed [`UserPermissions`](#userpermissions) structure
+- **⚠️ Frontend Usage:** NOT used by frontend - no API wrapper function exists; permissions accessed via session user data (`$user?.permissions`) instead
 
 ---
 

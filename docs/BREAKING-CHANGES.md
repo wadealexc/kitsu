@@ -251,6 +251,28 @@ For a **3-user local deployment**, these features add unnecessary complexity:
 
 ---
 
+## Simplified Chat Deletion (No Admin Override, No Permissions)
+
+**Date:** 2026-01-29
+
+**Change:** `DELETE /api/v1/chats/{id}` simplified to ownership-based deletion only.
+
+### What Changed
+
+**Removed behaviors:**
+- Admin force-delete of other users' chats
+- Permission check for `chat.delete`
+
+**Current behavior:**
+- Users can delete only their own chats (enforced by database query)
+- Returns 404 if chat not found or not owned by user
+
+### Rationale
+
+Admin force-delete and permission checks add unnecessary complexity for a 3-user local deployment. Users should always be able to delete their own chats.
+
+---
+
 ## Future Breaking Changes (Planned)
 
 ### Remove snake_case from API Responses
