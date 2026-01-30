@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { createTestDatabase, newUserParams, type TestDatabase } from '../../helpers.js';
 import * as Chats from '../../../src/db/operations/chats.js';
 import * as Users from '../../../src/db/operations/users.js';
-// import * as Folders from '../../../src/db/operations/folders.js';
+import * as Folders from '../../../src/db/operations/folders.js';
 import type { Chat } from '../../../src/db/schema.js';
 import type { ChatForm, ChatImportForm, ChatObject, FlattenedMessage } from '../../../src/routes/types.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
@@ -110,13 +110,13 @@ describe('Chat Operations', () => {
             assert.strictEqual((chat.chat).title, 'Extracted Title');
         });
 
-        // it('should create chat with folder_id', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     const chatData = createTestChatData('Chat in Folder', folder.id);
-        //     const chat = await Chats.createChat(userId, chatData, db);
+        it('should create chat with folder_id', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chatData = createTestChatData('Chat in Folder', folder.id);
+            const chat = await Chats.createChat(userId, chatData, db);
 
-        //     assert.strictEqual(chat.folderId, folder.id);
-        // });
+            assert.strictEqual(chat.folderId, folder.id);
+        });
 
         it('should initialize empty meta object', async () => {
             const chatData = createTestChatData();
@@ -341,29 +341,29 @@ describe('Chat Operations', () => {
             assert.ok(chats.some(c => c.id === chat2.id));
         });
 
-        // it('should exclude chats in folders by default', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Root Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Folder Chat', folder.id), db);
+        it('should exclude chats in folders by default', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat1 = await Chats.createChat(userId, createTestChatData('Root Chat'), db);
+            const chat2 = await Chats.createChat(userId, createTestChatData('Folder Chat', folder.id), db);
 
-        //     const chats = await Chats.getChatTitleIdListByUserId(userId, {}, db);
+            const chats = await Chats.getChatTitleIdListByUserId(userId, {}, db);
 
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(!chats.some(c => c.id === chat2.id));
-        // });
+            assert.ok(chats.some(c => c.id === chat1.id));
+            assert.ok(!chats.some(c => c.id === chat2.id));
+        });
 
-        // it('should include chats in folders when requested', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Root Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Folder Chat', folder.id), db);
+        it('should include chats in folders when requested', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat1 = await Chats.createChat(userId, createTestChatData('Root Chat'), db);
+            const chat2 = await Chats.createChat(userId, createTestChatData('Folder Chat', folder.id), db);
 
-        //     const chats = await Chats.getChatTitleIdListByUserId(userId, {
-        //         includeFolders: true
-        //     }, db);
+            const chats = await Chats.getChatTitleIdListByUserId(userId, {
+                includeFolders: true
+            }, db);
 
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(chats.some(c => c.id === chat2.id));
-        // });
+            assert.ok(chats.some(c => c.id === chat1.id));
+            assert.ok(chats.some(c => c.id === chat2.id));
+        });
 
         it('should exclude pinned chats by default', async () => {
             const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
@@ -403,62 +403,62 @@ describe('Chat Operations', () => {
         });
     });
 
-    // describe('getChatsByFolderIdAndUserId', () => {
-    //     it('should retrieve chats in specific folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat1 = await Chats.createChat(userId, createTestChatData('Chat in Folder', folder.id), db);
-    //         const chat2 = await Chats.createChat(userId, createTestChatData('Chat in Root'), db);
+    describe('getChatsByFolderIdAndUserId', () => {
+        it('should retrieve chats in specific folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat1 = await Chats.createChat(userId, createTestChatData('Chat in Folder', folder.id), db);
+            const chat2 = await Chats.createChat(userId, createTestChatData('Chat in Root'), db);
 
-    //         const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
 
-    //         assert.ok(chats.some(c => c.id === chat1.id));
-    //         assert.ok(!chats.some(c => c.id === chat2.id));
-    //     });
+            assert.ok(chats.some(c => c.id === chat1.id));
+            assert.ok(!chats.some(c => c.id === chat2.id));
+        });
 
-    //     it('should exclude archived chats', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-    //         await Chats.updateChatArchivedById(chat.id, db);
+        it('should exclude archived chats', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+            await Chats.updateChatArchivedById(chat.id, db);
 
-    //         const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
 
-    //         assert.ok(!chats.some(c => c.id === chat.id));
-    //     });
+            assert.ok(!chats.some(c => c.id === chat.id));
+        });
 
-    //     it('should exclude pinned chats', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-    //         await Chats.updateChatPinnedById(chat.id, db);
+        it('should exclude pinned chats', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+            await Chats.updateChatPinnedById(chat.id, db);
 
-    //         const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
 
-    //         assert.ok(!chats.some(c => c.id === chat.id));
-    //     });
+            assert.ok(!chats.some(c => c.id === chat.id));
+        });
 
-    //     it('should verify user ownership', async () => {
-    //         const otherUser = await Users.createUser(newUserParams(), db);
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should verify user ownership', async () => {
+            const otherUser = await Users.createUser(newUserParams(), db);
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-    //         const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, otherUser.id, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, otherUser.id, {}, db);
 
-    //         assert.strictEqual(chats.length, 0);
-    //     });
+            assert.strictEqual(chats.length, 0);
+        });
 
-    //     it('should support pagination', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 3', folder.id), db);
+        it('should support pagination', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 3', folder.id), db);
 
-    //         const page1 = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {
-    //             skip: 0,
-    //             limit: 2
-    //         }, db);
+            const page1 = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {
+                skip: 0,
+                limit: 2
+            }, db);
 
-    //         assert.strictEqual(page1.length, 2);
-    //     });
-    // });
+            assert.strictEqual(page1.length, 2);
+        });
+    });
 
     describe('updateChat', () => {
         it('should update chat data and title', async () => {
@@ -504,16 +504,16 @@ describe('Chat Operations', () => {
             assert.ok(updatedChat.history!.messages[messageId]);
         });
 
-        // it('should update folder_id when provided', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'New Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
+        it('should update folder_id when provided', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'New Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
 
-        //     const updatedData = createTestChatData('Chat', folder.id);
-        //     const updated = await Chats.updateChat(chat.id, updatedData, db);
+            const updatedData = createTestChatData('Chat', folder.id);
+            const updated = await Chats.updateChat(chat.id, updatedData, db);
 
-        //     assert.ok(updated);
-        //     assert.strictEqual(updated.folderId, folder.id);
-        // });
+            assert.ok(updated);
+            assert.strictEqual(updated.folderId, folder.id);
+        });
 
         it('should return null for non-existent chat', async () => {
             const updated = await Chats.updateChat('non-existent-id', createTestChatData(), db);
@@ -522,48 +522,48 @@ describe('Chat Operations', () => {
         });
     });
 
-    // describe('updateChatFolderIdByIdAndUserId', () => {
-    //     it('should move chat to folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
+    describe('updateChatFolderIdByIdAndUserId', () => {
+        it('should move chat to folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
 
-    //         const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
+            const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
 
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.folderId, folder.id);
-    //     });
+            assert.ok(updated);
+            assert.strictEqual(updated.folderId, folder.id);
+        });
 
-    //     it('should clear folder_id when set to null', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should clear folder_id when set to null', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-    //         const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, null, db);
+            const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, null, db);
 
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.folderId, null);
-    //     });
+            assert.ok(updated);
+            assert.strictEqual(updated.folderId, null);
+        });
 
-    //     it('should clear pinned status when moving to folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-    //         await Chats.updateChatPinnedById(chat.id, db);
+        it('should clear pinned status when moving to folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
+            await Chats.updateChatPinnedById(chat.id, db);
 
-    //         const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
+            const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
 
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.pinned, false);
-    //     });
+            assert.ok(updated);
+            assert.strictEqual(updated.pinned, false);
+        });
 
-    //     it('should verify user ownership', async () => {
-    //         const otherUser = await Users.createUser(newUserParams(), db);
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
+        it('should verify user ownership', async () => {
+            const otherUser = await Users.createUser(newUserParams(), db);
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
 
-    //         const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, otherUser.id, folder.id, db);
+            const updated = await Chats.updateChatFolderIdByIdAndUserId(chat.id, otherUser.id, folder.id, db);
 
-    //         assert.strictEqual(updated, null);
-    //     });
-    // });
+            assert.strictEqual(updated, null);
+        });
+    });
 
     describe('updateChatShareIdById', () => {
         it('should set share_id', async () => {
@@ -651,29 +651,29 @@ describe('Chat Operations', () => {
             assert.strictEqual(updated.archived, false);
         });
 
-        // it('should clear folder_id when archiving', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should clear folder_id when archiving', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-        //     const updated = await Chats.updateChatArchivedById(chat.id, db);
+            const updated = await Chats.updateChatArchivedById(chat.id, db);
 
-        //     assert.ok(updated);
-        //     assert.strictEqual(updated.archived, true);
-        //     assert.strictEqual(updated.folderId, null);
-        // });
+            assert.ok(updated);
+            assert.strictEqual(updated.archived, true);
+            assert.strictEqual(updated.folderId, null);
+        });
 
-        // it('should restore folder_id when unarchiving', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-        //     await Chats.updateChatArchivedById(chat.id, db); // Archive (clears folderId)
+        it('should restore folder_id when unarchiving', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+            await Chats.updateChatArchivedById(chat.id, db); // Archive (clears folderId)
 
-        //     const updated = await Chats.updateChatArchivedById(chat.id, db); // Unarchive
+            const updated = await Chats.updateChatArchivedById(chat.id, db); // Unarchive
 
-        //     assert.ok(updated);
-        //     assert.strictEqual(updated.archived, false);
-        //     // Note: folderId is not restored automatically
-        //     assert.strictEqual(updated.folderId, null);
-        // });
+            assert.ok(updated);
+            assert.strictEqual(updated.archived, false);
+            // Note: folderId is not restored automatically
+            assert.strictEqual(updated.folderId, null);
+        });
 
         it('should return null for non-existent chat', async () => {
             const updated = await Chats.updateChatArchivedById('non-existent-id', db);
@@ -1287,15 +1287,15 @@ describe('Chat Operations', () => {
             assert.ok(result.items.every(c => c.archived === true));
         });
 
-        // it('should clear folder_id for all archived chats', async () => {
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, db);
-        //     await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should clear folder_id for all archived chats', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-        //     await Chats.archiveAllChatsByUserId(userId, db);
+            await Chats.archiveAllChatsByUserId(userId, db);
 
-        //     const result = await Chats.getChatsByUserId(userId, {}, db);
-        //     assert.ok(result.items.every(c => c.folderId === null));
-        // });
+            const result = await Chats.getChatsByUserId(userId, {}, db);
+            assert.ok(result.items.every(c => c.folderId === null));
+        });
 
         it('should return false if user has no chats', async () => {
             const success = await Chats.archiveAllChatsByUserId(userId, db);
@@ -1393,130 +1393,130 @@ describe('Chat Operations', () => {
 
     /* -------------------- FOLDER OPERATIONS -------------------- */
 
-    // describe('moveChatsToFolder', () => {
-    //     it('should move all chats from one folder to another', async () => {
-    //         const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, db);
-    //         const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 1', folder1.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2', folder1.id), db);
+    describe('moveChatsToFolder', () => {
+        it('should move all chats from one folder to another', async () => {
+            const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, null, db);
+            const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat 1', folder1.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 2', folder1.id), db);
 
-    //         const success = await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
+            const success = await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
 
-    //         assert.strictEqual(success, true);
+            assert.strictEqual(success, true);
 
-    //         const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
-    //         assert.ok(chatsInFolder2.length >= 2);
-    //     });
+            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
+            assert.ok(chatsInFolder2.length >= 2);
+        });
 
-    //     it('should move chats to root when toFolderId is null', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should move chats to root when toFolderId is null', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-    //         const success = await Chats.moveChatsToFolder(userId, folder.id, null, db);
+            const success = await Chats.moveChatsToFolder(userId, folder.id, null, db);
 
-    //         assert.strictEqual(success, true);
+            assert.strictEqual(success, true);
 
-    //         const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
-    //         assert.strictEqual(chatsInFolder.length, 0);
-    //     });
+            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            assert.strictEqual(chatsInFolder.length, 0);
+        });
 
-    //     it('should clear pinned status for moved chats', async () => {
-    //         const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, db);
-    //         const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder1.id), db);
-    //         await Chats.updateChatPinnedById(chat.id, db);
+        it('should clear pinned status for moved chats', async () => {
+            const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, null, db);
+            const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, null, db);
+            const chat = await Chats.createChat(userId, createTestChatData('Chat', folder1.id), db);
+            await Chats.updateChatPinnedById(chat.id, db);
 
-    //         await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
+            await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
 
-    //         const updated = await Chats.getChatById(chat.id, db);
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.pinned, false);
-    //     });
+            const updated = await Chats.getChatById(chat.id, db);
+            assert.ok(updated);
+            assert.strictEqual(updated.pinned, false);
+        });
 
-    //     it('should return false if no chats to move', async () => {
-    //         const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, db);
-    //         const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, db);
+        it('should return false if no chats to move', async () => {
+            const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, null, db);
+            const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, null, db);
 
-    //         const success = await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
+            const success = await Chats.moveChatsToFolder(userId, folder1.id, folder2.id, db);
 
-    //         assert.strictEqual(success, false);
-    //     });
-    // });
+            assert.strictEqual(success, false);
+        });
+    });
 
-    // describe('deleteChatsInFolder', () => {
-    //     it('should delete all chats in folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
+    describe('deleteChatsInFolder', () => {
+        it('should delete all chats in folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
 
-    //         const success = await Chats.deleteChatsInFolder(userId, folder.id, db);
+            const success = await Chats.deleteChatsInFolder(userId, folder.id, db);
 
-    //         assert.strictEqual(success, true);
+            assert.strictEqual(success, true);
 
-    //         const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
-    //         assert.strictEqual(chatsInFolder.length, 0);
-    //     });
+            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            assert.strictEqual(chatsInFolder.length, 0);
+        });
 
-    //     it('should not delete chats in other folders', async () => {
-    //         const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, db);
-    //         const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 1', folder1.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2', folder2.id), db);
+        it('should not delete chats in other folders', async () => {
+            const folder1 = await Folders.createFolder(userId, { name: 'Folder 1' }, null, db);
+            const folder2 = await Folders.createFolder(userId, { name: 'Folder 2' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat 1', folder1.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 2', folder2.id), db);
 
-    //         await Chats.deleteChatsInFolder(userId, folder1.id, db);
+            await Chats.deleteChatsInFolder(userId, folder1.id, db);
 
-    //         const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
-    //         assert.ok(chatsInFolder2.length > 0);
-    //     });
+            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
+            assert.ok(chatsInFolder2.length > 0);
+        });
 
-    //     it('should verify user ownership', async () => {
-    //         const otherUser = await Users.createUser(newUserParams(), db);
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should verify user ownership', async () => {
+            const otherUser = await Users.createUser(newUserParams(), db);
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-    //         const success = await Chats.deleteChatsInFolder(otherUser.id, folder.id, db);
+            const success = await Chats.deleteChatsInFolder(otherUser.id, folder.id, db);
 
-    //         assert.strictEqual(success, false);
-    //     });
+            assert.strictEqual(success, false);
+        });
 
-    //     it('should return false if folder is empty', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
+        it('should return false if folder is empty', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
 
-    //         const success = await Chats.deleteChatsInFolder(userId, folder.id, db);
+            const success = await Chats.deleteChatsInFolder(userId, folder.id, db);
 
-    //         assert.strictEqual(success, false);
-    //     });
-    // });
+            assert.strictEqual(success, false);
+        });
+    });
 
-    // describe('countChatsInFolder', () => {
-    //     it('should count chats in folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
+    describe('countChatsInFolder', () => {
+        it('should count chats in folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat 1', folder.id), db);
+            await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
 
-    //         const count = await Chats.countChatsInFolder(userId, folder.id, db);
+            const count = await Chats.countChatsInFolder(userId, folder.id, db);
 
-    //         assert.strictEqual(count, 2);
-    //     });
+            assert.strictEqual(count, 2);
+        });
 
-    //     it('should return 0 for empty folder', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
+        it('should return 0 for empty folder', async () => {
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
 
-    //         const count = await Chats.countChatsInFolder(userId, folder.id, db);
+            const count = await Chats.countChatsInFolder(userId, folder.id, db);
 
-    //         assert.strictEqual(count, 0);
-    //     });
+            assert.strictEqual(count, 0);
+        });
 
-    //     it('should verify user ownership', async () => {
-    //         const otherUser = await Users.createUser(newUserParams(), db);
-    //         const folder = await Folders.createFolder(userId, { name: 'Folder' }, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
+        it('should verify user ownership', async () => {
+            const otherUser = await Users.createUser(newUserParams(), db);
+            const folder = await Folders.createFolder(userId, { name: 'Folder' }, null, db);
+            await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-    //         const count = await Chats.countChatsInFolder(otherUser.id, folder.id, db);
+            const count = await Chats.countChatsInFolder(otherUser.id, folder.id, db);
 
-    //         assert.strictEqual(count, 0);
-    //     });
-    // });
+            assert.strictEqual(count, 0);
+        });
+    });
 
     /* -------------------- IMPORT/EXPORT -------------------- */
 
