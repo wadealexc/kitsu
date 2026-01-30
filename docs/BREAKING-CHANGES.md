@@ -273,6 +273,82 @@ Admin force-delete and permission checks add unnecessary complexity for a 3-user
 
 ---
 
+## Folder Field Removals and Strong Typing
+
+**Date:** 2026-01-30
+
+**Change:** Removed unused folder fields and added strong typing for folder data structures.
+
+### What Changed
+
+**Removed Fields:**
+- `folder.items` - Never used in OpenWebUI, no frontend or backend logic
+- `folder.meta.background_image_url` - Not implementing this feature
+
+**Added Strong Typing:**
+- `folder.data` now typed as `FolderData` interface with fields:
+  - `system_prompt?: string` - System prompt for folder chats
+  - `files?: FolderFileItem[]` - Files and knowledge collections attached
+  - `model_ids?: string[]` - Selected model IDs (frontend-only state)
+- `folder.meta` now typed as `FolderMeta` interface with fields:
+  - `icon?: string | null` - Emoji short code for folder icon
+
+**Database Schema:**
+```typescript
+// Before
+items: text('items', { mode: 'json' }).$type<Record<string, any>>(),
+meta: text('meta', { mode: 'json' }).$type<Record<string, any>>(),
+data: text('data', { mode: 'json' }).$type<Record<string, any>>(),
+
+// After
+meta: text('meta', { mode: 'json' }).$type<FolderMeta>(),
+data: text('data', { mode: 'json' }).$type<FolderData>(),
+```
+
+### Frontend Impact
+
+**Removed Features:**
+- No folder background image support
+- No generic items storage
+
+**Updated Structures:**
+- `folder.meta` only contains `icon` field
+- `folder.data` has well-defined structure with three optional fields
+- TypeScript provides compile-time safety for folder field access
+
+### Rationale
+
+**Removing `items`:**
+- Field was defined in OpenWebUI schema but completely unused
+- No frontend or backend code references it
+- No business logic or UI features depend on it
+- Cleaner to remove than maintain unused code
+
+**Removing `background_image_url`:**
+- Feature is not being implemented in this project
+- Simplifies folder metadata structure
+- Can be added later if needed
+
+**Adding Strong Typing:**
+- Prevents runtime errors from malformed data
+- Makes folder field usage self-documenting
+- Enables better IDE autocomplete and type checking
+- Based on actual OpenWebUI usage patterns:
+  - `system_prompt` used in middleware for chat injection
+  - `files` used in middleware for context inclusion
+  - `model_ids` used in frontend for model selection persistence
+
+### Implementation Status
+
+- [x] Database schema updated
+- [x] TypeScript types and Zod schemas added
+- [x] Route types updated
+- [x] Operations file updated
+- [x] Documentation updated
+- [x] Breaking changes documented
+
+---
+
 ## Future Breaking Changes (Planned)
 
 ### Remove snake_case from API Responses

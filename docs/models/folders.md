@@ -21,9 +21,8 @@ References:
 | `parent_id` | TEXT | NULLABLE, INDEX, FK → folder(id) ON DELETE CASCADE | Parent folder ID for hierarchical organization; null for root-level folders |
 | `user_id` | TEXT | NOT NULL, INDEX, FK → user(id) ON DELETE CASCADE | Owner's user ID (UUID v4) |
 | `name` | TEXT | NOT NULL | Folder display name (case-sensitive) |
-| `items` | JSON | NULLABLE | Flexible JSON object for item references (extensible; can store any structure) |
-| `meta` | JSON | NULLABLE | Custom metadata object (e.g., icon, color, custom properties) |
-| `data` | JSON | NULLABLE | Custom folder data (flexible; can include files, collections, or application-specific data) |
+| `meta` | JSON | NULLABLE | Folder metadata (see FolderMeta structure below) |
+| `data` | JSON | NULLABLE | Folder data structure (see FolderData structure below) |
 | `is_expanded` | BOOLEAN | NOT NULL, DEFAULT: false | UI state: whether folder is expanded in tree view (for persistence) |
 | `created_at` | BIGINT | NOT NULL, INDEX | Creation timestamp (unix seconds) |
 | `updated_at` | BIGINT | NOT NULL, INDEX | Last update timestamp (unix seconds) |
@@ -74,50 +73,93 @@ The folder system uses a **parent-child relationship model** with the following 
 - **Naming:** Folder names are unique within their parent context (same parent_id). Multiple folders with the same name can exist at different hierarchy levels.
 - **Recursion handling:** Implementation must handle recursive deletion of all descendants when a folder is deleted
 
-### Metadata JSON Structure
+### FolderMeta JSON Structure
 
-The `meta` column stores flexible metadata. **Example:**
+The `meta` column stores folder metadata for UI presentation.
 
-```json
-{
-    "icon": "folder-icon",
-    "color": "#FF5733",
-    "description": "Q1 2024 Projects"
+**Type Definition:**
+```typescript
+interface FolderMeta {
+    icon?: string | null;  // Emoji short code for folder icon
 }
 ```
 
-**Key Fields in `meta` JSON:**
-- `icon` - Icon identifier (e.g., "folder", "star", emoji, or URL)
-- Other fields are extensible for future use
-
-### Data JSON Structure
-
-The `data` column stores flexible folder-specific data. **Example from OWUI:**
-
+**Example:**
 ```json
 {
+    "icon": ":folder:"
+}
+```
+
+**Fields:**
+- `icon` - Emoji short code for folder icon (e.g., ":folder:", ":star:")
+
+### FolderData JSON Structure
+
+The `data` column stores folder functionality settings.
+
+**Type Definition:**
+```typescript
+interface FolderFileItem {
+    type: 'file' | 'collection';
+    id: string;
+    name: string;
+    collection_name?: string;
+    url?: string;
+    status?: 'uploading' | 'uploaded';
+    size?: number;
+    context?: 'full';
+    error?: string;
+    itemId?: string;
+}
+
+interface FolderData {
+    system_prompt?: string;
+    files?: FolderFileItem[];
+    model_ids?: string[];
+}
+```
+
+**Example:**
+```json
+{
+    "system_prompt": "You are a helpful assistant for Q1 2024 projects.",
     "files": [
         {
-            "id": "file-uuid-1",
             "type": "file",
-            "name": "document.pdf"
+            "id": "file-uuid-1",
+            "name": "document.pdf",
+            "url": "file-uuid-1",
+            "status": "uploaded",
+            "size": 1024000
         },
         {
-            "id": "collection-uuid-1",
             "type": "collection",
+            "id": "collection-uuid-1",
             "name": "My Knowledge Base"
-        },
-        {
-            "type": "custom",
-            "value": "application-specific"
         }
-    ]
+    ],
+    "model_ids": ["gpt-4", "claude-sonnet-4.5"]
 }
 ```
 
-**Key Fields in `data` JSON:**
-- `files` - Array of file/collection references with type and metadata (flexible structure)
-- Application-specific fields can be stored here
+**Fields:**
+
+- `system_prompt` - System prompt applied to all chats in this folder. Injected into chat requests via middleware.
+
+- `files` - Files and knowledge collections attached to this folder. Automatically included in chat requests for this folder. Array of FolderFileItem objects with the following fields:
+  - `type` - Type discriminator: 'file' for uploaded files, 'collection' for knowledge bases
+  - `id` - File or collection UUID
+  - `name` - Display name
+  - `collection_name` - Collection identifier (for files that belong to collections)
+  - `url` - Resource URL
+  - `status` - Upload status (present during upload operations)
+  - `size` - File size in bytes
+  - `context` - Context mode ('full' indicates full document context)
+  - `error` - Error message if upload/validation failed
+  - `itemId` - Temporary ID during upload process
+
+- `model_ids` - Selected model IDs for this folder. Persists model selection when navigating between folders.
 
 ---
 
@@ -586,22 +628,12 @@ await db.transaction(async (tx) => {
 
 ## Special Fields & Extensions
 
-### Items JSON Field
+### Data Field Structure
 
-The `items` column is present in OpenWebUI schema but appears unused in current implementation. It could be leveraged for:
-- Storing folder item metadata
-- Caching item counts
-- Tracking last viewed state
-
-Currently can be ignored or reserved for future use.
-
-### Data Field Extensibility
-
-The `data` field in OpenWebUI stores:
+The `data` field stores structured folder functionality settings:
+- `system_prompt` - System prompt for folder chats
 - `files` - Array of file/collection references with type discrimination
-- Application can extend with custom fields
-
-Structure allows flexible storage without schema changes.
+- `model_ids` - Selected model IDs for this folder
 
 ---
 

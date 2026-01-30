@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import type { UserSettings, UserRole, ChatObject } from '../routes/types.js';
+import type { UserSettings, UserRole, ChatObject, FolderMeta, FolderData } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */
 
@@ -124,9 +124,8 @@ export const folders = sqliteTable('folder', {
     name: text('name').notNull(),
 
     // Metadata (JSON)
-    items: text('items', { mode: 'json' }).$type<Record<string, any>>(),
-    meta: text('meta', { mode: 'json' }).$type<Record<string, any>>(),
-    data: text('data', { mode: 'json' }).$type<Record<string, any>>(),
+    meta: text('meta', { mode: 'json' }).$type<FolderMeta>(),
+    data: text('data', { mode: 'json' }).$type<FolderData>(),
 
     // UI State
     isExpanded: integer('is_expanded', { mode: 'boolean' }).notNull().default(false),

@@ -825,6 +825,69 @@ export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 
 /* -------------------- FOLDER SCHEMAS -------------------- */
 
+/** File or collection reference in folder data */
+export interface FolderFileItem {
+    /** Type discriminator - 'file' for uploaded files, 'collection' for knowledge bases */
+    type: 'file' | 'collection';
+    /** File or collection UUID */
+    id: string;
+    /** Display name */
+    name: string;
+    /** Collection identifier (for files that belong to collections) */
+    collection_name?: string;
+    /** Resource URL */
+    url?: string;
+    /** Upload status (present during upload operations) */
+    status?: 'uploading' | 'uploaded';
+    /** File size in bytes */
+    size?: number;
+    /** Context mode - 'full' indicates full document context */
+    context?: 'full';
+    /** Error message if upload/validation failed */
+    error?: string;
+    /** Temporary ID during upload process */
+    itemId?: string;
+}
+
+export const FolderFileItemSchema: z.ZodType<FolderFileItem> = z.object({
+    type: z.enum(['file', 'collection']),
+    id: z.string(),
+    name: z.string(),
+    collection_name: z.string().optional(),
+    url: z.string().optional(),
+    status: z.enum(['uploading', 'uploaded']).optional(),
+    size: z.number().optional(),
+    context: z.literal('full').optional(),
+    error: z.string().optional(),
+    itemId: z.string().optional(),
+});
+
+/** Folder data structure containing functionality settings */
+export interface FolderData {
+    /** System prompt applied to all chats in this folder */
+    system_prompt?: string;
+    /** Files and knowledge collections attached to this folder */
+    files?: FolderFileItem[];
+    /** Selected model IDs for this folder */
+    model_ids?: string[];
+}
+
+export const FolderDataSchema: z.ZodType<FolderData> = z.object({
+    system_prompt: z.string().optional(),
+    files: z.array(FolderFileItemSchema).optional(),
+    model_ids: z.array(z.string()).optional(),
+});
+
+/** Folder metadata for UI presentation */
+export interface FolderMeta {
+    /** Emoji short code for folder icon (e.g., ":folder:", ":star:") */
+    icon?: string | null;
+}
+
+export const FolderMetaSchema: z.ZodType<FolderMeta> = z.object({
+    icon: z.string().nullable().optional(),
+}).passthrough();
+
 // Folder metadata response (icon, etc.)
 export const FolderMetadataResponseSchema = z.object({
     icon: z.string().nullable().optional(),
@@ -849,9 +912,8 @@ export const FolderModelSchema = z.object({
     parent_id: FolderIdSchema.nullable().optional(),
     user_id: UserIdSchema,
     name: z.string(),
-    items: z.record(z.string(), z.any()).nullable().optional(),
-    meta: z.record(z.string(), z.any()).nullable().optional(),
-    data: z.record(z.string(), z.any()).nullable().optional(),
+    meta: FolderMetaSchema.nullable().optional(),
+    data: FolderDataSchema.nullable().optional(),
     is_expanded: z.boolean().default(false),
     created_at: z.number(),
     updated_at: z.number(),
@@ -861,16 +923,16 @@ export type FolderModel = z.infer<typeof FolderModelSchema>;
 // Folder form (for creating folders)
 export const FolderFormSchema = z.object({
     name: z.string(),
-    data: z.record(z.string(), z.any()).nullable().optional(),
-    meta: z.record(z.string(), z.any()).nullable().optional(),
+    data: FolderDataSchema.nullable().optional(),
+    meta: FolderMetaSchema.nullable().optional(),
 }).passthrough();  // Allow additional properties
 export type FolderForm = z.infer<typeof FolderFormSchema>;
 
 // Folder update form (for updating folder properties)
 export const FolderUpdateFormSchema = z.object({
     name: z.string().nullable().optional(),
-    data: z.record(z.string(), z.any()).nullable().optional(),
-    meta: z.record(z.string(), z.any()).nullable().optional(),
+    data: FolderDataSchema.nullable().optional(),
+    meta: FolderMetaSchema.nullable().optional(),
 }).passthrough();  // Allow additional properties
 export type FolderUpdateForm = z.infer<typeof FolderUpdateFormSchema>;
 

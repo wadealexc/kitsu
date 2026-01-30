@@ -124,7 +124,6 @@ router.post('/', requireAuth, (
         parent_id: null,
         user_id: userId,
         name,
-        items: null,
         meta: meta ?? null,
         data: data ?? null,
         is_expanded: false,

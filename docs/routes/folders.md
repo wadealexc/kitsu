@@ -277,12 +277,11 @@ Full folder representation with all fields.
     parent_id: string | null;
     user_id: string;
     name: string;
-    items: object | null;      // Item references
-    meta: object | null;       // Metadata
-    data: object | null;       // Custom folder data
-    is_expanded: boolean;      // Default: false
-    created_at: number;        // Unix timestamp (seconds)
-    updated_at: number;        // Unix timestamp (seconds)
+    meta: FolderMeta | null;       // Metadata
+    data: FolderData | null;       // Custom folder data
+    is_expanded: boolean;          // Default: false
+    created_at: number;            // Unix timestamp (seconds)
+    updated_at: number;            // Unix timestamp (seconds)
 }
 ```
 
@@ -291,12 +290,78 @@ Full folder representation with all fields.
 - `parent_id` - Parent folder ID (null for root level)
 - `user_id` - Owner user ID
 - `name` - Folder display name
-- `items` - JSON object with item references (flexible schema)
-- `meta` - JSON object with metadata (icon, etc.)
-- `data` - JSON object with custom data (flexible schema)
+- `meta` - Folder metadata (see FolderMeta)
+- `data` - Folder data structure (see FolderData)
 - `is_expanded` - Whether folder is expanded in UI
 - `created_at` - Creation timestamp (Unix seconds)
 - `updated_at` - Last update timestamp (Unix seconds)
+
+---
+
+### `FolderFileItem`
+
+File or collection reference in folder data.
+
+```typescript
+{
+    type: 'file' | 'collection';  // Type discriminator
+    id: string;                    // File or collection UUID
+    name: string;                  // Display name
+    collection_name?: string;      // Collection identifier (for files)
+    url?: string;                  // Resource URL
+    status?: 'uploading' | 'uploaded';  // Upload status
+    size?: number;                 // File size in bytes
+    context?: 'full';             // Context mode
+    error?: string;               // Error message if failed
+    itemId?: string;              // Temporary ID during upload
+}
+```
+
+**Fields:**
+- `type` - Type discriminator: 'file' for uploaded files, 'collection' for knowledge bases
+- `id` - File or collection UUID
+- `name` - Display name
+- `collection_name` - Collection identifier (for files that belong to collections)
+- `url` - Resource URL
+- `status` - Upload status (present during upload operations)
+- `size` - File size in bytes
+- `context` - Context mode ('full' indicates full document context)
+- `error` - Error message if upload/validation failed
+- `itemId` - Temporary ID during upload process
+
+---
+
+### `FolderData`
+
+Folder data structure containing functionality settings.
+
+```typescript
+{
+    system_prompt?: string;       // System prompt for chats
+    files?: FolderFileItem[];     // Files and knowledge collections
+    model_ids?: string[];         // Selected model IDs
+}
+```
+
+**Fields:**
+- `system_prompt` - System prompt applied to all chats in this folder
+- `files` - Files and knowledge collections attached to this folder
+- `model_ids` - Selected model IDs for this folder
+
+---
+
+### `FolderMeta`
+
+Folder metadata for UI presentation.
+
+```typescript
+{
+    icon?: string | null;  // Emoji short code
+}
+```
+
+**Fields:**
+- `icon` - Emoji short code for folder icon (e.g., ":folder:", ":star:")
 
 ---
 
@@ -306,14 +371,16 @@ Request form for creating a folder.
 
 ```typescript
 {
-    name: string;           // Required
-    data?: object | null;   // Optional custom data
-    meta?: object | null;   // Optional metadata
+    name: string;              // Required
+    data?: FolderData | null;  // Optional folder data
+    meta?: FolderMeta | null;  // Optional metadata
 }
 ```
 
 **Validation:**
 - `name` is required
+- `data` must conform to FolderData structure if provided
+- `meta` must conform to FolderMeta structure if provided
 - Additional properties allowed (additionalProperties: true)
 
 ---
@@ -324,15 +391,17 @@ Request form for updating folder properties.
 
 ```typescript
 {
-    name?: string | null;   // Optional new name
-    data?: object | null;   // Optional new data (merged with existing)
-    meta?: object | null;   // Optional new metadata (merged with existing)
+    name?: string | null;      // Optional new name
+    data?: FolderData | null;  // Optional new data (merged with existing)
+    meta?: FolderMeta | null;  // Optional new metadata (merged with existing)
 }
 ```
 
 **Notes:**
 - All fields are optional
 - Data and meta are merged with existing values (not replaced)
+- `data` must conform to FolderData structure if provided
+- `meta` must conform to FolderMeta structure if provided
 - Additional properties allowed (additionalProperties: true)
 
 ---

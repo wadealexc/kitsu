@@ -21,3 +21,4 @@ docker-compose.yml
 /src/scratch.ts
 
 .claude/
+.coutput/
