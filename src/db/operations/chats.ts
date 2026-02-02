@@ -276,24 +276,24 @@ export type PaginationOptions = {
 };
 
 /**
- * Retrieves chats in a specific folder.
+ * Retrieves chats in a specific folder or folders
  * Filters by userId to prevent cross-user access.
  * Excludes pinned and archived chats.
  * Default sort: updatedAt DESC.
  */
 export async function getChatsByFolderIdAndUserId(
-    folderId: string,
+    folderIds: string[],
     userId: string,
     options: PaginationOptions = {},
     txOrDb: DbOrTx = db
 ): Promise<Chat[]> {
-    const { skip = 0, limit = 50 } = options;
+    const { skip = 0, limit } = options;
 
     return await txOrDb
         .select()
         .from(chats)
         .where(and(
-            eq(chats.folderId, folderId),
+            inArray(chats.folderId, folderIds),
             eq(chats.userId, userId),
             eq(chats.archived, false),
             or(
@@ -302,7 +302,7 @@ export async function getChatsByFolderIdAndUserId(
             )
         ))
         .orderBy(desc(chats.updatedAt))
-        .limit(limit)
+        .limit(limit ?? 999999)
         .offset(skip);
 }
 

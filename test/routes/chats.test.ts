@@ -11,8 +11,9 @@ import * as schema from '../../src/db/schema.js';
 import * as Users from '../../src/db/operations/users.js';
 import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
+import * as Folders from '../../src/db/operations/folders.js';
 import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole, type ChatForm, type ChatObject, type FlattenedMessage } from '../../src/routes/types.js';
+import { type UserRole, type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse } from '../../src/routes/types.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -27,6 +28,7 @@ await migrate(db, { migrationsFolder: './drizzle' });
 // Helper function to clear database tables
 async function clearDatabase() {
     await db.delete(schema.chats);
+    await db.delete(schema.folders);
     await db.delete(schema.auths);
     await db.delete(schema.users);
 }
@@ -138,6 +140,22 @@ async function createMultipleChats(userId: string, count: number): Promise<schem
         chats.push(chat);
     }
     return chats;
+}
+
+function toApiChatResponse(chat: schema.Chat): ChatResponse {
+    return {
+        id: chat.id,
+        user_id: chat.userId,
+        title: chat.title,
+        chat: chat.chat,
+        updated_at: chat.updatedAt,
+        created_at: chat.createdAt,
+        share_id: chat.shareId,
+        archived: chat.archived,
+        pinned: chat.pinned ?? false,
+        meta: chat.meta ?? {},
+        folder_id: chat.folderId,
+    };
 }
 
 /* -------------------- TESTS -------------------- */
@@ -1077,6 +1095,999 @@ describe('Chat Routes', () => {
             await request(app)
                 .delete('/api/v1/chats/')
                 .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    describe('POST /api/v1/chats/:id/folder', () => {
+        test('should move chat to folder', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ folder_id: folder.id })
+                .expect(200);
+
+            assert.strictEqual(response.body.folder_id, folder.id);
+            assert.strictEqual(response.body.pinned, false);
+
+            // Verify in database
+            const updatedChat = await Chats.getChatById(chat.id, db);
+            assert.strictEqual(updatedChat?.folderId, folder.id);
+        });
+
+        test('should set pinned to false when moving to folder', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await createTestChat(userId, 'Pinned Chat');
+
+            // Pin the chat first
+            await Chats.updateChatPinnedById(chat.id, db);
+            const pinnedChat = await Chats.getChatById(chat.id, db);
+            assert.strictEqual(pinnedChat?.pinned, true);
+
+            // Move to folder - should unpin
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ folder_id: folder.id })
+                .expect(200);
+
+            assert.strictEqual(response.body.folder_id, folder.id);
+            assert.strictEqual(response.body.pinned, false);
+        });
+
+        test('should remove chat from folder when folder_id is null', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            // Move to folder first
+            await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
+
+            // Remove from folder
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ folder_id: null })
+                .expect(200);
+
+            assert.strictEqual(response.body.folder_id, undefined);
+        });
+
+        test('should return 404 when chat not found', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const nonExistentId = crypto.randomUUID();
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${nonExistentId}/folder`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ folder_id: folder.id })
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 when user does not own chat', async () => {
+            const { userId: user1Id } = await createUserWithToken('user');
+            const { userId: user2Id, token: token2 } = await createUserWithToken('user');
+
+            const folder = await Folders.createFolder(user2Id, { name: 'User 2 Folder' }, null, db);
+            const chat = await createTestChat(user1Id, 'User 1 Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', `Bearer ${token2}`)
+                .send({ folder_id: folder.id })
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should update updatedAt timestamp', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const now = currentUnixTimestamp();
+
+            // Create old chat
+            const [chat] = await Chats.importChats(userId, [{
+                chat: createTestChatObject('Old Chat'),
+                meta: {},
+                pinned: false,
+                created_at: now - 1000,
+                updated_at: now - 1000,
+            }], db);
+            assert.ok(chat);
+
+            const originalUpdatedAt = chat.updatedAt;
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ folder_id: folder.id })
+                .expect(200);
+
+            assert.ok(response.body.updated_at > originalUpdatedAt);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .send({ folder_id: folder.id })
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/folder`)
+                .set('Authorization', 'Bearer invalid_token')
+                .send({ folder_id: folder.id })
+                .expect(401);
+        });
+    });
+
+    describe('GET /api/v1/chats/folder/:folder_id', () => {
+        test('should return all chats in folder with full data', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            let chat1 = await createTestChat(userId, 'Chat 1');
+            let chat2 = await createTestChat(userId, 'Chat 2');
+            const chat3 = await createTestChat(userId, 'Chat 3');
+
+            // Move chats to folder
+            chat1 = (await Chats.updateChatFolderIdByIdAndUserId(chat1.id, userId, folder.id, db))!;
+            chat2 = (await Chats.updateChatFolderIdByIdAndUserId(chat2.id, userId, folder.id, db))!;
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.ok(Array.isArray(response.body));
+            assert.strictEqual(response.body.length, 2);
+
+            const chats = [chat1, chat2].map(c => toApiChatResponse(c));
+            const chatResponses = response.body as ChatResponse[];
+
+            // Verify full chat data is returned
+            for (const chat of chats) {
+                const chatResponse = chatResponses.find(c => c.id === chat.id);
+
+                console.log(`expected: ${JSON.stringify(chat, null, 2)}`);
+                console.log(`actual: ${JSON.stringify(chatResponse, null, 2)}`);
+
+                assert.ok(chatResponse);
+                assert.deepStrictEqual(chat, chatResponse);
+            }
+        });
+
+        test('should return chats in subfolders', async () => {
+            const { userId, token } = await createUserWithToken('user');
+
+            const parentFolder = await Folders.createFolder(userId, { name: 'Parent Folder' }, null, db);
+            const childFolder1 = await Folders.createFolder(userId, { name: 'Child Folder 1' }, parentFolder.id, db);
+            const childFolder2 = await Folders.createFolder(userId, { name: 'Child Folder 2' }, parentFolder.id, db);
+            const childChildFolder1 = await Folders.createFolder(userId, { name: 'Child Child Folder 1' }, childFolder1.id, db);
+
+            let parentChat = await createTestChat(userId, 'Chat 1');
+            let child1Chat = await createTestChat(userId, 'Chat 2');
+            let child2Chat = await createTestChat(userId, 'Chat 3');
+            let childChildChat = await createTestChat(userId, 'Chat 4');
+
+            // Move chats to folder
+            parentChat = (await Chats.updateChatFolderIdByIdAndUserId(parentChat.id, userId, parentFolder.id, db))!;
+            child1Chat = (await Chats.updateChatFolderIdByIdAndUserId(child1Chat.id, userId, childFolder1.id, db))!;
+            child2Chat = (await Chats.updateChatFolderIdByIdAndUserId(child2Chat.id, userId, childFolder2.id, db))!;
+            childChildChat = (await Chats.updateChatFolderIdByIdAndUserId(childChildChat.id, userId, childChildFolder1.id, db))!;
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${parentFolder.id}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.ok(Array.isArray(response.body));
+            assert.strictEqual(response.body.length, 4);
+
+            const chats = [parentChat, child1Chat, child2Chat, childChildChat].map(c => toApiChatResponse(c));
+            const chatResponses = response.body as ChatResponse[];
+
+            // Verify full chat data is returned
+            for (const chat of chats) {
+                const chatResponse = chatResponses.find(c => c.id === chat.id);
+
+                console.log(`expected: ${JSON.stringify(chat, null, 2)}`);
+                console.log(`actual: ${JSON.stringify(chatResponse, null, 2)}`);
+
+                assert.ok(chatResponse);
+                assert.deepStrictEqual(chat, chatResponse);
+            }
+        });
+
+        test('should return empty array for folder with no chats', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Empty Folder' }, null, db);
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.deepStrictEqual(response.body, []);
+        });
+
+        test('should only return chats owned by authenticated user', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { userId: user2Id } = await createUserWithToken('user');
+
+            const folder1 = await Folders.createFolder(user1Id, { name: 'User 1 Folder' }, null, db);
+            const folder2 = await Folders.createFolder(user2Id, { name: 'User 2 Folder' }, null, db);
+
+            const chat1 = await createTestChat(user1Id, 'User 1 Chat');
+            const chat2 = await createTestChat(user2Id, 'User 2 Chat');
+
+            await Chats.updateChatFolderIdByIdAndUserId(chat1.id, user1Id, folder1.id, db);
+            await Chats.updateChatFolderIdByIdAndUserId(chat2.id, user2Id, folder2.id, db);
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder1.id}`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            assert.strictEqual(response.body.length, 1);
+            assert.strictEqual(response.body[0].user_id, user1Id);
+        });
+
+        test('should exclude archived chats from folder', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            const chat1 = await createTestChat(userId, 'Normal Chat');
+            const chat2 = await createTestChat(userId, 'Archived Chat');
+
+            await Chats.updateChatFolderIdByIdAndUserId(chat1.id, userId, folder.id, db);
+            await Chats.updateChatFolderIdByIdAndUserId(chat2.id, userId, folder.id, db);
+
+            // Archive second chat
+            await Chats.updateChatArchivedById(chat2.id, db);
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(response.body.length, 1);
+            assert.strictEqual(response.body[0].id, chat1.id);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    describe('GET /api/v1/chats/folder/:folder_id/list', () => {
+        test('should return paginated chat list with minimal data', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            // Create 12 chats in folder
+            for (let i = 0; i < 12; i++) {
+                const chat = await createTestChat(userId, `Chat ${i + 1}`);
+                await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
+            }
+
+            // Page 1 - should return 10 items
+            const page1Response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .query({ page: 1 })
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(page1Response.body.length, 10);
+
+            // Verify minimal response structure
+            const chatItem = page1Response.body[0];
+            assert.ok(chatItem.id);
+            assert.ok(chatItem.title);
+            assert.ok(typeof chatItem.updated_at === 'number');
+
+            // Should NOT include created_at
+            assert.strictEqual(chatItem.created_at, undefined);
+
+            // Should NOT include full chat data
+            assert.strictEqual(chatItem.chat, undefined);
+
+            // Page 2 - should return remaining 2 items
+            const page2Response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .query({ page: 2 })
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(page2Response.body.length, 2);
+        });
+
+        test('should default to page 1 when not specified', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            // Create 5 chats
+            for (let i = 0; i < 5; i++) {
+                const chat = await createTestChat(userId, `Chat ${i + 1}`);
+                await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
+            }
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(response.body.length, 5);
+        });
+
+        test('should return empty array for empty folder', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Empty Folder' }, null, db);
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .query({ page: 1 })
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.deepStrictEqual(response.body, []);
+        });
+
+        test('should validate query parameters', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            const response = await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .query({ page: 'invalid' })
+                .set('Authorization', `Bearer ${token}`)
+                .expect(400);
+
+            assert.ok(response.body.detail);
+            assert.ok(response.body.errors);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+
+            await request(app)
+                .get(`/api/v1/chats/folder/${folder.id}/list`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    /* -------------------- PHASE 2: SHARING OPERATIONS -------------------- */
+
+    describe('POST /api/v1/chats/:id/share', () => {
+        test('should share chat and generate share_id', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.ok(response.body.share_id);
+            assert.strictEqual(response.body.id, chat.id);
+
+            // Verify share_id is UUID v4 format
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            assert.ok(uuidRegex.test(response.body.share_id));
+
+            // Verify in database
+            const sharedChat = await Chats.getChatById(chat.id, db);
+            assert.ok(sharedChat?.shareId);
+        });
+
+        test('should update existing share_id when re-sharing', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            // First share
+            const response1 = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            const firstShareId = response1.body.share_id;
+            assert.ok(firstShareId);
+
+            // Second share - should update timestamp
+            const response2 = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            // Share ID should remain the same
+            assert.strictEqual(response2.body.share_id, firstShareId);
+
+            // Updated timestamp should be different
+            assert.ok(response2.body.updated_at >= response1.body.updated_at);
+        });
+
+        test('should return 404 when chat not found', async () => {
+            const { token } = await createUserWithToken('user');
+            const nonExistentId = crypto.randomUUID();
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${nonExistentId}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 when user does not own chat', async () => {
+            const { userId: user1Id } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const chat = await createTestChat(user1Id, 'User 1 Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    describe('GET /api/v1/chats/share/:share_id', () => {
+        test('should return shared chat with full data', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Shared Chat');
+
+            // Share the chat
+            const shareResponse = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            const shareId = shareResponse.body.share_id;
+
+            // Any authenticated user can access shared chat
+            const { token: otherUserToken } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .get(`/api/v1/chats/share/${shareId}`)
+                .set('Authorization', `Bearer ${otherUserToken}`)
+                .expect(200);
+
+            assert.strictEqual(response.body.id, chat.id);
+            assert.strictEqual(response.body.share_id, shareId);
+            assert.ok(response.body.chat);
+            assert.ok(response.body.title);
+        });
+
+        test('should allow public access to shared chat', async () => {
+            const { userId, token: ownerToken } = await createUserWithToken('user');
+            const { token: viewerToken } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Public Shared Chat');
+
+            // Share the chat
+            const shareResponse = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${ownerToken}`)
+                .expect(200);
+
+            const shareId = shareResponse.body.share_id;
+
+            // Different user can access
+            const response = await request(app)
+                .get(`/api/v1/chats/share/${shareId}`)
+                .set('Authorization', `Bearer ${viewerToken}`)
+                .expect(200);
+
+            assert.strictEqual(response.body.id, chat.id);
+        });
+
+        test('should return 404 for non-existent share_id', async () => {
+            const { token } = await createUserWithToken('user');
+            const nonExistentShareId = crypto.randomUUID();
+
+            const response = await request(app)
+                .get(`/api/v1/chats/share/${nonExistentShareId}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 for chat that is not shared', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Unshared Chat');
+            const fakeShareId = crypto.randomUUID();
+
+            const response = await request(app)
+                .get(`/api/v1/chats/share/${fakeShareId}`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            const shareResponse = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            await request(app)
+                .get(`/api/v1/chats/share/${shareResponse.body.share_id}`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            const shareResponse = await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            await request(app)
+                .get(`/api/v1/chats/share/${shareResponse.body.share_id}`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    describe('DELETE /api/v1/chats/:id/share', () => {
+        test('should unshare chat successfully', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Shared Chat');
+
+            // Share the chat
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            // Verify it's shared
+            const sharedChat = await Chats.getChatById(chat.id, db);
+            assert.ok(sharedChat?.shareId);
+
+            // Unshare
+            const response = await request(app)
+                .delete(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(response.body, true);
+
+            // Verify shareId is cleared
+            const unsharedChat = await Chats.getChatById(chat.id, db);
+            assert.strictEqual(unsharedChat?.shareId, null);
+        });
+
+        test('should return false when chat is not currently shared', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Unshared Chat');
+
+            const response = await request(app)
+                .delete(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(response.body, false);
+        });
+
+        test('should return 404 when chat not found', async () => {
+            const { token } = await createUserWithToken('user');
+            const nonExistentId = crypto.randomUUID();
+
+            const response = await request(app)
+                .delete(`/api/v1/chats/${nonExistentId}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 when user does not own chat', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const chat = await createTestChat(user1Id, 'User 1 Chat');
+
+            // User 1 shares the chat
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            // User 2 tries to unshare
+            const response = await request(app)
+                .delete(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .delete(`/api/v1/chats/${chat.id}/share`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .delete(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    /* -------------------- PHASE 2: CLONING OPERATIONS -------------------- */
+
+    describe('POST /api/v1/chats/:id/clone/shared', () => {
+        test('should clone shared chat to current user', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { userId: user2Id, token: token2 } = await createUserWithToken('user');
+
+            const originalChat = await createTestChat(user1Id, 'Shared Chat');
+
+            // User 1 shares the chat
+            const shareResponse = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/share`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            // User 2 clones the shared chat
+            const cloneResponse = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone/shared`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(200);
+
+            // Verify clone
+            assert.notStrictEqual(cloneResponse.body.id, originalChat.id);
+            assert.strictEqual(cloneResponse.body.user_id, user2Id);
+            assert.strictEqual(cloneResponse.body.title, 'Shared Chat');
+            assert.strictEqual(cloneResponse.body.share_id, undefined);
+            assert.strictEqual(cloneResponse.body.folder_id, undefined);
+
+            // Verify chat content is copied
+            assert.ok(cloneResponse.body.chat);
+            assert.ok(cloneResponse.body.chat.history);
+        });
+
+        test('should create new ID for cloned chat', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const originalChat = await createTestChat(user1Id, 'Original Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/share`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            const cloneResponse = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone/shared`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(200);
+
+            assert.notStrictEqual(cloneResponse.body.id, originalChat.id);
+        });
+
+        test('should clear share_id on cloned chat', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const originalChat = await createTestChat(user1Id, 'Shared Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/share`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            const cloneResponse = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone/shared`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(200);
+
+            assert.strictEqual(cloneResponse.body.share_id, undefined);
+        });
+
+        test('should clear folder_id on cloned chat', async () => {
+            const { userId: user1Id, token: token1 } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const folder = await Folders.createFolder(user1Id, { name: 'User 1 Folder' }, null, db);
+            const originalChat = await createTestChat(user1Id, 'Chat in Folder');
+
+            await Chats.updateChatFolderIdByIdAndUserId(originalChat.id, user1Id, folder.id, db);
+            await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/share`)
+                .set('Authorization', `Bearer ${token1}`)
+                .expect(200);
+
+            const cloneResponse = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone/shared`)
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(200);
+
+            assert.strictEqual(cloneResponse.body.folder_id, undefined);
+        });
+
+        test('should return 404 when chat not shared', async () => {
+            const { userId, token: ownerToken } = await createUserWithToken('user');
+            const { token: otherToken } = await createUserWithToken('user');
+
+            const chat = await createTestChat(userId, 'Unshared Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone/shared`)
+                .set('Authorization', `Bearer ${otherToken}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 when chat not found', async () => {
+            const { token } = await createUserWithToken('user');
+            const nonExistentId = crypto.randomUUID();
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${nonExistentId}/clone/shared`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone/shared`)
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone/shared`)
+                .set('Authorization', 'Bearer invalid_token')
+                .expect(401);
+        });
+    });
+
+    describe('POST /api/v1/chats/:id/clone', () => {
+        test('should clone own chat', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const originalChat = await createTestChat(userId, 'Original Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(200);
+
+            assert.notStrictEqual(response.body.id, originalChat.id);
+            assert.strictEqual(response.body.user_id, userId);
+            assert.strictEqual(response.body.title, 'Original Chat');
+            assert.strictEqual(response.body.share_id, undefined);
+            assert.strictEqual(response.body.folder_id, undefined);
+        });
+
+        test('should clone with custom title', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const originalChat = await createTestChat(userId, 'Original Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ title: 'Cloned Chat' })
+                .expect(200);
+
+            assert.strictEqual(response.body.title, 'Cloned Chat');
+            assert.strictEqual(response.body.chat.title, 'Cloned Chat');
+        });
+
+        test('should preserve chat content and history', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const originalChat = await createTestChat(userId, 'Chat with History');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(200);
+
+            assert.ok(response.body.chat);
+            assert.ok(response.body.chat.history);
+            assert.ok(response.body.chat.messages);
+        });
+
+        test('should create new ID for cloned chat', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const originalChat = await createTestChat(userId, 'Test Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(200);
+
+            assert.notStrictEqual(response.body.id, originalChat.id);
+
+            // Verify both chats exist
+            const original = await Chats.getChatById(originalChat.id, db);
+            const clone = await Chats.getChatById(response.body.id, db);
+            assert.ok(original);
+            assert.ok(clone);
+        });
+
+        test('should clear share_id on cloned chat', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const originalChat = await createTestChat(userId, 'Shared Chat');
+
+            // Share original
+            await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/share`)
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            // Clone
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(200);
+
+            assert.strictEqual(response.body.share_id, undefined);
+        });
+
+        test('should clear folder_id on cloned chat', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const originalChat = await createTestChat(userId, 'Chat in Folder');
+
+            await Chats.updateChatFolderIdByIdAndUserId(originalChat.id, userId, folder.id, db);
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${originalChat.id}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(200);
+
+            assert.strictEqual(response.body.folder_id, undefined);
+        });
+
+        test('should return 404 when chat not found', async () => {
+            const { token } = await createUserWithToken('user');
+            const nonExistentId = crypto.randomUUID();
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${nonExistentId}/clone`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({})
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should return 404 when user does not own chat', async () => {
+            const { userId: user1Id } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            const chat = await createTestChat(user1Id, 'User 1 Chat');
+
+            const response = await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone`)
+                .set('Authorization', `Bearer ${token2}`)
+                .send({})
+                .expect(404);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should fail without authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone`)
+                .send({})
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            const { userId } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Test Chat');
+
+            await request(app)
+                .post(`/api/v1/chats/${chat.id}/clone`)
+                .set('Authorization', 'Bearer invalid_token')
+                .send({})
                 .expect(401);
         });
     });

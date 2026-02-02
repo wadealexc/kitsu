@@ -12,6 +12,7 @@ import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateUserId, validateChatId, validateShareId, validateFolderId, validateChatAndMessageId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
+import * as Folders from '../db/operations/folders.js';
 import type { Chat } from '../db/schema.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError, UnauthorizedError } from './errors.js';
 
@@ -174,7 +175,7 @@ router.get('/:id', validateChatId, requireAuth, async (
 
     try {
         const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
-        if (!chat) throw NotFoundError('Chat not found or unauthorized');
+        if (!chat) throw NotFoundError('Chat not found');
 
         const response: Types.ChatResponse = {
             id: chat.id,
@@ -330,7 +331,7 @@ router.post('/new', requireAuth, async (
  *
  * @param {Types.ChatIdParams} - path parameters with chat ID
  * @body {Types.ChatForm} - updated chat data and optional folder ID
- * @returns {Types.ChatResponse | null} - updated chat object or null if unauthorized
+ * @returns {Types.ChatResponse | null} - updated chat object or null if chat not found
  */
 router.post('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.ChatForm>,
@@ -350,11 +351,11 @@ router.post('/:id', validateChatId, requireAuth, async (
     try {
         // Verify ownership
         const existingChat = await Chats.getChatByIdAndUserId(chatId, userId, db);
-        if (!existingChat) throw NotFoundError('Chat not found or unauthorized');
+        if (!existingChat) throw NotFoundError('Chat not found');
 
         // Update chat
         const updatedChat = await Chats.updateChat(chatId, body.data, db);
-        if (!updatedChat) throw NotFoundError('Chat not found');
+        if (!updatedChat) throw new Error('Update failed');
 
         const response: Types.ChatResponse = {
             id: updatedChat.id,
@@ -455,52 +456,59 @@ router.delete('/', requireAuth, async (
 
 /**
  * POST /api/v1/chats/:id/share
- * Access Control: User must own the chat and have chat.share permission
+ * Access Control: User must own the chat
  *
  * Share a chat by generating a public share link.
  *
  * @param {Types.ChatIdParams} - path parameters with chat ID
  * @returns {Types.ChatResponse | null} - chat with share_id populated
  */
-router.post('/:id/share', validateChatId, requireAuth, (
+router.post('/:id/share', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true;  // Mock value
+    try {
+        // Verify ownership
+        const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!chat) throw NotFoundError('Chat not found');
 
-    // TODO: Check chat.share permission (unless admin)
-    if (!isAdmin) {
-        const hasSharePermission = true;  // Mock value
-        if (!hasSharePermission) {
-            return res.status(401).json({
-                detail: 'Missing chat.share permission'
-            });
+        // If already shared, update share timestamp; otherwise create new share
+        const updatedChat = chat.shareId 
+            ? await Chats.updateSharedChat(chatId, db)
+            : await Chats.insertSharedChat(chatId, db);
+
+        if (!updatedChat) throw new Error('Failed to share chat');
+
+        const response: Types.ChatResponse = {
+            id: updatedChat.id,
+            user_id: updatedChat.userId,
+            title: updatedChat.title,
+            chat: updatedChat.chat,
+            updated_at: updatedChat.updatedAt,
+            created_at: updatedChat.createdAt,
+            share_id: updatedChat.shareId,
+            archived: updatedChat.archived,
+            pinned: updatedChat.pinned ?? false,
+            meta: updatedChat.meta || {},
+            folder_id: updatedChat.folderId,
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
         }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Share chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Query chat from database to verify ownership
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
-    }
-
-    // TODO: If already shared, update share timestamp; otherwise create new share
-    const shareId = chat.share_id ?? crypto.randomUUID();
-
-    const sharedChat: Types.ChatResponse = {
-        ...chat,
-        share_id: shareId,
-        updated_at: Math.floor(Date.now() / 1000),
-    };
-
-    res.json(sharedChat);
 });
 
 /**
@@ -512,22 +520,43 @@ router.post('/:id/share', validateChatId, requireAuth, (
  * @param {Types.ShareIdParams} - path parameters with share ID
  * @returns {Types.ChatResponse | null} - full chat data
  */
-router.get('/share/:share_id', validateShareId, requireAuth, (
+router.get('/share/:share_id', validateShareId, requireAuth, async (
     req: Types.TypedRequest<Types.ShareIdParams>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { share_id } = req.params;
+    const shareId = req.params.share_id;
 
-    // TODO: Query chat from database by share_id
-    const chat = MockData.mockChats.find(c => c.share_id === share_id);
+    try {
+        const chat = await Chats.getChatByShareId(shareId, db);
+        if (!chat) throw NotFoundError('Chat not found');
 
-    if (!chat) {
-        return res.status(404).json({
-            detail: 'Shared chat not found'
-        });
+        const response: Types.ChatResponse = {
+            id: chat.id,
+            user_id: chat.userId,
+            title: chat.title,
+            chat: chat.chat,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+            share_id: chat.shareId || undefined,
+            archived: chat.archived,
+            pinned: chat.pinned ?? false,
+            meta: chat.meta || {},
+            folder_id: chat.folderId || undefined,
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get shared chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    res.json(chat);
 });
 
 /**
@@ -539,31 +568,38 @@ router.get('/share/:share_id', validateShareId, requireAuth, (
  * @param {Types.ChatIdParams} - path parameters with chat ID
  * @returns {boolean | null} - true if successful, false if not currently shared
  */
-router.delete('/:id/share', validateChatId, requireAuth, (
+router.delete('/:id/share', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
     res: Response<boolean | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Verify ownership
+        const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!chat) throw NotFoundError('Chat not found');
 
-    // TODO: Query chat from database to verify ownership
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+        // Return false if not currently shared
+        if (!chat.shareId) {
+            return res.json(false);
+        }
 
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
+        // Delete shared chat entry and clear shareId
+        const success = await Chats.deleteSharedChat(chatId, db);
+        return res.json(success);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Unshare chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // Return false if not currently shared
-    if (!chat.share_id) {
-        return res.json(false);
-    }
-
-    // TODO: Delete shared chat entry and update chat to set share_id to null
-    res.json(true);
 });
 
 /**
@@ -575,36 +611,51 @@ router.delete('/:id/share', validateChatId, requireAuth, (
  * @param {Types.ChatIdParams} - path parameters with chat ID
  * @returns {Types.ChatResponse | null} - cloned chat owned by current user
  */
-router.post('/:id/clone/shared', validateChatId, requireAuth, (
+router.post('/:id/clone/shared', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Get original chat and verify it's shared
+        const originalChat = await Chats.getChatById(chatId, db);
+        if (!originalChat || !originalChat.shareId) throw NotFoundError('Chat not found');
 
-    // TODO: Query chat from database and verify it has a share_id
-    const originalChat = MockData.mockChats.find(c => c.id === id);
+        // Create new chat owned by current user with copied data
+        const clonedChat = await Chats.createChat(userId, {
+            chat: originalChat.chat,
+            folder_id: null,  // Don't copy folder assignment
+        }, db);
 
-    if (!originalChat || !originalChat.share_id) {
-        return res.status(404).json({
-            detail: 'Shared chat not found'
-        });
+        const response: Types.ChatResponse = {
+            id: clonedChat.id,
+            user_id: clonedChat.userId,
+            title: clonedChat.title,
+            chat: clonedChat.chat,
+            updated_at: clonedChat.updatedAt,
+            created_at: clonedChat.createdAt,
+            share_id: undefined,  // Clone is not shared
+            archived: clonedChat.archived,
+            pinned: clonedChat.pinned ?? false,
+            meta: clonedChat.meta || {},
+            folder_id: undefined,  // Clone is not in folder
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Clone shared chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Create new chat owned by current user with copied data
-    const now = Math.floor(Date.now() / 1000);
-    const clonedChat: Types.ChatResponse = {
-        ...originalChat,
-        id: crypto.randomUUID(),
-        user_id: userId,
-        share_id: null,
-        created_at: now,
-        updated_at: now,
-    };
-
-    res.json(clonedChat);
 });
 
 /**
@@ -617,12 +668,10 @@ router.post('/:id/clone/shared', validateChatId, requireAuth, (
  * @body {Types.CloneForm} - optional new title for cloned chat
  * @returns {Types.ChatResponse | null} - cloned chat with new ID
  */
-router.post('/:id/clone', validateChatId, requireAuth, (
+router.post('/:id/clone', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.CloneForm>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
-
     const body = Types.CloneFormSchema.safeParse(req.body);
     if (!body.success) {
         return res.status(400).json({
@@ -632,31 +681,52 @@ router.post('/:id/clone', validateChatId, requireAuth, (
     }
 
     const { title } = body.data;
+    const chatId = req.params.id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Verify ownership
+        const originalChat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!originalChat) throw NotFoundError('Chat not found');
 
-    // TODO: Query chat from database to verify ownership
-    const originalChat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+        // Create cloned chat data with optional new title
+        const chatData = {
+            ...originalChat.chat,
+            title: title ?? originalChat.title,
+        };
 
-    if (!originalChat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
+        const clonedChat = await Chats.createChat(userId, {
+            chat: chatData,
+            folder_id: null,  // Don't copy folder assignment
+        }, db);
+
+        const response: Types.ChatResponse = {
+            id: clonedChat.id,
+            user_id: clonedChat.userId,
+            title: clonedChat.title,
+            chat: clonedChat.chat,
+            updated_at: clonedChat.updatedAt,
+            created_at: clonedChat.createdAt,
+            share_id: undefined,
+            archived: clonedChat.archived,
+            pinned: clonedChat.pinned ?? false,
+            meta: clonedChat.meta || {},
+            folder_id: undefined,
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Clone chat error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Create new chat with copied data
-    const now = Math.floor(Date.now() / 1000);
-    const clonedChat: Types.ChatResponse = {
-        ...originalChat,
-        id: crypto.randomUUID(),
-        title: title ?? originalChat.title,
-        share_id: null,
-        created_at: now,
-        updated_at: now,
-    };
-
-    res.json(clonedChat);
 });
 
 /* -------------------- FOLDER ORGANIZATION -------------------- */
@@ -671,12 +741,10 @@ router.post('/:id/clone', validateChatId, requireAuth, (
  * @body {Types.ChatFolderIdForm} - folder ID or null to remove from folder
  * @returns {Types.ChatResponse | null} - updated chat object
  */
-router.post('/:id/folder', validateChatId, requireAuth, (
+router.post('/:id/folder', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.ChatFolderIdForm>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const { id } = req.params;
-
     const body = Types.ChatFolderIdFormSchema.safeParse(req.body);
     if (!body.success) {
         return res.status(400).json({
@@ -685,54 +753,103 @@ router.post('/:id/folder', validateChatId, requireAuth, (
         });
     }
 
-    const { folder_id } = body.data;
+    const chatId = req.params.id;
+    const folderId = body.data.folder_id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Verify ownership
+        const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!chat) throw NotFoundError('Chat not found');
 
-    // TODO: Query chat from database to verify ownership
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+        // Update folder_id
+        const updatedChat = await Chats.updateChatFolderIdByIdAndUserId(
+            chatId,
+            userId,
+            folderId ?? null,
+            db
+        );
 
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
+        if (!updatedChat) throw new Error('Error updating chat folder');
+
+        const response: Types.ChatResponse = {
+            id: updatedChat.id,
+            user_id: updatedChat.userId,
+            title: updatedChat.title,
+            chat: updatedChat.chat,
+            updated_at: updatedChat.updatedAt,
+            created_at: updatedChat.createdAt,
+            share_id: updatedChat.shareId || undefined,
+            archived: updatedChat.archived,
+            pinned: updatedChat.pinned ?? false,
+            meta: updatedChat.meta || {},
+            folder_id: updatedChat.folderId || undefined,
+        };
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update chat folder error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Update folder_id in database
-    const updatedChat: Types.ChatResponse = {
-        ...chat,
-        folder_id: folder_id ?? null,
-        updated_at: Math.floor(Date.now() / 1000),
-    };
-
-    res.json(updatedChat);
 });
 
 /**
  * GET /api/v1/chats/folder/:folder_id
  * Access Control: User can only access their own folders/chats
  *
- * Get all chats in a specific folder with full chat data.
+ * Get all chats in a specific folder and any subfolders.
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @returns {Types.ChatResponse[]} - full chat objects in folder
  */
-router.get('/folder/:folder_id', validateFolderId, requireAuth, (
+router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
     res: Response<Types.ChatResponse[] | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
+    const folderId = req.params.folder_id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const subfolders = await Folders.getChildrenFolders(folderId, userId, db);
+        const folderIds = [folderId, ...subfolders.map(sf => sf.id)];
 
-    // TODO: Query chats from database filtered by folder_id and user_id
-    const chats = MockData.mockChats.filter(chat =>
-        chat.folder_id === folder_id && chat.user_id === userId
-    );
+        const chats = await Chats.getChatsByFolderIdAndUserId(folderIds, userId, {}, db);
 
-    res.json(chats);
+        const response: Types.ChatResponse[] = chats.map(chat => ({
+            id: chat.id,
+            user_id: chat.userId,
+            title: chat.title,
+            chat: chat.chat,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+            share_id: chat.shareId,
+            archived: chat.archived,
+            pinned: chat.pinned ?? false,
+            meta: chat.meta || {},
+            folder_id: chat.folderId,
+        }));
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get folder chats error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -740,17 +857,16 @@ router.get('/folder/:folder_id', validateFolderId, requireAuth, (
  * Access Control: User can only access their own folders/chats
  *
  * Get chat list for a specific folder with pagination (minimal data).
+ * Does NOT return chats in subfolders.
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @query {Types.FolderChatListQuery} - pagination parameters (10 items per page)
  * @returns {Types.FolderChatListItemResponse[]} - minimal chat info
  */
-router.get('/folder/:folder_id/list', validateFolderId, requireAuth, (
+router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, any, Types.FolderChatListQuery>,
     res: Response<Types.FolderChatListItemResponse[] | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
-
     const query = Types.FolderChatListQuerySchema.safeParse(req.query);
     if (!query.success) {
         return res.status(400).json({
@@ -760,28 +876,40 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, (
     }
 
     const { page } = query.data;
+    const folderId = req.params.folder_id;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const pageSize = 10;
+        const skip = (page - 1) * pageSize;
 
-    // TODO: Query chats from database filtered by folder_id and user_id
-    let chats = MockData.mockChats.filter(chat =>
-        chat.folder_id === folder_id && chat.user_id === userId
-    );
+        const chats = await Chats.getChatsByFolderIdAndUserId(
+            [folderId],
+            userId,
+            { skip, limit: pageSize },
+            db
+        );
 
-    // Apply pagination (10 items per page)
-    const skip = (page - 1) * 10;
-    const limit = 10;
-    chats = chats.slice(skip, skip + limit);
+        // Return minimal info (title, id, updated_at only)
+        const response: Types.FolderChatListItemResponse[] = chats.map(chat => ({
+            id: chat.id,
+            title: chat.title,
+            updated_at: chat.updatedAt,
+        }));
 
-    // Return minimal info (title, id, updated_at only)
-    const response: Types.FolderChatListItemResponse[] = chats.map(chat => ({
-        title: chat.title,
-        id: chat.id,
-        updated_at: chat.updated_at,
-    }));
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
 
-    res.json(response);
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get folder chat list error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /* -------------------- MESSAGE OPERATIONS -------------------- */
@@ -817,12 +945,7 @@ router.post('/:id/messages/:message_id', validateChatAndMessageId, requireAuth, 
 
     // TODO: Query chat from database to verify ownership
     const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
-    }
+    if (!chat) throw NotFoundError('Chat not found');
 
     // TODO: Update message content in chat.chat.messages array
     // For now, just return the chat as-is (mock)
@@ -865,12 +988,7 @@ router.post('/:id/messages/:message_id/event', validateChatAndMessageId, require
 
     // TODO: Verify user has access to chat
     const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-
-    if (!chat) {
-        return res.status(401).json({
-            detail: 'Chat not found or unauthorized'
-        });
-    }
+    if (!chat) throw NotFoundError('Chat not found');
 
     // TODO: Process event (e.g., broadcast to other clients, store in database)
     res.json(true);

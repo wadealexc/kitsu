@@ -323,7 +323,6 @@ Response (200): [`ChatResponse`](#chatresponse) or `null`
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - User must own the chat
-  - Requires `chat.share` permission (unless admin)
 - _OWUI Implementation Notes:_
   - Checks permission via `has_permission(user.id, "chat.share", ...)`
   - If already shared (`chat.share_id` exists), updates share via `update_shared_chat_by_chat_id()`
@@ -480,7 +479,7 @@ Response (200): [`ChatResponse`](#chatresponse) or `null`
 
 ### GET `/api/v1/chats/folder/{folder_id}`
 
-Get all chats in a specific folder with full chat data.
+Get all chats in a specific folder and its subfolders.
 
 #### Inputs
 

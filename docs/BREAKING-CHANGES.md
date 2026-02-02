@@ -273,6 +273,33 @@ Admin force-delete and permission checks add unnecessary complexity for a 3-user
 
 ---
 
+## Simplified Chat Sharing (No Permission Check)
+
+**Date:** 2026-01-30
+
+**Change:** `POST /api/v1/chats/:id/share` no longer checks `chat.share` permission.
+
+### What Changed
+
+**Removed behaviors:**
+- Permission check for `chat.share` (previously required unless admin)
+
+**Current behavior:**
+- Any authenticated user can share their own chats
+- Only ownership verification is performed (must own the chat to share it)
+
+### Rationale
+
+Permission checks add unnecessary complexity for a 3-user local deployment. Users who can create and manage chats should be able to share them. The ownership verification is sufficient to prevent unauthorized sharing of others' chats.
+
+### Implementation Status
+
+- [x] Route implementation updated
+- [x] Route specification updated
+- [x] Breaking changes documented
+
+---
+
 ## Folder Field Removals and Strong Typing
 
 **Date:** 2026-01-30

@@ -265,9 +265,9 @@ type ListOptions = {
 
 _Use case:_ Chat list views (sidebar, etc.) where full message history not needed
 
-#### `getChatsByFolderIdAndUserId(folderId: string, userId: string, options?: PaginationOptions): Promise<Chat[]>`
+#### `getChatsByFolderIdAndUserId(folderIds: string[], userId: string, options?: PaginationOptions): Promise<Chat[]>`
 
-Retrieves chats in a specific folder.
+Retrieves chats in a specific folder or folders.
 
 _Security:_ Filters by userId to prevent cross-user access
 

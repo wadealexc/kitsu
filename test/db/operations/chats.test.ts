@@ -409,7 +409,7 @@ describe('Chat Operations', () => {
             const chat1 = await Chats.createChat(userId, createTestChatData('Chat in Folder', folder.id), db);
             const chat2 = await Chats.createChat(userId, createTestChatData('Chat in Root'), db);
 
-            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
 
             assert.ok(chats.some(c => c.id === chat1.id));
             assert.ok(!chats.some(c => c.id === chat2.id));
@@ -420,7 +420,7 @@ describe('Chat Operations', () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
             await Chats.updateChatArchivedById(chat.id, db);
 
-            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
 
             assert.ok(!chats.some(c => c.id === chat.id));
         });
@@ -430,7 +430,7 @@ describe('Chat Operations', () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
             await Chats.updateChatPinnedById(chat.id, db);
 
-            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
 
             assert.ok(!chats.some(c => c.id === chat.id));
         });
@@ -440,7 +440,7 @@ describe('Chat Operations', () => {
             const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
             await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
 
-            const chats = await Chats.getChatsByFolderIdAndUserId(folder.id, otherUser.id, {}, db);
+            const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], otherUser.id, {}, db);
 
             assert.strictEqual(chats.length, 0);
         });
@@ -451,7 +451,7 @@ describe('Chat Operations', () => {
             await Chats.createChat(userId, createTestChatData('Chat 2', folder.id), db);
             await Chats.createChat(userId, createTestChatData('Chat 3', folder.id), db);
 
-            const page1 = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {
+            const page1 = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {
                 skip: 0,
                 limit: 2
             }, db);
@@ -1404,7 +1404,7 @@ describe('Chat Operations', () => {
 
             assert.strictEqual(success, true);
 
-            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
+            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId([folder2.id], userId, {}, db);
             assert.ok(chatsInFolder2.length >= 2);
         });
 
@@ -1416,7 +1416,7 @@ describe('Chat Operations', () => {
 
             assert.strictEqual(success, true);
 
-            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
             assert.strictEqual(chatsInFolder.length, 0);
         });
 
@@ -1453,7 +1453,7 @@ describe('Chat Operations', () => {
 
             assert.strictEqual(success, true);
 
-            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId(folder.id, userId, {}, db);
+            const chatsInFolder = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
             assert.strictEqual(chatsInFolder.length, 0);
         });
 
@@ -1465,7 +1465,7 @@ describe('Chat Operations', () => {
 
             await Chats.deleteChatsInFolder(userId, folder1.id, db);
 
-            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId(folder2.id, userId, {}, db);
+            const chatsInFolder2 = await Chats.getChatsByFolderIdAndUserId([folder2.id], userId, {}, db);
             assert.ok(chatsInFolder2.length > 0);
         });
 
