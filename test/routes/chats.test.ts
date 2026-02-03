@@ -252,34 +252,33 @@ describe('Chat Routes', () => {
             assert.strictEqual(response2.body.length, 2);
         });
 
-        // TODO - fix when folder operations are implemented
-        // test('should filter by include_folders flag', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const chat1 = await createTestChat(userId, 'Normal Chat');
-        //     const chat2 = await createTestChat(userId, 'Folder Chat');
+        test('should filter by include_folders flag', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat1 = await createTestChat(userId, 'Normal Chat');
+            const chat2 = await createTestChat(userId, 'Folder Chat');
 
-        //     // Move second chat to folder
-        //     const folderId = crypto.randomUUID();
-        //     await Chats.updateChatFolderIdByIdAndUserId(chat2.id, userId, folderId, db);
+            // Move second chat to folder
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            await Chats.updateChatFolderIdByIdAndUserId(chat2.id, userId, folder.id, db);
 
-        //     // Without include_folders (default: false)
-        //     const response1 = await request(app)
-        //         .get('/api/v1/chats/')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
+            // Without include_folders (default: false)
+            const response1 = await request(app)
+                .get('/api/v1/chats/')
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
 
-        //     assert.strictEqual(response1.body.length, 1);
-        //     assert.strictEqual(response1.body[0].id, chat1.id);
+            assert.strictEqual(response1.body.length, 1);
+            assert.strictEqual(response1.body[0].id, chat1.id);
 
-        //     // With include_folders = true
-        //     const response2 = await request(app)
-        //         .get('/api/v1/chats/')
-        //         .query({ include_folders: true })
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
+            // With include_folders = true
+            const response2 = await request(app)
+                .get('/api/v1/chats/')
+                .query({ include_folders: true })
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
 
-        //     assert.strictEqual(response2.body.length, 2);
-        // });
+            assert.strictEqual(response2.body.length, 2);
+        });
 
         test('should exclude archived chats by default', async () => {
             const { userId, token } = await createUserWithToken('user');
@@ -479,20 +478,19 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body[0].pinned, true);
         });
 
-        // TODO - fix when folders are implemented
-        // test('should include folder chats', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const chat = await createTestChat(userId, 'Folder Chat');
-        //     const folderId = crypto.randomUUID();
-        //     await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folderId, db);
+        test('should include folder chats', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const chat = await createTestChat(userId, 'Folder Chat');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            await Chats.updateChatFolderIdByIdAndUserId(chat.id, userId, folder.id, db);
 
-        //     const response = await request(app)
-        //         .get('/api/v1/chats/all')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
+            const response = await request(app)
+                .get('/api/v1/chats/all')
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
 
-        //     assert.strictEqual(response.body[0].folder_id, folderId);
-        // });
+            assert.strictEqual(response.body[0].folder_id, folder.id);
+        });
 
         test('should return empty array for user with no chats', async () => {
             const { token } = await createUserWithToken('user');
@@ -672,28 +670,27 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.share_id, null);
         });
 
-        // TODO - fix when folder operations are implemented
-        // test('should accept folder_id in request', async () => {
-        //     const { token } = await createUserWithToken('user');
-        //     const folderId = crypto.randomUUID();
+        test('should accept folder_id in request', async () => {
+            const { userId, token } = await createUserWithToken('user');
+            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
 
-        //     const chatData: ChatForm = {
-        //         chat: {
-        //             title: 'Folder Chat',
-        //             models: [],
-        //             messages: [],
-        //         },
-        //         folder_id: folderId,
-        //     };
+            const chatData: ChatForm = {
+                chat: {
+                    title: 'Folder Chat',
+                    models: [],
+                    messages: [],
+                },
+                folder_id: folder.id,
+            };
 
-        //     const response = await request(app)
-        //         .post('/api/v1/chats/new')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .send(chatData)
-        //         .expect(200);
+            const response = await request(app)
+                .post('/api/v1/chats/new')
+                .set('Authorization', `Bearer ${token}`)
+                .send(chatData)
+                .expect(200);
 
-        //     assert.strictEqual(response.body.folder_id, folderId);
-        // });
+            assert.strictEqual(response.body.folder_id, folder.id);
+        });
 
         test('should extract title from chat.title', async () => {
             const { token } = await createUserWithToken('user');

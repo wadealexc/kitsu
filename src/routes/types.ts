@@ -11,6 +11,8 @@ import { DEFAULT_USER_IMAGE, DEFAULT_USER_ROLE } from '../db/schema.js';
 
 /* -------------------- HELPER TYPES -------------------- */
 
+const DEFAULT_CHAT_TITLE = "New Chat";
+
 // Generic type for Express requests with typed params, body, and/or query
 // Usage:
 //   TypedRequest<{ user_id: string }>                    - only path params
@@ -659,7 +661,7 @@ export interface ChatObject {
 
 export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     id: z.string().optional(),
-    title: z.string(),
+    title: z.string().default(DEFAULT_CHAT_TITLE),
     models: z.array(z.string()).optional().default([]),
     system: z.string().nullable().optional(),
     params: ModelParamsSchema.optional(),

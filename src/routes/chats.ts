@@ -138,24 +138,25 @@ router.get('/all', requireAuth, async (
  *
  * @returns {Types.ChatResponse[]} - all chats in system
  */
-router.get('/all/db', requireAdmin, (
-    req: Types.TypedRequest,
-    res: Response<Types.ChatResponse[] | Types.ErrorResponse>
-) => {
-    // TODO: Check ENABLE_ADMIN_EXPORT config flag
-    const adminExportEnabled = true;  // Mock value
+// NOTE - not implementing for now
+// router.get('/all/db', requireAdmin, (
+//     req: Types.TypedRequest,
+//     res: Response<Types.ChatResponse[] | Types.ErrorResponse>
+// ) => {
+//     // TODO: Check ENABLE_ADMIN_EXPORT config flag
+//     const adminExportEnabled = true;  // Mock value
 
-    if (!adminExportEnabled) {
-        return res.status(401).json({
-            detail: 'Admin export is disabled'
-        });
-    }
+//     if (!adminExportEnabled) {
+//         return res.status(401).json({
+//             detail: 'Admin export is disabled'
+//         });
+//     }
 
-    // TODO: Query ALL chats from database (no user filter)
-    const allChats = MockData.mockChats;
+//     // TODO: Query ALL chats from database (no user filter)
+//     const allChats = MockData.mockChats;
 
-    res.json(allChats);
-});
+//     res.json(allChats);
+// });
 
 /**
  * GET /api/v1/chats/:id
@@ -216,55 +217,56 @@ router.get('/:id', validateChatId, requireAuth, async (
  * @query {Types.UserChatListQuery} - pagination, search, and sorting parameters
  * @returns {Types.ChatTitleIdResponse[]} - minimal chat info
  */
-router.get('/list/user/:user_id', validateUserId, requireAdmin, (
-    req: Types.TypedRequest<Types.UserIdParams, any, Types.UserChatListQuery>,
-    res: Response<Types.ChatTitleIdResponse[] | Types.ErrorResponse>
-) => {
-    const query = Types.UserChatListQuerySchema.safeParse(req.query);
-    if (!query.success) {
-        return res.status(400).json({
-            detail: 'Invalid query parameters',
-            errors: query.error.issues
-        });
-    }
+// NOTE - not implementing for now
+// router.get('/list/user/:user_id', validateUserId, requireAdmin, (
+//     req: Types.TypedRequest<Types.UserIdParams, any, Types.UserChatListQuery>,
+//     res: Response<Types.ChatTitleIdResponse[] | Types.ErrorResponse>
+// ) => {
+//     const query = Types.UserChatListQuerySchema.safeParse(req.query);
+//     if (!query.success) {
+//         return res.status(400).json({
+//             detail: 'Invalid query parameters',
+//             errors: query.error.issues
+//         });
+//     }
 
-    const userId = req.params.user_id;
-    const { page, query: searchQuery, order_by, direction } = query.data;
+//     const userId = req.params.user_id;
+//     const { page, query: searchQuery, order_by, direction } = query.data;
 
-    // TODO: Check ENABLE_ADMIN_CHAT_ACCESS config flag
-    const adminChatAccessEnabled = true;  // Mock value
+//     // TODO: Check ENABLE_ADMIN_CHAT_ACCESS config flag
+//     const adminChatAccessEnabled = true;  // Mock value
 
-    if (!adminChatAccessEnabled) {
-        return res.status(401).json({
-            detail: 'Admin chat access is disabled'
-        });
-    }
+//     if (!adminChatAccessEnabled) {
+//         return res.status(401).json({
+//             detail: 'Admin chat access is disabled'
+//         });
+//     }
 
-    // TODO: Query chats from database filtered by user_id (including archived)
-    let chats = MockData.mockChats.filter(chat => chat.user_id === userId);
+//     // TODO: Query chats from database filtered by user_id (including archived)
+//     let chats = MockData.mockChats.filter(chat => chat.user_id === userId);
 
-    // Apply filtering by query if provided
-    if (searchQuery) {
-        chats = chats.filter(chat => chat.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
+//     // Apply filtering by query if provided
+//     if (searchQuery) {
+//         chats = chats.filter(chat => chat.title.toLowerCase().includes(searchQuery.toLowerCase()));
+//     }
 
-    // Apply sorting if provided
-    // TODO: Implement proper sorting by order_by and direction
+//     // Apply sorting if provided
+//     // TODO: Implement proper sorting by order_by and direction
 
-    // Apply pagination
-    const skip = (page - 1) * 60;
-    const limit = 60;
-    chats = chats.slice(skip, skip + limit);
+//     // Apply pagination
+//     const skip = (page - 1) * 60;
+//     const limit = 60;
+//     chats = chats.slice(skip, skip + limit);
 
-    const response: Types.ChatTitleIdResponse[] = chats.map(chat => ({
-        id: chat.id,
-        title: chat.title,
-        updated_at: chat.updated_at,
-        created_at: chat.created_at,
-    }));
+//     const response: Types.ChatTitleIdResponse[] = chats.map(chat => ({
+//         id: chat.id,
+//         title: chat.title,
+//         updated_at: chat.updated_at,
+//         created_at: chat.created_at,
+//     }));
 
-    res.json(response);
-});
+//     res.json(response);
+// });
 
 /* -------------------- CHAT CREATION & MODIFICATION -------------------- */
 
@@ -924,38 +926,39 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
  * @body {Types.MessageForm} - new message content
  * @returns {Types.ChatResponse | null} - updated full chat object
  */
-router.post('/:id/messages/:message_id', validateChatAndMessageId, requireAuth, (
-    req: Types.TypedRequest<Types.MessageIdParams, Types.MessageForm>,
-    res: Response<Types.ChatResponse | null | Types.ErrorResponse>
-) => {
-    const { id, message_id } = req.params;
+// NOTE - not implementing for now
+// router.post('/:id/messages/:message_id', validateChatAndMessageId, requireAuth, (
+//     req: Types.TypedRequest<Types.MessageIdParams, Types.MessageForm>,
+//     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
+// ) => {
+//     const { id, message_id } = req.params;
 
-    const body = Types.MessageFormSchema.safeParse(req.body);
-    if (!body.success) {
-        return res.status(400).json({
-            detail: 'Invalid request body',
-            errors: body.error.issues
-        });
-    }
+//     const body = Types.MessageFormSchema.safeParse(req.body);
+//     if (!body.success) {
+//         return res.status(400).json({
+//             detail: 'Invalid request body',
+//             errors: body.error.issues
+//         });
+//     }
 
-    const { content } = body.data;
+//     const { content } = body.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+//     // TODO: Get user ID from JWT token
+//     const userId = MockData.MOCK_ADMIN_USER_ID;
 
-    // TODO: Query chat from database to verify ownership
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-    if (!chat) throw NotFoundError('Chat not found');
+//     // TODO: Query chat from database to verify ownership
+//     const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+//     if (!chat) throw NotFoundError('Chat not found');
 
-    // TODO: Update message content in chat.chat.messages array
-    // For now, just return the chat as-is (mock)
-    const updatedChat: Types.ChatResponse = {
-        ...chat,
-        updated_at: Math.floor(Date.now() / 1000),
-    };
+//     // TODO: Update message content in chat.chat.messages array
+//     // For now, just return the chat as-is (mock)
+//     const updatedChat: Types.ChatResponse = {
+//         ...chat,
+//         updated_at: Math.floor(Date.now() / 1000),
+//     };
 
-    res.json(updatedChat);
-});
+//     res.json(updatedChat);
+// });
 
 /**
  * POST /api/v1/chats/:id/messages/:message_id/event
@@ -967,32 +970,33 @@ router.post('/:id/messages/:message_id', validateChatAndMessageId, requireAuth, 
  * @body {Types.EventForm} - event type and data
  * @returns {boolean | null} - true if successful
  */
-router.post('/:id/messages/:message_id/event', validateChatAndMessageId, requireAuth, (
-    req: Types.TypedRequest<Types.MessageIdParams, Types.EventForm>,
-    res: Response<boolean | null | Types.ErrorResponse>
-) => {
-    const { id, message_id } = req.params;
+// NOTE - not implementing for now
+// router.post('/:id/messages/:message_id/event', validateChatAndMessageId, requireAuth, (
+//     req: Types.TypedRequest<Types.MessageIdParams, Types.EventForm>,
+//     res: Response<boolean | null | Types.ErrorResponse>
+// ) => {
+//     const { id, message_id } = req.params;
 
-    const body = Types.EventFormSchema.safeParse(req.body);
-    if (!body.success) {
-        return res.status(400).json({
-            detail: 'Invalid request body',
-            errors: body.error.issues
-        });
-    }
+//     const body = Types.EventFormSchema.safeParse(req.body);
+//     if (!body.success) {
+//         return res.status(400).json({
+//             detail: 'Invalid request body',
+//             errors: body.error.issues
+//         });
+//     }
 
-    const { type, data } = body.data;
+//     const { type, data } = body.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+//     // TODO: Get user ID from JWT token
+//     const userId = MockData.MOCK_ADMIN_USER_ID;
 
-    // TODO: Verify user has access to chat
-    const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
-    if (!chat) throw NotFoundError('Chat not found');
+//     // TODO: Verify user has access to chat
+//     const chat = MockData.mockChats.find(c => c.id === id && c.user_id === userId);
+//     if (!chat) throw NotFoundError('Chat not found');
 
-    // TODO: Process event (e.g., broadcast to other clients, store in database)
-    res.json(true);
-});
+//     // TODO: Process event (e.g., broadcast to other clients, store in database)
+//     res.json(true);
+// });
 
 /* -------------------- STATISTICS -------------------- */
 
@@ -1006,55 +1010,56 @@ router.post('/:id/messages/:message_id/event', validateChatAndMessageId, require
  * @query {Types.ChatUsageStatsQuery} - pagination parameters
  * @returns {Types.ChatUsageStatsListResponse} - paginated chat usage statistics
  */
-router.get('/stats/usage', requireAuth, (
-    req: Types.TypedRequest<{}, any, Types.ChatUsageStatsQuery>,
-    res: Response<Types.ChatUsageStatsListResponse | Types.ErrorResponse>
-) => {
-    const query = Types.ChatUsageStatsQuerySchema.safeParse(req.query);
-    if (!query.success) {
-        return res.status(400).json({
-            detail: 'Invalid query parameters',
-            errors: query.error.issues
-        });
-    }
+// NOTE - not implementing for now
+// router.get('/stats/usage', requireAuth, (
+//     req: Types.TypedRequest<{}, any, Types.ChatUsageStatsQuery>,
+//     res: Response<Types.ChatUsageStatsListResponse | Types.ErrorResponse>
+// ) => {
+//     const query = Types.ChatUsageStatsQuerySchema.safeParse(req.query);
+//     if (!query.success) {
+//         return res.status(400).json({
+//             detail: 'Invalid query parameters',
+//             errors: query.error.issues
+//         });
+//     }
 
-    const { items_per_page, page } = query.data;
+//     const { items_per_page, page } = query.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+//     // TODO: Get user ID from JWT token
+//     const userId = MockData.MOCK_ADMIN_USER_ID;
 
-    // TODO: Query chat statistics from database
-    // For now, return mock stats based on user's chats
-    const userChats = MockData.mockChats.filter(chat => chat.user_id === userId);
+//     // TODO: Query chat statistics from database
+//     // For now, return mock stats based on user's chats
+//     const userChats = MockData.mockChats.filter(chat => chat.user_id === userId);
 
-    const stats: Types.ChatUsageStatsResponse[] = userChats.map(chat => ({
-        id: chat.id,
-        models: {},
-        message_count: 2,
-        history_models: { 'gpt-4': 1 },
-        history_message_count: 2,
-        history_user_message_count: 1,
-        history_assistant_message_count: 1,
-        average_response_time: 1.5,
-        average_user_message_content_length: 50,
-        average_assistant_message_content_length: 150,
-        tags: [],
-        last_message_at: chat.updated_at,
-        updated_at: chat.updated_at,
-        created_at: chat.created_at,
-    }));
+//     const stats: Types.ChatUsageStatsResponse[] = userChats.map(chat => ({
+//         id: chat.id,
+//         models: {},
+//         message_count: 2,
+//         history_models: { 'gpt-4': 1 },
+//         history_message_count: 2,
+//         history_user_message_count: 1,
+//         history_assistant_message_count: 1,
+//         average_response_time: 1.5,
+//         average_user_message_content_length: 50,
+//         average_assistant_message_content_length: 150,
+//         tags: [],
+//         last_message_at: chat.updated_at,
+//         updated_at: chat.updated_at,
+//         created_at: chat.created_at,
+//     }));
 
-    // Apply pagination
-    const skip = (page - 1) * items_per_page;
-    const paginatedStats = stats.slice(skip, skip + items_per_page);
+//     // Apply pagination
+//     const skip = (page - 1) * items_per_page;
+//     const paginatedStats = stats.slice(skip, skip + items_per_page);
 
-    const response: Types.ChatUsageStatsListResponse = {
-        items: paginatedStats,
-        total: stats.length,
-    };
+//     const response: Types.ChatUsageStatsListResponse = {
+//         items: paginatedStats,
+//         total: stats.length,
+//     };
 
-    res.json(response);
-});
+//     res.json(response);
+// });
 
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
