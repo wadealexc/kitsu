@@ -1,4 +1,4 @@
-import { describe, test, before, beforeEach, afterEach } from 'node:test';
+import { describe, test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert';
 import request from 'supertest';
 import express, { type Express } from 'express';
@@ -24,11 +24,45 @@ assertInMemoryDatabase();
 // Apply migrations to the in-memory database
 await migrate(db, { migrationsFolder: './drizzle' });
 
+// Track files in uploads directory for cleanup
+let filesBeforeTests: Set<string> = new Set();
+
 // Helper function to clear database tables
 async function clearDatabase() {
     await db.delete(schema.files);
     await db.delete(schema.auths);
     await db.delete(schema.users);
+}
+
+// Helper function to get list of files in uploads directory
+async function getUploadedFiles(): Promise<Set<string>> {
+    const uploadsDir = './data/uploads';
+    try {
+        const fs = await import('node:fs/promises');
+        const files = await fs.readdir(uploadsDir);
+        return new Set(files);
+    } catch (error) {
+        // Directory doesn't exist or can't be read
+        return new Set();
+    }
+}
+
+// Helper function to clean up new files from storage
+async function cleanupFiles() {
+    const filesAfterTests = await getUploadedFiles();
+
+    // Find files that were created during tests
+    const newFiles = [...filesAfterTests].filter(file => !filesBeforeTests.has(file));
+
+    // Delete each new file
+    for (const filename of newFiles) {
+        try {
+            const filePath = `./data/uploads/${filename}`;
+            await StorageProvider.deleteFile(filePath);
+        } catch (error) {
+            // Ignore errors during cleanup
+        }
+    }
 }
 
 // Create Express app with files routes
@@ -93,8 +127,17 @@ async function createMultipleFiles(userId: string, count: number): Promise<schem
 /* -------------------- TESTS -------------------- */
 
 describe('File Routes', () => {
+    before(async () => {
+        // Capture initial state of uploads directory
+        filesBeforeTests = await getUploadedFiles();
+    });
+
     beforeEach(async () => {
         await clearDatabase();
+    });
+
+    after(async () => {
+        await cleanupFiles();
     });
 
     describe('GET /api/v1/files/', () => {
