@@ -77,9 +77,7 @@ router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.FileListQuery>,
     res: Response<Types.FileModelResponse[] | Types.ErrorResponse>
 ) => {
-    console.log(`req.query: ${JSON.stringify(req.query, null, 2)}`)
     const query = Types.FileListQuerySchema.safeParse(req.query);
-    console.log(`result: ${JSON.stringify(query, null, 2)}`)
     if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
@@ -198,7 +196,6 @@ router.post('/', requireAuth, upload.single('file'), async (
     res: Response<Types.FileModelResponse | Types.ErrorResponse>
 ) => {
     const req = multerReq as unknown as Types.TypedRequest<{}, Types.UploadFileForm, Types.UploadFileQuery>;
-    
     const query = Types.UploadFileQuerySchema.safeParse(req.query);
     if (!query.success) {
         return res.status(400).json({
@@ -259,7 +256,7 @@ router.post('/', requireAuth, upload.single('file'), async (
                 filename: originalFilename,
                 path: uploadPath,
                 hash: hash,
-                data: { status: 'pending' },
+                data: { status: 'completed' },
                 meta: {
                     name: originalFilename,
                     content_type: mimeType,

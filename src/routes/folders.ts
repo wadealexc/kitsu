@@ -7,8 +7,12 @@
 
 import { Router, type Response } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, validateFolderId } from './middleware.js';
+import { db } from '../db/client.js';
+import * as Folders from '../db/operations/folders.js';
+import * as Chats from '../db/operations/chats.js';
+import type { Folder } from '../db/schema.js';
+import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 
 const router = Router();
 
@@ -22,28 +26,20 @@ const router = Router();
  *
  * @returns {Types.FolderNameIdResponse[]} - array of folder name/ID responses
  */
-router.get('/', requireAuth, (
+router.get('/', requireAuth, async (
     req: Types.TypedRequest,
     res: Response<Types.FolderNameIdResponse[] | Types.ErrorResponse>
 ) => {
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    const userId = req.user!.id;
 
-    // TODO: Query folders from database filtered by user_id
-    const folders = MockData.mockFolders.filter(folder => folder.user_id === userId);
+    try {
+        const folders = await Folders.getFoldersByUserId(userId, db);
 
-    // Map to FolderNameIdResponse (lightweight response)
-    const response: Types.FolderNameIdResponse[] = folders.map(folder => ({
-        id: folder.id,
-        name: folder.name,
-        meta: folder.meta ? folder.meta as Types.FolderMetadataResponse : null,
-        parent_id: folder.parent_id ?? null,
-        is_expanded: folder.is_expanded,
-        created_at: folder.created_at,
-        updated_at: folder.updated_at,
-    }));
-
-    res.json(response);
+        return res.json(folders.map(toFolderNameIdResponse));
+    } catch (error) {
+        console.error('Get folders error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -55,27 +51,31 @@ router.get('/', requireAuth, (
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @returns {Types.FolderModel | null} - full folder object or null
  */
-router.get('/:folder_id', validateFolderId, requireAuth, (
+router.get('/:folder_id', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
     res: Response<Types.FolderModel | null | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
+    const { folder_id: folderId } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const folder = await Folders.getFolderById(folderId, userId, db);
+        if (!folder) throw NotFoundError('Folder not found');
 
-    // TODO: Query folder from database with id and user_id filter
-    const folder = MockData.mockFolders.find(f =>
-        f.id === folder_id && f.user_id === userId
-    );
+        return res.json(toFolderModel(folder));
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
 
-    if (!folder) {
-        return res.status(404).json({
-            detail: 'Folder not found'
-        });
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get folder by id error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    res.json(folder);
 });
 
 /* -------------------- FOLDER CREATION & MODIFICATION -------------------- */
@@ -89,49 +89,44 @@ router.get('/:folder_id', validateFolderId, requireAuth, (
  * @body {Types.FolderForm} - folder creation data
  * @returns {Types.FolderModel} - created folder object
  */
-router.post('/', requireAuth, (
+router.post('/', requireAuth, async (
     req: Types.TypedRequest<{}, Types.FolderForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
-    const bodyValidation = Types.FolderFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.FolderFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { name, data, meta } = bodyValidation.data;
+    const { name, data, meta } = body.data;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Create folder at root level (parent_id = null)
+        const folder = await Folders.createFolder(
+            userId,
+            { name, data, meta },
+            null,
+            db
+        );
 
-    // TODO: Check for duplicate folder names at root level
-    const existingFolder = MockData.mockFolders.find(f =>
-        f.user_id === userId && f.parent_id === null && f.name === name
-    );
+        return res.json(toFolderModel(folder));
+    } catch (error: any) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
 
-    if (existingFolder) {
-        return res.status(400).json({
-            detail: 'Folder already exists'
-        });
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Create folder error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Insert new folder into database
-    const now = Math.floor(Date.now() / 1000);
-    const newFolder: Types.FolderModel = {
-        id: crypto.randomUUID(),
-        parent_id: null,
-        user_id: userId,
-        name,
-        meta: meta ?? null,
-        data: data ?? null,
-        is_expanded: false,
-        created_at: now,
-        updated_at: now,
-    };
-
-    res.json(newFolder);
 });
 
 /**
@@ -144,60 +139,47 @@ router.post('/', requireAuth, (
  * @body {Types.FolderUpdateForm} - folder update data
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update', validateFolderId, requireAuth, (
+router.post('/:folder_id/update', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderUpdateForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
-
-    const bodyValidation = Types.FolderUpdateFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.FolderUpdateFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { name, data, meta } = bodyValidation.data;
+    const { folder_id: folderId } = req.params;
+    const userId = req.user!.id;
+    const { name, data, meta } = body.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-
-    // TODO: Query folder from database
-    const folder = MockData.mockFolders.find(f =>
-        f.id === folder_id && f.user_id === userId
-    );
-
-    if (!folder) {
-        return res.status(404).json({
-            detail: 'Folder not found'
-        });
-    }
-
-    // TODO: If name is updated, check for duplicates within same parent
-    if (name !== undefined && name !== null) {
-        const existingFolder = MockData.mockFolders.find(f =>
-            f.user_id === userId && f.parent_id === folder.parent_id && f.name === name && f.id !== folder_id
+    try {
+        // Update folder
+        const folder = await Folders.updateFolder(
+            folderId,
+            userId,
+            { name, data, meta },
+            db
         );
 
-        if (existingFolder) {
-            return res.status(400).json({
-                detail: 'Folder already exists'
-            });
+        if (!folder) throw NotFoundError('Folder not found');
+
+        return res.json(toFolderModel(folder));
+    } catch (error: any) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
         }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update folder error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Update folder in database (merge data and meta)
-    const now = Math.floor(Date.now() / 1000);
-    const updatedFolder: Types.FolderModel = {
-        ...folder,
-        name: name !== undefined && name !== null ? name : folder.name,
-        data: data ? { ...folder.data, ...data } : folder.data,
-        meta: meta ? { ...folder.meta, ...meta } : folder.meta,
-        updated_at: now,
-    };
-
-    res.json(updatedFolder);
 });
 
 /**
@@ -210,56 +192,46 @@ router.post('/:folder_id/update', validateFolderId, requireAuth, (
  * @body {Types.FolderParentIdForm} - new parent ID
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update/parent', validateFolderId, requireAuth, (
+router.post('/:folder_id/update/parent', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderParentIdForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
-
-    const bodyValidation = Types.FolderParentIdFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.FolderParentIdFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { parent_id } = bodyValidation.data;
+    const { parent_id: parentId } = body.data;
+    const { folder_id: folderId } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const folder = await Folders.updateFolderParent(
+            folderId,
+            userId,
+            parentId ?? null,
+            db
+        );
 
-    // TODO: Query folder from database
-    const folder = MockData.mockFolders.find(f =>
-        f.id === folder_id && f.user_id === userId
-    );
+        if (!folder) throw NotFoundError('Folder not found');
 
-    if (!folder) {
-        return res.status(404).json({
-            detail: 'Folder not found'
-        });
+        return res.json(toFolderModel(folder));
+    } catch (error: any) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update folder parent error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check for duplicate names in target parent
-    const existingFolder = MockData.mockFolders.find(f =>
-        f.user_id === userId && f.parent_id === (parent_id ?? null) && f.name === folder.name
-    );
-
-    if (existingFolder) {
-        return res.status(400).json({
-            detail: 'Folder already exists'
-        });
-    }
-
-    // TODO: Update folder parent_id in database
-    const now = Math.floor(Date.now() / 1000);
-    const updatedFolder: Types.FolderModel = {
-        ...folder,
-        parent_id: parent_id ?? null,
-        updated_at: now,
-    };
-
-    res.json(updatedFolder);
 });
 
 /**
@@ -272,45 +244,46 @@ router.post('/:folder_id/update/parent', validateFolderId, requireAuth, (
  * @body {Types.FolderIsExpandedForm} - expansion state
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, (
+router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderIsExpandedForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
-
-    const bodyValidation = Types.FolderIsExpandedFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.FolderIsExpandedFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { is_expanded } = bodyValidation.data;
+    const { folder_id: folderId } = req.params;
+    const userId = req.user!.id;
+    const { is_expanded: isExpanded } = body.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        const folder = await Folders.updateFolderExpanded(
+            folderId,
+            userId,
+            isExpanded,
+            db
+        );
 
-    // TODO: Query folder from database
-    const folder = MockData.mockFolders.find(f =>
-        f.id === folder_id && f.user_id === userId
-    );
+        if (!folder) throw NotFoundError('Folder not found');
 
-    if (!folder) {
-        return res.status(404).json({
-            detail: 'Folder not found'
-        });
+        return res.json(toFolderModel(folder));
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update folder expanded error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Update folder is_expanded in database
-    const now = Math.floor(Date.now() / 1000);
-    const updatedFolder: Types.FolderModel = {
-        ...folder,
-        is_expanded,
-        updated_at: now,
-    };
-
-    res.json(updatedFolder);
 });
 
 /**
@@ -323,42 +296,97 @@ router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, (
  * @query {Types.FolderDeleteQuery} - deletion options
  * @returns {boolean} - true on success
  */
-router.delete('/:folder_id', validateFolderId, requireAuth, (
+router.delete('/:folder_id', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, any, Types.FolderDeleteQuery>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    const { folder_id } = req.params;
-
-    const queryValidation = Types.FolderDeleteQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.FolderDeleteQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { delete_contents } = queryValidation.data;
+    const { folder_id: folderId } = req.params;
+    const userId = req.user!.id;
+    const { delete_contents: deleteContents } = query.data;
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+    try {
+        // Check if folder exists
+        const folder = await Folders.getFolderById(folderId, userId, db);
+        if (!folder) throw NotFoundError('Folder not found');
 
-    // TODO: Query folder from database
-    const folder = MockData.mockFolders.find(f =>
-        f.id === folder_id && f.user_id === userId
-    );
+        // Perform deletion in transaction
+        await db.transaction(async (tx) => {
+            const foldersToDelete = await Folders.getChildrenFolders(folderId, userId, tx);
+            const idsToDelete = [...(foldersToDelete.map(f => f.id)), folderId];
 
-    if (!folder) {
-        return res.status(404).json({
-            detail: 'Folder not found'
+            // Handle chats based on delete_contents parameter
+            //
+            // Note: If delete_contents is false, chats are automatically moved to root
+            // by the database's ON DELETE SET NULL foreign key constraint on folderId
+            if (deleteContents) {
+                // Delete all chats in deleted folders
+                for (const folderId of idsToDelete) {
+                    await Chats.deleteChatsInFolder(userId, folderId, tx);
+                }
+            }
+
+            // Delete folder (automatically deletes children)
+            await Folders.deleteFolder(folderId, userId, tx);
         });
+
+        return res.json(true);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Delete folder error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Recursively delete subfolders
-    // TODO: Delete or move chats based on delete_contents parameter
-    // If delete_contents=true: delete all chats in folder and subfolders
-    // If delete_contents=false: move chats to root level (folder_id = null)
-
-    res.json(true);
 });
+
+/* -------------------- HELPER FUNCTIONS -------------------- */
+
+/**
+ * Convert Folder to FolderModel format (API response)
+ * Handles field translation from DB schema to API schema
+ */
+function toFolderModel(folder: Folder): Types.FolderModel {
+    return {
+        id: folder.id,
+        parent_id: folder.parentId,
+        user_id: folder.userId,
+        name: folder.name,
+        meta: folder.meta,
+        data: folder.data,
+        is_expanded: folder.isExpanded,
+        created_at: folder.createdAt,
+        updated_at: folder.updatedAt,
+    };
+}
+
+/**
+ * Convert Folder to FolderNameIdResponse format (lightweight list response)
+ * Handles field translation from DB schema to API schema
+ */
+function toFolderNameIdResponse(folder: Folder): Types.FolderNameIdResponse {
+    return {
+        id: folder.id,
+        name: folder.name,
+        meta: folder.meta,
+        parent_id: folder.parentId,
+        is_expanded: folder.isExpanded,
+        created_at: folder.createdAt,
+        updated_at: folder.updatedAt,
+    };
+}
 
 export default router;

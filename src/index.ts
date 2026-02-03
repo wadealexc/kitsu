@@ -55,7 +55,7 @@ const app = express();
 
 app.use(middleware.logging);
 app.use(cookieParser());
-app.use(express.json({ type: (() => true), limit: '50mb' }));
+app.use(express.json({ type: 'application/json', limit: '50mb' }));
 
 /* -------------------- LLAMA, BROWSER, TOOL SERVER -------------------- */
 
