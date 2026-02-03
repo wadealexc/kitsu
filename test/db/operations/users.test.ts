@@ -145,7 +145,7 @@ describe('getUsers', () => {
 
     test('sorts by different fields', async () => {
         const byUsername = await Users.getUsers({ orderBy: 'username', direction: 'asc' }, db);
-        const byCreated = await Users.getUsers({ orderBy: 'createdAt', direction: 'desc' }, db);
+        const byCreated = await Users.getUsers({ orderBy: 'created_at', direction: 'desc' }, db);
 
         assert.ok(byUsername.users.length > 0);
         assert.ok(byCreated.users.length > 0);
