@@ -25,6 +25,7 @@ import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
 import pwaRouter from './routes/pwa.js';
 import * as MockData from './routes/mock-data.js';
+import { validateChatId } from './routes/middleware.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -102,6 +103,23 @@ app.get('/api/v1/functions', (_req, res) => {
 
 app.get('/api/v1/chats/all/tags', (_req, res) => {
     res.json([]);
+});
+
+app.get('/api/v1/chats/:id/tags', validateChatId, (req, res) => {
+    res.json([]);
+});
+
+app.get('/api/tasks/chat/:chat_id', (req, res) => {
+    res.json({
+        task_ids: [],
+    });
+})
+
+app.get('/api/usage', (req, res) => {
+    res.json({
+        model_ids: [],
+        user_count: 1,
+    })
 });
 
 app.get('/api/v1/chats/pinned', (_req, res) => {

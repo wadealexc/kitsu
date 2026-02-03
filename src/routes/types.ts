@@ -422,7 +422,7 @@ export type UserUpdateForm = z.infer<typeof UserUpdateFormSchema>;
 // User list/search query parameters
 export const UserListQuerySchema = z.object({
     query: z.string().optional(),
-    order_by: z.enum(['role', 'username', 'lastActiveAt', 'createdAt']).optional(),
+    order_by: z.enum(['role', 'username', 'last_active_at', 'created_at']).optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
 });
@@ -960,9 +960,9 @@ export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;
 
 // File metadata structure
 export const FileMetaSchema = z.object({
-    name: z.string(),
-    content_type: z.string(),
-    size: z.number(),
+    name: z.string().optional(),
+    content_type: z.string().optional(),
+    size: z.number().optional(),
     data: z.record(z.string(), z.any()).optional(),
 });
 export type FileMeta = z.infer<typeof FileMetaSchema>;
