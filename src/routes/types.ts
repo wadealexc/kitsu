@@ -537,7 +537,7 @@ export type SyncModelsForm = z.infer<typeof SyncModelsFormSchema>;
 
 // Query parameters for GET /api/v1/models
 export const ModelsQuerySchema = z.object({
-    refresh: z.coerce.boolean().optional().default(false),
+    refresh: z.stringbool().optional().default(false),
 });
 export type ModelsQuery = z.infer<typeof ModelsQuerySchema>;
 
@@ -757,8 +757,8 @@ export type ChatUsageStatsListResponse = z.infer<typeof ChatUsageStatsListRespon
 // Query parameters for GET /api/v1/chats/ and /api/v1/chats/list
 export const ChatListQuerySchema = z.object({
     page: z.coerce.number().int().min(1).optional(),
-    include_pinned: z.coerce.boolean().optional().default(false),
-    include_folders: z.coerce.boolean().optional().default(false),
+    include_pinned: z.stringbool().optional().default(false),
+    include_folders: z.stringbool().optional().default(false),
 });
 export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;
 
@@ -952,7 +952,7 @@ export type FolderIsExpandedForm = z.infer<typeof FolderIsExpandedFormSchema>;
 
 // Query parameters for DELETE /api/v1/folders/:id
 export const FolderDeleteQuerySchema = z.object({
-    delete_contents: z.coerce.boolean().default(true),
+    delete_contents: z.stringbool().default(true),
 });
 export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;
 
@@ -1016,8 +1016,8 @@ export type UploadFileForm = z.infer<typeof UploadFileFormSchema>;
 
 // Query parameters for POST /api/v1/files/
 export const UploadFileQuerySchema = z.object({
-    process: z.coerce.boolean().optional().default(true),
-    process_in_background: z.coerce.boolean().optional().default(true),
+    process: z.stringbool().optional().default(true),
+    process_in_background: z.stringbool().optional().default(true),
 });
 export type UploadFileQuery = z.infer<typeof UploadFileQuerySchema>;
 
@@ -1029,14 +1029,14 @@ export type ContentForm = z.infer<typeof ContentFormSchema>;
 
 // Query parameters for GET /api/v1/files/
 export const FileListQuerySchema = z.object({
-    content: z.coerce.boolean().optional(),
+    content: z.stringbool().optional(),
 });
 export type FileListQuery = z.infer<typeof FileListQuerySchema>;
 
 // Query parameters for GET /api/v1/files/search
 export const FileSearchQuerySchema = z.object({
     filename: z.string(),
-    content: z.coerce.boolean().optional().default(true),
+    content: z.stringbool().optional().default(true),
     skip: z.coerce.number().int().min(0).optional().default(0),
     limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
 });
@@ -1044,13 +1044,13 @@ export type FileSearchQuery = z.infer<typeof FileSearchQuerySchema>;
 
 // Query parameters for GET /api/v1/files/{id}/content
 export const FileContentQuerySchema = z.object({
-    attachment: z.coerce.boolean().default(false),
+    attachment: z.stringbool().default(false),
 });
 export type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
 
 // Query parameters for GET /api/v1/files/{id}/process/status
 export const FileProcessStatusQuerySchema = z.object({
-    stream: z.coerce.boolean().default(false),
+    stream: z.stringbool().default(false),
 });
 export type FileProcessStatusQuery = z.infer<typeof FileProcessStatusQuerySchema>;
 

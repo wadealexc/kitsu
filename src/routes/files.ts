@@ -6,11 +6,61 @@
  */
 
 import { Router, type Response } from 'express';
+import crypto from 'crypto';
+import path from 'path';
+import multer from 'multer';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateFileId } from './middleware.js';
+import { db } from '../db/client.js';
+import * as Files from '../db/operations/files.js';
+import * as Users from '../db/operations/users.js';
+import type { File } from '../db/schema.js';
+import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
+import { StorageProvider } from '../storage/provider.js';
 
 const router = Router();
+
+/* -------------------- FILE VALIDATION CONFIG -------------------- */
+
+// Maximum file size (100MB default)
+const MB_IN_BYTES = 1024 * 1024;
+const MAX_FILE_SIZE = process.env.MAX_FILE_SIZE ? parseInt(process.env.MAX_FILE_SIZE) : 100 * MB_IN_BYTES;
+
+const MAX_FILE_COUNT = 1;
+
+// Allowed file extensions
+const ALLOWED_EXTENSIONS = [
+    // Documents
+    '.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.odt',
+    '.xls', '.xlsx', '.ppt', '.pptx', '.csv',
+
+    // Images
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp',
+
+    // Audio
+    '.mp3', '.wav', '.ogg', '.m4a', '.flac',
+
+    // Video
+    '.mp4', '.webm', '.mov', '.avi',
+];
+
+/**
+ * Validate file extension against allowlist.
+ */
+function validateFileExtension(filename: string): boolean {
+    const ext = path.extname(filename).toLowerCase();
+    return ALLOWED_EXTENSIONS.includes(ext);
+}
+
+/* -------------------- MULTER MIDDLEWARE -------------------- */
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: MAX_FILE_SIZE,
+        files: MAX_FILE_COUNT,
+    },
+});
 
 /* -------------------- FILE LIST & SEARCH -------------------- */
 
@@ -23,43 +73,47 @@ const router = Router();
  * @query {Types.FileListQuery} - optional query parameters
  * @returns {Types.FileModelResponse[]} - array of file responses
  */
-router.get('/', requireAuth, (
+router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.FileListQuery>,
     res: Response<Types.FileModelResponse[] | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.FileListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    console.log(`req.query: ${JSON.stringify(req.query, null, 2)}`)
+    const query = Types.FileListQuerySchema.safeParse(req.query);
+    console.log(`result: ${JSON.stringify(query, null, 2)}`)
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { content } = queryValidation.data;
+    const { content } = query.data;
+    const userId = req.user!.id;
+    const isAdmin = req.user!.role === 'admin';
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Admin users see all files, regular users only see their own
+        const files = isAdmin
+            ? await Files.getFiles(db)
+            : (await Files.getFilesByUserId(userId, {}, db)).items;
 
-    // TODO: Query files from database
-    // Admin users see all files, regular users only see their own
-    const files = isAdmin
-        ? MockData.mockFiles
-        : MockData.mockFiles.filter(file => file.user_id === userId);
+        // Map to FileModelResponse (exclude path and access_control fields)
+        const response: Types.FileModelResponse[] = files.map(file => ({
+            id: file.id,
+            user_id: file.userId,
+            hash: file.hash,
+            filename: file.filename,
+            data: content === false ? null : (file.data),
+            meta: file.meta || {},
+            created_at: file.createdAt,
+            updated_at: file.updatedAt,
+        }));
 
-    // Map to FileModelResponse (exclude path field)
-    const response: Types.FileModelResponse[] = files.map(file => ({
-        id: file.id,
-        user_id: file.user_id,
-        hash: file.hash,
-        filename: file.filename,
-        data: content === false ? null : file.data,
-        meta: file.meta as Types.FileMeta,
-        created_at: file.created_at ?? Math.floor(Date.now() / 1000),
-        updated_at: file.updated_at ?? Math.floor(Date.now() / 1000),
-    }));
-
-    res.json(response);
+        return res.json(response);
+    } catch (error) {
+        console.error('Get files error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /**
@@ -71,62 +125,60 @@ router.get('/', requireAuth, (
  * @query {Types.FileSearchQuery} - search parameters
  * @returns {Types.FileModelResponse[]} - array of matching files
  */
-router.get('/search', requireAuth, (
+router.get('/search', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.FileSearchQuery>,
     res: Response<Types.FileModelResponse[] | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.FileSearchQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.FileSearchQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { filename, content, skip, limit } = queryValidation.data;
+    const { filename, content, skip, limit } = query.data;
+    const userId = req.user!.id;
+    const isAdmin = req.user!.role === 'admin';
 
-    // TODO: Get user ID and role from JWT token
-    const currentUserId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Admin users search all files, regular users only their own
+        const files = await Files.searchFiles(
+            isAdmin ? null : userId,
+            filename,
+            skip,
+            limit,
+            db
+        );
 
-    // TODO: Query files from database with glob pattern matching
-    // Convert glob pattern: * → %, ? → _ for SQL ILIKE
-    let files = MockData.mockFiles;
+        if (files.length === 0) throw NotFoundError('No files found matching pattern');
 
-    // Filter by user ownership (regular users only see their own files)
-    if (!isAdmin) {
-        files = files.filter(file => file.user_id === currentUserId);
+        // Map to FileModelResponse
+        const response: Types.FileModelResponse[] = files.map(file => ({
+            id: file.id,
+            user_id: file.userId,
+            hash: file.hash,
+            filename: file.filename,
+            data: content === false ? null : (file.data),
+            meta: file.meta || {},
+            created_at: file.createdAt,
+            updated_at: file.updatedAt,
+        }));
+
+        return res.json(response);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Search files error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // Simple glob matching (basic implementation for mock)
-    const regexPattern = filename
-        .replace(/\*/g, '.*')
-        .replace(/\?/g, '.');
-    const regex = new RegExp(regexPattern, 'i');
-    files = files.filter(file => regex.test(file.filename));
-
-    // Pagination
-    const paginatedFiles = files.slice(skip, skip + limit);
-
-    if (paginatedFiles.length === 0) {
-        return res.status(404).json({
-            detail: 'No files found matching pattern'
-        });
-    }
-
-    // Map to FileModelResponse
-    const response: Types.FileModelResponse[] = paginatedFiles.map(file => ({
-        id: file.id,
-        user_id: file.user_id,
-        hash: file.hash,
-        filename: file.filename,
-        data: content === false ? null : file.data as Types.FileData,
-        meta: file.meta as Types.FileMeta,
-        created_at: file.created_at ?? Math.floor(Date.now() / 1000),
-        updated_at: file.updated_at ?? Math.floor(Date.now() / 1000),
-    }));
-
-    res.json(response);
 });
 
 /* -------------------- FILE UPLOAD -------------------- */
@@ -141,65 +193,110 @@ router.get('/search', requireAuth, (
  * @body {Types.UploadFileForm} - multipart form-data
  * @returns {Types.FileModelResponse} - uploaded file metadata
  */
-router.post('/', requireAuth, (
-    req: Types.TypedRequest<{}, Types.UploadFileForm, Types.UploadFileQuery>,
+router.post('/', requireAuth, upload.single('file'), async (
+    multerReq,
     res: Response<Types.FileModelResponse | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.UploadFileQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const req = multerReq as unknown as Types.TypedRequest<{}, Types.UploadFileForm, Types.UploadFileQuery>;
+    
+    const query = Types.UploadFileQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { process, process_in_background } = queryValidation.data;
+    const { process, process_in_background: processInBackground } = query.data;
 
-    // Validate body (metadata field)
-    // Note: In production, this endpoint requires multipart/form-data middleware (e.g., multer)
-    // to handle file uploads. For mock, we validate what we can from req.body.
-    const bodyValidation = Types.UploadFileFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
-        return res.status(400).json({
-            detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
-        });
+    // Validate file exists and has valid extension
+    if (!req.file) return res.status(400).json({ 
+        detail: 'File required' 
+    });
+
+    // Validate file extension
+    if (!validateFileExtension(req.file.originalname)) return res.status(400).json({ 
+        detail: 'File type not allowed' 
+    });
+
+    // Parse metadata
+    let metadata: Record<string, any> = {};
+    if (req.body.metadata) {
+        try {
+            metadata = typeof req.body.metadata === 'string'
+                ? JSON.parse(req.body.metadata)
+                : req.body.metadata;
+        } catch (error) {
+            // Ignore parsing errors, use empty metadata
+        }
     }
 
-    const { metadata } = bodyValidation.data;
+    const userId = req.user!.id;
+    const fileBuffer = req.file.buffer;
+    const originalFilename = req.file.originalname;
+    const mimeType = req.file.mimetype;
 
-    // TODO: Handle multipart form-data file upload (requires multer or similar middleware)
-    // TODO: Validate file field exists and is not empty
-    // TODO: Validate file extension against ALLOWED_FILE_EXTENSIONS config
-    // TODO: Upload to storage provider (local/S3/GCS/Azure)
-    // TODO: Process file if process=true (audio transcription, image OCR, document extraction)
-    // TODO: Process in background if process_in_background=true
-    // TODO: Create vector database collection for semantic search
-    // TODO: Add metadata tags to uploaded file
+    try {
+        const file = await db.transaction(async (tx) => {
+            // Generate file ID
+            const fileId = crypto.randomUUID();
 
-    // TODO: Get user ID from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
+            // Calculate hash
+            const hash = crypto.createHash('sha256')
+                .update(fileBuffer)
+                .digest('hex');
 
-    // Mock file upload
-    const now = Math.floor(Date.now() / 1000);
-    const newFile: Types.FileModelResponse = {
-        id: crypto.randomUUID(),
-        user_id: userId,
-        hash: 'mock-hash-' + Date.now(),
-        filename: 'uploaded-file.pdf',
-        data: {
-            status: 'pending',
-        },
-        meta: {
-            name: 'uploaded-file.pdf',
-            content_type: 'application/pdf',
-            size: 1024000,
-        },
-        created_at: now,
-        updated_at: now,
-    };
+            // Upload to storage
+            const uploadPath = await StorageProvider.uploadFile(
+                fileId,
+                fileBuffer,
+                metadata
+            );
 
-    res.json(newFile);
+            // Create file record
+            const newFile = await Files.createFile(userId, {
+                id: fileId,
+                filename: originalFilename,
+                path: uploadPath,
+                hash: hash,
+                data: { status: 'pending' },
+                meta: {
+                    name: originalFilename,
+                    content_type: mimeType,
+                    size: fileBuffer.length,
+                    data: metadata,
+                },
+            }, tx);
+
+            // TODO: Trigger processing pipeline
+            // if (process) {
+            //     if (processInBackground) {
+            //         processFileInBackground(fileId);
+            //     } else {
+            //         await processFile(fileId);
+            //     }
+            // }
+
+            return newFile;
+        });
+
+        // Map to FileModelResponse
+        const response: Types.FileModelResponse = {
+            id: file.id,
+            user_id: file.userId,
+            hash: file.hash,
+            filename: file.filename,
+            data: file.data,
+            meta: file.meta || {},
+            created_at: file.createdAt,
+            updated_at: file.updatedAt,
+        };
+
+        return res.json(response);
+    } catch (error) {
+        console.error('File upload error:', error);
+        return res.status(500).json({ detail: 'File upload failed' });
+    }
 });
 
 /* -------------------- FILE DELETION -------------------- */
@@ -212,15 +309,40 @@ router.post('/', requireAuth, (
  *
  * @returns {Types.FileDeleteResponse} - success message
  */
-router.delete('/all', requireAdmin, (
+router.delete('/all', requireAdmin, async (
     req: Types.TypedRequest,
     res: Response<Types.FileDeleteResponse | Types.ErrorResponse>
 ) => {
-    // TODO: Delete all file records from database
-    // TODO: Delete all physical files from storage provider
-    // TODO: Reset vector database (delete all file collections)
+    try {
+        await db.transaction(async (tx) => {
+            // Get all file paths before deletion
+            const allFiles = await Files.getFiles(tx);
 
-    res.json({ message: 'All files deleted successfully' });
+            // Delete all file records
+            await Files.deleteAllFiles(tx);
+
+            // Delete physical files asynchronously
+            allFiles.forEach(file => {
+                if (file.path) {
+                    StorageProvider.deleteFile(file.path).catch(err => {
+                        console.error(`Failed to delete file ${file.id}:`, err);
+                    });
+                }
+            });
+
+            // TODO: Delete all vector database collections
+            // for (const file of allFiles) {
+            //     VectorDB.deleteCollection(`file-${file.id}`).catch(err => {
+            //         console.error(`Failed to delete collection for ${file.id}:`, err);
+            //     });
+            // }
+        });
+
+        return res.json({ message: 'All files deleted successfully' });
+    } catch (error) {
+        console.error('Delete all files error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 /* -------------------- FILE RETRIEVAL BY ID -------------------- */
@@ -234,41 +356,48 @@ router.delete('/all', requireAdmin, (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns {Types.FileModel} - full file metadata including internal path
  */
-router.get('/:file_id', validateFileId, requireAuth, (
+router.get('/:file_id', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
     res: Response<Types.FileModel | Types.ErrorResponse>
 ) => {
-    const { file_id } = req.params;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Get file
+        const file = await Files.getFileById(fileId, db);
+        if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+        // Check access control
+        const hasAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+        if (!hasAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
+        // Return full file model (includes path and access_control)
+        return res.json({
+            id: file.id,
+            user_id: file.userId,
+            hash: file.hash,
+            filename: file.filename,
+            path: file.path,
+            data: file.data,
+            meta: file.meta,
+            access_control: file.accessControl,
+            created_at: file.createdAt,
+            updated_at: file.updatedAt,
         });
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get file by id error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check access control
-    // Access granted if:
-    // - User owns the file (file.user_id == user.id), OR
-    // - User is admin, OR
-    // - File is in user's accessible knowledge base, OR
-    // - File is in user's accessible channel, OR
-    // - File is in user's shared chats
-    const hasAccess = isAdmin || file.user_id === userId;
-
-    if (!hasAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    res.json(file);
 });
 
 /**
@@ -280,39 +409,53 @@ router.get('/:file_id', validateFileId, requireAuth, (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns {Types.FileDeleteResponse} - success message
  */
-router.delete('/:file_id', validateFileId, requireAuth, (
+router.delete('/:file_id', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
     res: Response<Types.FileDeleteResponse | Types.ErrorResponse>
 ) => {
-    const { file_id } = req.params;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        await db.transaction(async (tx) => {
+            // Get file
+            const file = await Files.getFileById(fileId, tx);
+            if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+            // Check write access
+            const hasWriteAccess = await Files.hasFileAccess(fileId, userId, 'write', tx);
+            if (!hasWriteAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
+            // Delete file record
+            await Files.deleteFile(fileId, tx);
+
+            // Delete physical file asynchronously
+            if (file.path) {
+                StorageProvider.deleteFile(file.path).catch(err => {
+                    console.error(`Failed to delete file ${fileId}:`, err);
+                });
+            }
+
+            // TODO: Delete vector database collection
+            // VectorDB.deleteCollection(`file-${fileId}`).catch(err => {
+            //     console.error(`Failed to delete collection for ${fileId}:`, err);
+            // });
         });
+
+        return res.json({ message: `File ${fileId} deleted successfully` });
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Delete file error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check write access (owner, admin, or write access to associated resources)
-    const hasWriteAccess = isAdmin || file.user_id === userId;
-
-    if (!hasWriteAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    // TODO: Delete file record from database
-    // TODO: Delete physical file from storage provider
-    // TODO: Clean vector database (delete collection named file-{id})
-
-    res.json({ message: `File ${file_id} deleted successfully` });
 });
 
 /* -------------------- FILE CONTENT RETRIEVAL -------------------- */
@@ -327,49 +470,66 @@ router.delete('/:file_id', validateFileId, requireAuth, (
  * @query {Types.FileContentQuery} - attachment query parameter
  * @returns File content with appropriate headers
  */
-router.get('/:file_id/content', validateFileId, requireAuth, (
+router.get('/:file_id/content', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, any, Types.FileContentQuery>,
-    res: Response<any | Types.ErrorResponse>
+    res: Response
 ) => {
-    const { file_id } = req.params;
-
-    const queryValidation = Types.FileContentQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.FileContentQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { attachment } = queryValidation.data;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
+    const { attachment } = query.data;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Get file
+        const file = await Files.getFileById(fileId, db);
+        if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+        // Check read access
+        const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+        if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
+        // Check physical file exists
+        if (!file.path) throw NotFoundError('File not found');
+
+        // Download file from storage
+        const fileBuffer = await StorageProvider.downloadFile(file.path);
+
+        // Set content type
+        const contentType = file.meta?.content_type
+            || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+
+        // Set content disposition
+        const isPDF = contentType === 'application/pdf';
+        const disposition = (isPDF && !attachment) ? 'inline' : 'attachment';
+        const encodedFilename = encodeURIComponent(file.filename);
+        res.setHeader(
+            'Content-Disposition',
+            `${disposition}; filename="${file.filename}"; filename*=UTF-8''${encodedFilename}`
+        );
+
+        // Stream file
+        return res.status(200).send(fileBuffer);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get file content error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check read access
-    const hasReadAccess = isAdmin || file.user_id === userId;
-
-    if (!hasReadAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    // TODO: Return FileResponse with proper content type detection
-    // TODO: Set Content-Disposition header based on attachment param and file type
-    // PDF files: default to inline, others controlled by attachment param
-
-    res.json({ message: 'File content download not implemented in mock' });
 });
 
 /**
@@ -378,42 +538,74 @@ router.get('/:file_id/content', validateFileId, requireAuth, (
  *
  * Download file content with specific filename.
  *
- * @param {Types.FileContentFileNameParams} - path parameters with file ID and filename
+ * @param {Types.NamedFileParams} - path parameters with file ID and filename
  * @returns File content or extracted text with specified filename
  */
-router.get('/:file_id/content/:file_name', validateFileId, requireAuth, (
+router.get('/:file_id/content/:file_name', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.NamedFileParams>,
-    res: Response<any | Types.ErrorResponse>
+    res: Response
 ) => {
-    const { file_id, file_name } = req.params;
+    const { file_id: fileId, file_name: fileName } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Get file
+        const file = await Files.getFileById(fileId, db);
+        if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+        // Check read access
+        const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+        if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
+        // Try to get physical file
+        if (file.path) {
+            try {
+                const fileBuffer = await StorageProvider.downloadFile(file.path);
+
+                // Use custom filename from path parameter
+                const contentType = file.meta?.content_type
+                    || 'application/octet-stream';
+                res.setHeader('Content-Type', contentType);
+
+                const encodedFilename = encodeURIComponent(fileName);
+                res.setHeader(
+                    'Content-Disposition',
+                    `attachment; filename="${fileName}"; filename*=UTF-8''${encodedFilename}`
+                );
+
+                return res.status(200).send(fileBuffer);
+            } catch (error) {
+                // Physical file not found, try extracted content
+            }
+        }
+
+        // Fallback: Stream extracted text content
+        const fileData = file.data;
+        const content = fileData?.content;
+        if (!content) throw NotFoundError('File not found');
+
+        // Stream text content
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        const encodedFilename = encodeURIComponent(fileName);
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${fileName}"; filename*=UTF-8''${encodedFilename}`
+        );
+
+        return res.status(200).send(content);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get file content with filename error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check read access
-    const hasReadAccess = isAdmin || file.user_id === userId;
-
-    if (!hasReadAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    // TODO: If physical file path exists, return FileResponse with file content
-    // TODO: If no physical file, fall back to streaming extracted text from file.data.content
-    // TODO: Handle Unicode filename encoding via RFC5987
-
-    res.json({ message: 'File content download with filename not implemented in mock' });
 });
 
 /**
@@ -425,48 +617,49 @@ router.get('/:file_id/content/:file_name', validateFileId, requireAuth, (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns Raw file content
  */
-router.get('/:file_id/content/html', validateFileId, requireAuth, (
-    req: Types.TypedRequest<Types.FileIdParams>,
-    res: Response<any | Types.ErrorResponse>
-) => {
-    const { file_id } = req.params;
+// TODO - not needed for now
+// router.get('/:file_id/content/html', validateFileId, requireAuth, async (
+//     req: Types.TypedRequest<Types.FileIdParams>,
+//     res: Response
+// ) => {
+//     const { file_id: fileId } = req.params;
+//     const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+//     try {
+//         // Get file
+//         const file = await Files.getFileById(fileId, db);
+//         if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+//         // Check if file is admin-owned
+//         const owner = await Users.getUserById(file.userId, db);
+//         if (!owner || owner.role !== 'admin') throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
+//         // Check read access
+//         const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+//         if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
 
-    // TODO: Check if file is admin-owned
-    // Note: This endpoint only works for files owned by admin users
-    const isAdminOwned = file.user_id === MockData.MOCK_ADMIN_USER_ID; // TODO: Check against actual admin user IDs
+//         // Check physical file exists
+//         if (!file.path) throw NotFoundError('File not found');
 
-    if (!isAdminOwned) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
+//         // Download and return raw file content
+//         const fileBuffer = await StorageProvider.downloadFile(file.path);
 
-    // TODO: Check read access
-    const hasReadAccess = isAdmin || file.user_id === userId;
+//         // Return raw content (no Content-Type or Content-Disposition headers)
+//         return res.status(200).send(fileBuffer);
+//     } catch (error) {
+//         if (error instanceof HttpError) {
+//             return res.status(error.statusCode).json({ detail: error.message });
+//         }
 
-    if (!hasReadAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
+//         // Handle validation errors from operations
+//         if (error instanceof Error) {
+//             return res.status(400).json({ detail: error.message });
+//         }
 
-    // TODO: Return raw file content
-
-    res.json({ message: 'HTML content retrieval not implemented in mock' });
-});
+//         console.error('Get HTML content error:', error);
+//         return res.status(500).json({ detail: 'Internal server error' });
+//     }
+// });
 
 /* -------------------- FILE DATA & CONTENT MANAGEMENT -------------------- */
 
@@ -479,38 +672,40 @@ router.get('/:file_id/content/html', validateFileId, requireAuth, (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns {Types.FileDataContentResponse} - extracted content
  */
-router.get('/:file_id/data/content', validateFileId, requireAuth, (
+router.get('/:file_id/data/content', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
     res: Response<Types.FileDataContentResponse | Types.ErrorResponse>
 ) => {
-    const { file_id } = req.params;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        // Get file
+        const file = await Files.getFileById(fileId, db);
+        if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+        // Check read access
+        const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+        if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
+        // Return extracted content
+        const fileData = file.data;
+        const content = fileData?.content || '';
+
+        return res.json({ content });
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get file data content error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check read access
-    const hasReadAccess = isAdmin || file.user_id === userId;
-
-    if (!hasReadAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    // Return content extracted during file processing
-    const content = (file.data as any)?.content ?? '';
-
-    res.json({ content });
 });
 
 /**
@@ -523,65 +718,75 @@ router.get('/:file_id/data/content', validateFileId, requireAuth, (
  * @body {Types.ContentForm} - new content
  * @returns {Types.FileModelResponse} - updated file
  */
-router.post('/:file_id/data/content/update', validateFileId, requireAuth, (
+router.post('/:file_id/data/content/update', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, Types.ContentForm>,
     res: Response<Types.FileModelResponse | Types.ErrorResponse>
 ) => {
-    const { file_id } = req.params;
-
-    const bodyValidation = Types.ContentFormSchema.safeParse(req.body);
-    if (!bodyValidation.success) {
+    const body = Types.ContentFormSchema.safeParse(req.body);
+    if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
-            errors: bodyValidation.error.issues
+            errors: body.error.issues
         });
     }
 
-    const { content } = bodyValidation.data;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
+    const { content } = body.data;
 
-    // TODO: Get user ID and role from JWT token
-    const userId = MockData.MOCK_ADMIN_USER_ID;
-    const isAdmin = true; // TODO: Extract from JWT
+    try {
+        const updatedFile = await db.transaction(async (tx) => {
+            // Get file
+            const file = await Files.getFileById(fileId, tx);
+            if (!file) throw NotFoundError('File not found');
 
-    // TODO: Query file from database
-    const file = MockData.mockFiles.find(f => f.id === file_id);
+            // Check write access
+            const hasWriteAccess = await Files.hasFileAccess(fileId, userId, 'write', tx);
+            if (!hasWriteAccess) throw UnauthorizedError('User does not have access to file');
 
-    if (!file) {
-        return res.status(404).json({
-            detail: 'File not found'
+            // Update file data
+            const updated = await Files.updateFileData(fileId, {
+                content: content,
+                status: 'pending',  // Mark for reprocessing
+            }, tx);
+
+            // TODO: Trigger reprocessing
+            // processFileInBackground(fileId);
+
+            // TODO: Update vector database
+            // VectorDB.updateCollection(`file-${fileId}`, content);
+
+            return updated;
         });
+
+        if (!updatedFile) throw NotFoundError('File not found');
+
+        // Map to FileModelResponse
+        const response: Types.FileModelResponse = {
+            id: updatedFile.id,
+            user_id: updatedFile.userId,
+            hash: updatedFile.hash,
+            filename: updatedFile.filename,
+            data: updatedFile.data,
+            meta: updatedFile.meta || {},
+            created_at: updatedFile.createdAt,
+            updated_at: updatedFile.updatedAt,
+        };
+
+        return res.json(response);
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Update file content error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
     }
-
-    // TODO: Check write access
-    const hasWriteAccess = isAdmin || file.user_id === userId;
-
-    if (!hasWriteAccess) {
-        return res.status(404).json({
-            detail: 'File not found'
-        });
-    }
-
-    // TODO: Update file.data["content"] with provided content
-    // TODO: Trigger file reprocessing via process_file()
-    // TODO: Update vector database with new content
-
-    const now = Math.floor(Date.now() / 1000);
-    const updatedFile: Types.FileModelResponse = {
-        id: file.id,
-        user_id: file.user_id,
-        hash: file.hash,
-        filename: file.filename,
-        data: {
-            ...file.data,
-            content,
-            status: 'pending', // Reprocessing
-        },
-        meta: file.meta as Types.FileMeta,
-        created_at: file.created_at ?? now,
-        updated_at: now,
-    };
-
-    res.json(updatedFile);
 });
 
 /* -------------------- FILE PROCESSING STATUS -------------------- */
@@ -597,23 +802,100 @@ router.post('/:file_id/data/content/update', validateFileId, requireAuth, (
  * @returns {Types.FileProcessStatusResponse} - processing status (non-streaming)
  * @returns text/event-stream - SSE stream (streaming mode)
  */
-router.get('/:file_id/process/status', validateFileId, requireAuth, (
+router.get('/:file_id/process/status', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, any, Types.FileProcessStatusQuery>,
     res: Response<Types.FileProcessStatusResponse | Types.ErrorResponse>
 ) => {
-    const { file_id } = req.params;
-
-    const queryValidation = Types.FileProcessStatusQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
+    const query = Types.FileProcessStatusQuerySchema.safeParse(req.query);
+    if (!query.success) {
         return res.status(400).json({
             detail: 'Invalid query parameters',
-            errors: queryValidation.error.issues
+            errors: query.error.issues
         });
     }
 
-    const { stream } = queryValidation.data;
+    const { file_id: fileId } = req.params;
+    const userId = req.user!.id;
+    const { stream } = query.data;
 
-    res.json({ status: 'pending' });
+    try {
+        // Get file
+        const file = await Files.getFileById(fileId, db);
+        if (!file) throw NotFoundError('File not found');
+
+        // Check read access
+        const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
+        if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
+
+        const fileData = file.data;
+        const status = fileData?.status || 'pending';
+
+        if (!stream) {
+            // Non-streaming mode: return status immediately
+            return res.json({ status });
+        }
+
+        // Streaming mode: SSE stream
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        const maxDuration = 2 * 60 * 60 * 1000; // 2 hours
+        const pollInterval = 1000; // 1 second
+        const startTime = Date.now();
+
+        const poll = async () => {
+            // Check timeout
+            if (Date.now() - startTime > maxDuration) {
+                res.write(`data: ${JSON.stringify({ status: 'timeout' })}\n\n`);
+                res.end();
+                return;
+            }
+
+            // Get current status
+            const currentFile = await Files.getFileById(fileId, db);
+            if (!currentFile) {
+                res.write(`data: ${JSON.stringify({ status: 'not_found' })}\n\n`);
+                res.end();
+                return;
+            }
+
+            const currentData = currentFile.data;
+            const currentStatus = currentData?.status || 'pending';
+
+            // Send status update
+            const event: any = { status: currentStatus };
+            if (currentStatus === 'failed' && currentData?.error) {
+                event.error = currentData.error;
+            }
+            res.write(`data: ${JSON.stringify(event)}\n\n`);
+
+            // Check if processing complete
+            if (currentStatus === 'completed' || currentStatus === 'failed') {
+                res.end();
+                return;
+            }
+
+            // Continue polling
+            setTimeout(poll, pollInterval);
+        };
+
+        // Start polling
+        poll();
+    } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        // Handle validation errors from operations
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Get file process status error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
 });
 
 export default router;

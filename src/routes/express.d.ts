@@ -12,6 +12,12 @@ declare global {
              * Available after successful JWT verification and database lookup
              */
             user?: User;
+
+            /**
+             * Uploaded file attached by multer middleware
+             * Available after multer.single('file') or similar multer middleware
+             */
+            file?: Express.Multer.File;
         }
     }
 }
