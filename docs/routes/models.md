@@ -2,19 +2,30 @@
 
 ## Endpoints
 
-**Context:** The Models API provides a registry system for managing AI models available in the application. Models in OpenWebUI (and our implementation) serve as metadata entries that can either represent actual models (base models with `base_model_id = null`) or act as proxies/aliases to base models (with `base_model_id` set to another model's ID).
+**Context:** The Models API provides a hybrid system for managing AI models. Base models (actual GGUF files) are configured via backend config.json and managed by LlamaManager, while custom models (user-created configurations) are stored in the database.
+
+**Architecture:**
+- **Base Models**: Configured in `config.json`, managed by LlamaManager, NOT stored in database
+  - Represent actual model files on disk with GGUF paths, mmproj, and runtime params
+  - Configured by system admins, not editable via frontend/API
+  - Always have `base_model_id = null` when returned from API
+  - Source of truth is the filesystem + LlamaManager
+- **Custom Models**: Stored in database, created/managed via frontend/API
+  - User-created configurations that reference a base model by ID
+  - Always have `base_model_id` set to a valid base model ID
+  - Can override name, params, meta, and have access control
+  - Stored in database with full CRUD operations
 
 **Key Concepts:**
-- **Base Models**: Models with `base_model_id = null` - these represent actual AI models (from llama.cpp, Ollama, OpenAI, etc.)
-- **Custom/Proxy Models**: Models with `base_model_id` set - these are user-created entries that reference a base model with custom configurations
-- **Access Control**: Models support granular read/write permissions via user_ids
-- **Active Status**: Models can be toggled active/inactive to control visibility
+- **Access Control**: Custom models support granular read/write permissions via user_ids (base models are always visible to all users)
+- **Active Status**: Custom models can be toggled active/inactive to control visibility
+- **Validation**: Custom models must reference a valid base_model_id that exists in LlamaManager
 
 ---
 
 ### GET `/api/v1/models`
 
-Get all accessible models for the current user. Returns models from multiple sources (base models from backends + custom models from registry) with optional refresh.
+Get all accessible models for the current user. Returns models from multiple sources: base models from LlamaManager + custom models from database.
 
 #### Inputs
 
@@ -33,21 +44,22 @@ Response (200): OpenAI-compatible format `{"data": [models]}`
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Any verified user can access (`get_verified_user` dependency)
-- _OWUI Implementation Notes:_
-  - Aggregates models from OpenAI, Ollama, and custom models registry
-  - Filters out "filter" pipeline types from results
-  - Removes `profile_image_url` from meta to reduce payload size
-  - Sorts models by `MODEL_ORDER_LIST` config if configured
-  - Respects user access control via `get_filtered_models()` - only returns models user can access
-  - When `refresh=true`, fetches fresh data from connected backends
+- _Our Implementation:_
+  - **Base Models**: Retrieved from `LlamaManager.getAllModelNames()` (from config.json)
+    - Always visible to all users (no access control)
+    - Returned with `base_model_id = null`
+  - **Custom Models**: Retrieved from database via `getCustomModels()`
+    - Filtered by user access control (only accessible custom models returned)
+    - Have `base_model_id` set to their base model reference
+  - Merged and returned as single array
   - Response format: `{"data": [models]}` (OpenAI-compatible)
-  - **Note:** Marked as "Experimental: Compatibility with OpenAI API" in codebase
+  - `refresh` query parameter currently ignored (no backend refresh implemented)
 
 ---
 
 ### GET `/api/v1/models/list`
 
-Get paginated list of custom models with filtering, searching, and sorting capabilities.
+Get paginated list of **custom models only** (from database) with filtering, searching, and sorting capabilities. Base models are NOT included in this endpoint.
 
 #### Inputs
 
@@ -66,19 +78,21 @@ Response (200): [`ModelAccessListResponse`](#modelaccesslistresponse)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Any verified user can access (`get_verified_user` dependency)
-- _OWUI Implementation Notes:_
-  - Returns only custom models (those with `base_model_id != null`) from registry
+- _Our Implementation:_
+  - Returns **only custom models from database** (base models NOT included)
+  - Used for model management UI where users create/edit custom model configurations
   - Each model includes `write_access` flag indicating if user can modify it
   - Filters results based on user permissions and access control settings
-  - Admin users bypass access control and see all models
-  - Pagination: 30 items per page (PAGE_ITEM_COUNT constant)
-  - Total count reflects all accessible models (not just current page)
+  - Admin users bypass access control and see all custom models
+  - Uses `searchModels()` database operation with pagination
+  - Pagination: 30 items per page (default)
+  - Total count reflects all accessible custom models (not just current page)
 
 ---
 
 ### GET `/api/v1/models/base`
 
-**Admin Only:** Get all base models (models representing actual AI models, not proxies).
+**Admin Only:** Get all base models from LlamaManager (backend-configured models from config.json).
 
 #### Inputs
 
@@ -97,15 +111,17 @@ Response (200): Array of [`ModelResponse`](#modelresponse)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Admin only (`get_admin_user` dependency)
-- _OWUI Implementation Notes:_
-  - Returns only models where `base_model_id = null`
-  - These represent the actual models available from backends (not user-created proxies)
+- _Our Implementation:_
+  - Returns base models from `LlamaManager.getAllModelNames()` (NOT from database)
+  - These represent actual model files configured in config.json
+  - Returned with `base_model_id = null`
+  - Useful for admins to see what base models are available when creating custom models
 
 ---
 
 ### POST `/api/v1/models/create`
 
-Create a new custom model entry in the registry.
+Create a new **custom model only** (stored in database). Cannot create base models via API.
 
 #### Inputs
 
@@ -123,20 +139,23 @@ Response (200): [`ModelModel`](#modelmodel) or `null` on failure
   - Database: `ModelsTable.insert_new_model()` (line 169-183)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - Requires `workspace.models` permission via `has_permission()` check
-- _OWUI Implementation Notes:_
+  - Any authenticated user can create custom models
+- _Our Implementation:_
+  - Creates **custom models only** (stored in database)
+  - `base_model_id` is **required** and must reference a valid base model from LlamaManager
   - Validates model ID length (must be ≤ 256 characters)
-  - Returns 401 with MODEL_ID_TAKEN error if ID already exists
+  - Returns 400 if ID already exists in database
+  - Returns 400 if `base_model_id` doesn't exist in LlamaManager
   - Automatically sets `user_id` to creator
   - Automatically sets `created_at` and `updated_at` timestamps
-  - If `base_model_id` is null, creates a base model; otherwise creates a proxy/alias
   - Default `is_active` is `true` if not specified
+  - Base models can only be configured via config.json (not via this endpoint)
 
 ---
 
 ### GET `/api/v1/models/model`
 
-Get a specific model by ID with access control validation.
+Get a specific model by ID. Checks both base models (LlamaManager) and custom models (database).
 
 #### Inputs
 
@@ -155,19 +174,20 @@ Response (200): [`ModelAccessResponse`](#modelaccessresponse) or `null` if not f
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Any verified user can access (`get_verified_user` dependency)
-  - Access control: checks if user can read the model via `has_access()`
-- _OWUI Implementation Notes:_
-  - Returns 404 if model not found or user lacks read access
-  - Admin users bypass access control checks
-  - Includes `write_access` flag indicating if user can modify the model
-  - Joins with User table to include owner information
-  - Returns `null` if model doesn't exist (not a 404 error)
+  - Access control: custom models check if user can read via `has_access()`, base models always accessible
+- _Our Implementation:_
+  - First checks LlamaManager for base model with this ID
+  - If not found, checks database for custom model with this ID
+  - Base models: always accessible, no access control
+  - Custom models: Returns 404 if user lacks read access
+  - Includes `write_access` flag (always false for base models, computed for custom models)
+  - Returns `null` if model doesn't exist
 
 ---
 
 ### POST `/api/v1/models/model/toggle`
 
-Toggle a model's active status (enable/disable).
+Toggle a **custom model's** active status (enable/disable). Cannot toggle base models.
 
 #### Inputs
 
@@ -185,18 +205,20 @@ Response (200): Updated [`ModelResponse`](#modelresponse) or `null` on failure
   - Database: `ModelsTable.toggle_model_by_id()` (line 406-419)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - Requires write access: user must be owner, have write permission, or be admin
-- _OWUI Implementation Notes:_
-  - Returns 401 UNAUTHORIZED if user lacks write access
+  - Requires write access: user must be owner or have write permission
+- _Our Implementation:_
+  - Only works with custom models (stored in database)
+  - Returns 404 if ID refers to a base model (base models cannot be toggled)
+  - Returns 401 if user lacks write access
   - Toggles `is_active` field: `true` ↔ `false`
   - Updates `updated_at` timestamp
-  - Common use case: temporarily hide models from user selection without deleting
+  - Common use case: temporarily hide custom models from selection without deleting
 
 ---
 
 ### POST `/api/v1/models/model/update`
 
-Update a model's configuration (name, params, meta, access control, etc.).
+Update a **custom model's** configuration. Cannot update base models.
 
 #### Inputs
 
@@ -214,19 +236,22 @@ Response (200): Updated [`ModelModel`](#modelmodel) or `null` on failure
   - Database: `ModelsTable.update_model_by_id()` (line 421-439)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - Requires write access: user must be owner, have write permission, or be admin
-- _OWUI Implementation Notes:_
-  - Returns 400 if model not found
+  - Requires write access: user must be owner or have write permission
+- _Our Implementation:_
+  - Only works with custom models (stored in database)
+  - Returns 404 if ID refers to a base model (base models configured via config.json)
+  - Returns 400 if model not found in database
   - Returns 401 if user lacks write access
   - Cannot update `id` field (excluded from update)
   - Automatically updates `updated_at` timestamp
   - Can update: name, base_model_id, params, meta, access_control, is_active
+  - Validates `base_model_id` exists in LlamaManager if changed
 
 ---
 
 ### POST `/api/v1/models/model/delete`
 
-Delete a specific model from the registry.
+Delete a **custom model** from the database. Cannot delete base models.
 
 #### Inputs
 
@@ -244,18 +269,20 @@ Response (200): `boolean` - Returns `true` if deleted, `false` otherwise
   - Database: `ModelsTable.delete_model_by_id()` (line 474-481)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
-  - Requires write access: user must be owner, have write permission, or be admin
-- _OWUI Implementation Notes:_
+  - Requires write access: user must be owner or have write permission
+- _Our Implementation:_
+  - Only works with custom models (stored in database)
+  - Returns 404 if ID refers to a base model (base models cannot be deleted via API)
   - Returns 401 if user lacks write access
-  - Returns `false` if model not found (not an error)
-  - Permanently removes model from database
+  - Returns `false` if model not found in database
+  - Permanently removes custom model from database
   - No cascade delete - references to this model will break
 
 ---
 
 ### DELETE `/api/v1/models/delete/all`
 
-**Admin Only:** Delete all models from the registry.
+**Admin Only:** Delete all **custom models** from the database. Does not affect base models.
 
 #### Inputs
 
@@ -274,9 +301,10 @@ Response (200): `boolean` - Returns `true` on success
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Admin only (`get_admin_user` dependency)
-- _OWUI Implementation Notes:_
+- _Our Implementation:_
   - Returns 401 if user is not admin
-  - Deletes ALL models from database with no filtering
+  - Deletes ALL custom models from database with no filtering
+  - Base models (from config.json) are NOT affected
   - Destructive operation - no undo
   - Use with extreme caution
 
@@ -284,7 +312,7 @@ Response (200): `boolean` - Returns `true` on success
 
 ### POST `/api/v1/models/sync`
 
-**Admin Only:** Sync models list with incoming data (update existing, insert new, delete removed).
+**Admin Only:** Sync **custom models only** in database with incoming list. Does not affect base models.
 
 #### Inputs
 
@@ -292,7 +320,7 @@ Response (200): `boolean` - Returns `true` on success
 
 #### Outputs
 
-Response (200): Array of [`ModelModel`](#modelmodel) (synced models)
+Response (200): Array of [`ModelModel`](#modelmodel) (synced custom models)
 
 #### Notes
 
@@ -303,14 +331,17 @@ Response (200): Array of [`ModelModel`](#modelmodel) (synced models)
 - _Security:_
   - Requires `HTTPBearer` authentication (JWT token)
   - Admin only (`get_admin_user` dependency)
-- _OWUI Implementation Notes:_
-  - Synchronizes database with incoming models list:
-    - Updates existing models (matched by ID)
-    - Inserts new models not in database
-    - Deletes models in database but not in incoming list
-  - Used for bulk model management and backend synchronization
+- _Our Implementation:_
+  - Synchronizes **custom models in database** with incoming list:
+    - Updates existing custom models (matched by ID)
+    - Inserts new custom models not in database
+    - Deletes custom models in database but not in incoming list
+  - Used for bulk custom model management (import/export, backup restore)
+  - Base models (from config.json) are NOT affected
+  - All incoming models must have `base_model_id` set
+  - Validates that `base_model_id` references exist in LlamaManager
   - Preserves timestamps for existing models, generates new for inserts
-  - Returns the complete synced model list
+  - Returns the complete synced custom model list
 
 ---
 
@@ -563,7 +594,7 @@ User information included in model responses (referenced from User API).
     id: string;
     name: string;
     email: string;
-    role: string;  // "admin" | "user" | "pending"
+    role: UserRole;  // "admin" | "user" | "pending"
     profile_image_url: string;
 }
 ```

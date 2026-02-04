@@ -74,7 +74,6 @@ CREATE TABLE `folder` (
 	`parent_id` text,
 	`user_id` text NOT NULL,
 	`name` text NOT NULL,
-	`items` text,
 	`meta` text,
 	`data` text,
 	`is_expanded` integer DEFAULT false NOT NULL,
@@ -91,6 +90,28 @@ CREATE INDEX `idx_folder_parent_id_user_id` ON `folder` (`parent_id`,`user_id`);
 CREATE INDEX `idx_folder_user_id_parent_id_name` ON `folder` (`user_id`,`parent_id`,`name`);--> statement-breakpoint
 CREATE INDEX `idx_folder_created_at` ON `folder` (`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_folder_updated_at` ON `folder` (`updated_at`);--> statement-breakpoint
+CREATE TABLE `model` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`base_model_id` text,
+	`name` text NOT NULL,
+	`params` text NOT NULL,
+	`meta` text NOT NULL,
+	`access_control` text,
+	`is_active` integer DEFAULT true NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_model_id` ON `model` (`id`);--> statement-breakpoint
+CREATE INDEX `idx_model_user_id` ON `model` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_model_base_model_id` ON `model` (`base_model_id`);--> statement-breakpoint
+CREATE INDEX `idx_model_is_active` ON `model` (`is_active`);--> statement-breakpoint
+CREATE INDEX `idx_model_user_base` ON `model` (`user_id`,`base_model_id`);--> statement-breakpoint
+CREATE INDEX `idx_model_created_at` ON `model` (`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_model_updated_at` ON `model` (`updated_at`);--> statement-breakpoint
+CREATE INDEX `idx_model_base_updated` ON `model` (`base_model_id`,`updated_at`);--> statement-breakpoint
 CREATE TABLE `user` (
 	`id` text PRIMARY KEY NOT NULL,
 	`username` text NOT NULL,

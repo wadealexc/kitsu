@@ -453,7 +453,7 @@ export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata
 export const ModelMetaSchema = z.object({
-    profile_image_url: z.string().nullable().optional().default('/static/favicon.png'),
+    profile_image_url: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
     capabilities: z.record(z.string(), z.any()).nullable().optional(),
 }).passthrough();  // Allow additional properties
@@ -541,8 +541,8 @@ export type ModelsQuery = z.infer<typeof ModelsQuerySchema>;
 // Query parameters for GET /api/v1/models/list
 export const ModelListQuerySchema = z.object({
     query: z.string().optional(),
-    view_option: z.string().optional(),
-    order_by: z.string().optional(),
+    view_option: z.enum(['created', 'shared']).optional(),
+    order_by: z.enum(['name', 'created_at', 'updated_at']).optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
 }).passthrough();

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6621e73e-652f-48fd-b7e4-a80626299c55",
+  "id": "67c9ab70-b386-4f5e-85c2-79b35b90fd0e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth": {
@@ -546,13 +546,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "items": {
-          "name": "items",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "meta": {
           "name": "meta",
           "type": "text",
@@ -661,6 +654,160 @@
         "folder_user_id_user_id_fk": {
           "name": "folder_user_id_user_id_fk",
           "tableFrom": "folder",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "model": {
+      "name": "model",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "base_model_id": {
+          "name": "base_model_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "params": {
+          "name": "params",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "access_control": {
+          "name": "access_control",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_model_id": {
+          "name": "idx_model_id",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "idx_model_user_id": {
+          "name": "idx_model_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        },
+        "idx_model_base_model_id": {
+          "name": "idx_model_base_model_id",
+          "columns": [
+            "base_model_id"
+          ],
+          "isUnique": false
+        },
+        "idx_model_is_active": {
+          "name": "idx_model_is_active",
+          "columns": [
+            "is_active"
+          ],
+          "isUnique": false
+        },
+        "idx_model_user_base": {
+          "name": "idx_model_user_base",
+          "columns": [
+            "user_id",
+            "base_model_id"
+          ],
+          "isUnique": false
+        },
+        "idx_model_created_at": {
+          "name": "idx_model_created_at",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "idx_model_updated_at": {
+          "name": "idx_model_updated_at",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "idx_model_base_updated": {
+          "name": "idx_model_base_updated",
+          "columns": [
+            "base_model_id",
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "model_user_id_user_id_fk": {
+          "name": "model_user_id_user_id_fk",
+          "tableFrom": "model",
           "tableTo": "user",
           "columnsFrom": [
             "user_id"

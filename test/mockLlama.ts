@@ -8,8 +8,11 @@ import LlamaStream from '../src/llama/llamaStream.js';
 const TEST_MODEL_NAME = 'test model';
 
 export class MockLlama {
-    constructor() {
 
+    models: string[] = ['test model'];
+
+    constructor(models?: string[]) {
+        if (models) this.models = models;
     }
 
     completions(req: LlamaRequest): Promise<LlamaResponse> {
@@ -25,7 +28,7 @@ export class MockLlama {
             id: 'test1234',
             object: "chat.completion.chunk",
             created: 1694268190,
-            model: TEST_MODEL_NAME,
+            model: this.models[0]!,
             choices: [{
                 index: 0,
                 finish_reason: null,
@@ -40,7 +43,7 @@ export class MockLlama {
             id: 'test1234',
             object: "chat.completion.chunk",
             created: 1694268190,
-            model: TEST_MODEL_NAME,
+            model: this.models[0]!,
             choices: [{
                 index: 0,
                 finish_reason: null,
@@ -55,7 +58,7 @@ export class MockLlama {
             id: 'test1234',
             object: "chat.completion.chunk",
             created: 1694268190,
-            model: TEST_MODEL_NAME,
+            model: this.models[0]!,
             choices: [{
                 index: 0,
                 finish_reason: "stop",
@@ -89,6 +92,6 @@ export class MockLlama {
     }
 
     getAllModelNames(): string[] {
-        return [TEST_MODEL_NAME];
+        return this.models;
     }
 }

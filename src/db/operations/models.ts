@@ -2,7 +2,7 @@ import { eq, ne, desc, asc, or, and, like, sql, inArray, isNull, isNotNull } fro
 import { db, type DbOrTx } from '../client.js';
 import { models, users, type Model, type NewModel } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { ModelForm, ModelParams, ModelMeta, AccessControl } from '../../routes/types.js';
+import type { ModelForm, ModelParams, ModelMeta, AccessControl, UserRole } from '../../routes/types.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
 
@@ -58,7 +58,7 @@ export type ModelUserResponse = Model & {
     user: {
         id: string;
         username: string;
-        role: string;
+        role: UserRole;
         profileImageUrl: string;
     };
 };
@@ -222,10 +222,10 @@ export async function deleteAllModels(
  */
 export type SearchFilter = {
     query?: string;
-    view_option?: 'created' | 'shared';
-    order_by?: 'name' | 'created_at' | 'updated_at';
+    viewOption?: 'created' | 'shared';
+    orderBy?: 'name' | 'created_at' | 'updated_at';
     direction?: 'asc' | 'desc';
-    user_id?: string;
+    userId?: string;
 };
 
 /**
@@ -240,7 +240,7 @@ export type ModelListResponse = {
  * Searches and filters custom models with pagination.
  *
  * Default pagination: 30 items per page
- * Filter options: query, view_option, order_by, direction
+ * Filter options: query, viewOption, orderBy, direction
  * Access control: Automatically filters based on public models and user permissions
  */
 export async function searchModels(
@@ -252,8 +252,8 @@ export async function searchModels(
 ): Promise<ModelListResponse> {
     const {
         query,
-        view_option,
-        order_by = 'updated_at',
+        viewOption,
+        orderBy = 'updated_at',
         direction = 'desc',
     } = filter;
 
@@ -271,9 +271,9 @@ export async function searchModels(
     }
 
     // Filter by view option
-    if (view_option === 'created') {
+    if (viewOption === 'created') {
         conditions.push(eq(models.userId, userId));
-    } else if (view_option === 'shared') {
+    } else if (viewOption === 'shared') {
         conditions.push(ne(models.userId, userId));
     }
 
@@ -293,8 +293,8 @@ export async function searchModels(
 
     // Determine sort column
     const sortColumn =
-        order_by === 'name' ? models.name :
-        order_by === 'created_at' ? models.createdAt :
+        orderBy === 'name' ? models.name :
+        orderBy === 'created_at' ? models.createdAt :
         models.updatedAt;
 
     const sortFn = direction === 'asc' ? asc : desc;
