@@ -6,7 +6,6 @@
 
 import { Router, type Response } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth } from './middleware.js';
 
 const router = Router();
@@ -24,7 +23,10 @@ router.get('/', (
     req: Types.TypedRequest,
     res: Response<Types.VersionInfo | Types.ErrorResponse>
 ) => {
-    res.json(MockData.mockVersionInfo);
+    res.json({
+        version: '0.3.9',
+        deployment_id: 'dev-local',
+    });
 });
 
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
@@ -44,7 +46,10 @@ router.get('/updates', requireAuth, (
 ) => {
     // TODO: Implement GitHub API integration to fetch latest release
     // For now, return mock data showing no update available
-    res.json(MockData.mockVersionUpdateInfo);
+    res.json({
+        current: '0.3.9',
+        latest: '0.3.9',
+    });
 });
 
 export default router;

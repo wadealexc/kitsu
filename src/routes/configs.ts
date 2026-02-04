@@ -7,7 +7,6 @@
 
 import { Router, type Request, type Response } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin } from './middleware.js';
 
 const router = Router();
@@ -27,7 +26,17 @@ router.get('/export', requireAdmin, (
     req: Request,
     res: Response<Record<string, any> | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockSystemConfig);
+    res.status(200).json({
+        version: 1,
+        ui: {
+            theme: 'dark',
+            language: 'en',
+        },
+        features: {
+            enableSignup: true,
+            enableApiKeys: false,
+        },
+    });
 });
 
 /**
@@ -41,17 +50,17 @@ router.get('/export', requireAdmin, (
  * @returns {object} - the imported configuration
  */
 router.post('/import', requireAdmin, (
-    req: Types.TypedRequest<{},Types.ImportConfigForm>,
+    req: Types.TypedRequest<{}, Types.ImportConfigForm>,
     res: Response<Record<string, any> | Types.ErrorResponse>
 ) => {
-    const parsed = Types.ImportConfigFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.ImportConfigFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
     // TODO: Update system config in database
     // For now, just echo back the imported config
-    res.status(200).json(parsed.data.config);
+    res.status(200).json(body.data.config);
 });
 
 /**
@@ -64,17 +73,17 @@ router.post('/import', requireAdmin, (
  * @returns {Types.BannerModel[]} - the updated banner list
  */
 router.post('/banners', requireAdmin, (
-    req: Types.TypedRequest<{},Types.SetBannersForm>,
+    req: Types.TypedRequest<{}, Types.SetBannersForm>,
     res: Response<Types.BannerModel[] | Types.ErrorResponse>
 ) => {
-    const parsed = Types.SetBannersFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.SetBannersFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
     // TODO: Update banners in database
     // For now, just echo back the submitted banners
-    res.status(200).json(parsed.data.banners);
+    res.status(200).json(body.data.banners);
 });
 
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
@@ -91,7 +100,16 @@ router.get('/banners', requireAuth, (
     req: Request,
     res: Response<Types.BannerModel[] | Types.ErrorResponse>
 ) => {
-    res.status(200).json(MockData.mockBanners);
+    res.status(200).json([
+        {
+            id: 'banner-1',
+            type: 'info',
+            title: 'Welcome',
+            content: 'Welcome to the mock API!',
+            dismissible: true,
+            timestamp: Math.floor(Date.now() / 1000),
+        },
+    ]);
 });
 
 /* -------------------- EXPORT -------------------- */

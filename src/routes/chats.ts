@@ -8,7 +8,6 @@
 
 import { Router, type Response, type NextFunction } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateUserId, validateChatId, validateShareId, validateFolderId, validateChatAndMessageId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';

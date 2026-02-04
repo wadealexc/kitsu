@@ -9,7 +9,6 @@ import { Router, type Request, type Response } from 'express';
 import type { StringValue } from 'ms';
 
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';

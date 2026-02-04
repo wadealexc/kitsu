@@ -6,7 +6,6 @@
 
 import { Router, type Response } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 
 const router = Router();
 
@@ -24,7 +23,35 @@ router.get('/', (
     req: Types.TypedRequest,
     res: Response<Types.PWAManifest | Types.ErrorResponse>
 ) => {
-    res.json(MockData.mockPWAManifest);
+    res.json({
+        name: 'Open WebUI',
+        short_name: 'Open WebUI',
+        description: 'Open WebUI is an open, extensible, user-friendly interface for AI that adapts to your workflow.',
+        start_url: '/',
+        display: 'standalone',
+        background_color: '#343541',
+        icons: [
+            {
+                src: '/static/logo.png',
+                type: 'image/png',
+                sizes: '500x500',
+                purpose: 'any',
+            },
+            {
+                src: '/static/logo.png',
+                type: 'image/png',
+                sizes: '500x500',
+                purpose: 'maskable',
+            },
+        ],
+        share_target: {
+            action: '/',
+            method: 'GET',
+            params: {
+                text: 'shared',
+            },
+        },
+    });
 });
 
 export default router;

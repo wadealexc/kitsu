@@ -7,7 +7,6 @@
 
 import { Router, type Response, type NextFunction } from 'express';
 import * as Types from './types.js';
-import * as MockData from './mock-data.js';
 import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';

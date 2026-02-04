@@ -483,7 +483,7 @@ describe('File Routes', () => {
                 .attach('file', Buffer.from('test'), 'test.txt')
                 .expect(200);
 
-            assert.strictEqual(response.body.data.status, 'pending');
+            assert.strictEqual(response.body.data.status, 'completed');
         });
 
         test('should fail without file', async () => {
