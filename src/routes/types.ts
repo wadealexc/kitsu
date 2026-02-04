@@ -542,11 +542,10 @@ export type ModelsQuery = z.infer<typeof ModelsQuerySchema>;
 export const ModelListQuerySchema = z.object({
     query: z.string().optional(),
     view_option: z.string().optional(),
-    tag: z.string().optional(),
     order_by: z.string().optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
-});
+}).passthrough();
 export type ModelListQuery = z.infer<typeof ModelListQuerySchema>;
 
 // Query parameters for GET /api/v1/models/model and POST /api/v1/models/model/toggle

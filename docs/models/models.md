@@ -213,7 +213,7 @@ _Notes:_
 - No access control filtering
 - No pagination
 
-#### `getModels(): Promise<ModelUserResponse[]>`
+#### `getCustomModels(): Promise<ModelUserResponse[]>`
 
 Retrieves all custom models (models with `base_model_id != null`) with user information.
 
@@ -700,7 +700,7 @@ await db.transaction(async (tx) => {
 
 ```typescript
 // Fetch all custom models
-const allModels = await getModels();
+const allModels = await getCustomModels();
 
 // Filter accessible models
 const accessibleModels = allModels.filter(model => {

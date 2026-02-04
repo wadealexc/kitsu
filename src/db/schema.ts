@@ -1,13 +1,15 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import type { 
-    UserSettings, 
-    UserRole, 
-    ChatObject, 
-    FolderMeta, 
+import type {
+    UserSettings,
+    UserRole,
+    ChatObject,
+    FolderMeta,
     FolderData,
     FileMeta,
     FileData,
     AccessControl,
+    ModelParams,
+    ModelMeta,
 } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */
@@ -182,6 +184,43 @@ export const files = sqliteTable('file', {
     index('idx_file_hash').on(table.hash),
 ]);
 
+/* -------------------- MODEL TABLE -------------------- */
+
+export const models = sqliteTable('model', {
+    // Identity
+    id: text('id').primaryKey().notNull(),
+    userId: text('user_id')
+        .notNull()
+        .references(() => users.id, { onDelete: 'cascade' }),
+
+    // Model Reference
+    baseModelId: text('base_model_id'),
+
+    // Content
+    name: text('name').notNull(),
+
+    // Configuration (JSON)
+    params: text('params', { mode: 'json' }).$type<ModelParams>().notNull(),
+    meta: text('meta', { mode: 'json' }).$type<ModelMeta>().notNull(),
+    accessControl: text('access_control', { mode: 'json' }).$type<AccessControl>(),
+
+    // Status
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+
+    // Timestamps (unix seconds)
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+    uniqueIndex('idx_model_id').on(table.id),
+    index('idx_model_user_id').on(table.userId),
+    index('idx_model_base_model_id').on(table.baseModelId),
+    index('idx_model_is_active').on(table.isActive),
+    index('idx_model_user_base').on(table.userId, table.baseModelId),
+    index('idx_model_created_at').on(table.createdAt),
+    index('idx_model_updated_at').on(table.updatedAt),
+    index('idx_model_base_updated').on(table.baseModelId, table.updatedAt),
+]);
+
 /* -------------------- VALIDATION -------------------- */
 
 /**
@@ -235,4 +274,7 @@ export type NewFolder = typeof folders.$inferInsert;
 
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
+
+export type Model = typeof models.$inferSelect;
+export type NewModel = typeof models.$inferInsert;
 

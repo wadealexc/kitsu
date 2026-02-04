@@ -28,9 +28,9 @@ router.get('/', requireAuth, (
     res: Response<{ data: Types.ModelResponse[] } | Types.ErrorResponse>,
     next: NextFunction
 ) => {
-    const queryValidation = Types.ModelsQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+    const query = Types.ModelsQuerySchema.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ detail: 'Invalid query parameters', errors: query.error.issues });
     }
 
     try {
@@ -72,9 +72,9 @@ router.get('/list', requireAuth, (
     req: Types.TypedRequest<{}, any, Types.ModelListQuery>,
     res: Response<Types.ModelAccessListResponse | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.ModelListQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+    const query = Types.ModelListQuerySchema.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ detail: 'Invalid query parameters', errors: query.error.issues });
     }
 
     // TODO: Implement search, tag filtering, sorting, pagination
@@ -111,12 +111,12 @@ router.get('/model', requireAuth, (
     req: Types.TypedRequest<{}, any, Types.ModelIdQuery>,
     res: Response<Types.ModelAccessResponse | null | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.ModelIdQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+    const query = Types.ModelIdQuerySchema.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ detail: 'Invalid query parameters', errors: query.error.issues });
     }
 
-    const { id } = queryValidation.data;
+    const { id } = query.data;
 
     // Find model
     const model = MockData.mockModels.find(m => m.id === id);
@@ -144,7 +144,6 @@ router.get('/model', requireAuth, (
 
 /**
  * Create a new custom model entry.
- * Access Control: Requires workspace.models permission
  *
  * @param {Types.ModelForm} - Model creation data
  * @returns {Types.ModelModel} - Created model or null on failure
@@ -153,14 +152,12 @@ router.post('/create', requireAuth, (
     req: Types.TypedRequest<{}, Types.ModelForm>,
     res: Response<Types.ModelModel | null | Types.ErrorResponse>
 ) => {
-    // TODO: Check workspace.models permission
-
-    const parsed = Types.ModelFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.ModelFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
-    const formData = parsed.data;
+    const formData = body.data;
 
     // Check if model ID already exists
     if (MockData.mockModels.find(m => m.id === formData.id)) {
@@ -199,12 +196,12 @@ router.post('/model/toggle', requireAuth, (
     req: Types.TypedRequest<{}, any, Types.ModelIdQuery>,
     res: Response<Types.ModelResponse | null | Types.ErrorResponse>
 ) => {
-    const queryValidation = Types.ModelIdQuerySchema.safeParse(req.query);
-    if (!queryValidation.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: queryValidation.error.issues });
+    const query = Types.ModelIdQuerySchema.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ detail: 'Invalid query parameters', errors: query.error.issues });
     }
 
-    const { id } = queryValidation.data;
+    const { id } = query.data;
 
     // Find model
     const model = MockData.mockModels.find(m => m.id === id);
@@ -235,12 +232,12 @@ router.post('/model/update', requireAuth, (
     req: Types.TypedRequest<{}, Types.ModelForm>,
     res: Response<Types.ModelModel | null | Types.ErrorResponse>
 ) => {
-    const parsed = Types.ModelFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.ModelFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
-    const formData = parsed.data;
+    const formData = body.data;
 
     // Find model
     const model = MockData.mockModels.find(m => m.id === formData.id);
@@ -276,12 +273,12 @@ router.post('/model/delete', requireAuth, (
     req: Types.TypedRequest<{}, Types.ModelIdForm>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    const parsed = Types.ModelIdFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.ModelIdFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
-    const { id } = parsed.data;
+    const { id } = body.data;
 
     // Find model index
     const modelIndex = MockData.mockModels.findIndex(m => m.id === id);
@@ -341,12 +338,12 @@ router.post('/sync', requireAdmin, (
     req: Types.TypedRequest<{}, Types.SyncModelsForm>,
     res: Response<Types.ModelModel[] | Types.ErrorResponse>
 ) => {
-    const parsed = Types.SyncModelsFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: parsed.error.issues });
+    const body = Types.SyncModelsFormSchema.safeParse(req.body);
+    if (!body.success) {
+        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
     }
 
-    const { models: incomingModels } = parsed.data;
+    const { models: incomingModels } = body.data;
 
     // TODO: Implement sync logic to update/insert/delete models in database
     // For now, just echo back the incoming models
