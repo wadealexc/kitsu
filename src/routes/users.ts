@@ -88,6 +88,7 @@ let defaultPermissions: Types.UserPermissions = {
  * Access Control: Requires HTTPBearer authentication and admin role
  *
  * List users with pagination, filtering, and sorting. Returns users with their group IDs.
+ * (Group IDs to satisfy frontend; they do nothing.)
  *
  * @query {Types.UserListQuery} - query parameters for filtering and pagination
  * @returns {Types.UserGroupIdsListResponse} - paginated list of users with group IDs
@@ -679,7 +680,7 @@ function toUserModel(user: User): Types.UserModel {
 /**
  * Get computed permissions for a user based on their role
  * Merges default permissions with user-specific overrides
- * TODO: Implement database-backed permissions with user/group overrides
+ * TODO: Implement database-backed permissions with user overrides
  */
 function getPermissions(role: UserRole): Types.UserPermissions {
     const isAdmin = role === 'admin';

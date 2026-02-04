@@ -404,7 +404,7 @@ export async function searchFiles(
  * Access checks (in order) - returns true if ANY is satisfied:
  * 1. User owns file (file.user_id == userId)
  * 2. User is admin
- * 3. User/group has explicit permission in accessControl
+ * 3. User has explicit permission in accessControl
  * 4. File is in user's shared chats
  */
 export async function hasFileAccess(
@@ -431,14 +431,10 @@ export async function hasFileAccess(
 
     // Check 3: Explicit permission in accessControl
     if (file.accessControl) {
-        const ac = file.accessControl as AccessControl;
+        const ac = file.accessControl;
         const accessLevel = accessType === 'read' ? ac?.read : ac?.write;
 
-        if (accessLevel) {
-            if (accessLevel.user_ids?.includes(userId)) return true;
-            // Note: group_ids check would require joining with user groups table
-            // For now, we skip group checks
-        }
+        if (accessLevel && accessLevel.user_ids?.includes(userId)) return true;
     }
 
     // Check 4: File is in user's shared chats

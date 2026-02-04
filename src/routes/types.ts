@@ -433,13 +433,11 @@ export type UserListQuery = z.infer<typeof UserListQuerySchema>;
 // Access control structure (read/write permissions)
 export const AccessControlSchema = z.object({
     read: z.object({
-        group_ids: z.array(z.string()).optional(),
         user_ids: z.array(UserIdSchema).optional(),
-    }).optional(),
+    }).passthrough().optional(),
     write: z.object({
-        group_ids: z.array(z.string()).optional(),
         user_ids: z.array(UserIdSchema).optional(),
-    }).optional(),
+    }).passthrough().optional(),
 }).passthrough().nullable();
 export type AccessControl = z.infer<typeof AccessControlSchema>;
 
@@ -458,7 +456,6 @@ export const ModelMetaSchema = z.object({
     profile_image_url: z.string().nullable().optional().default('/static/favicon.png'),
     description: z.string().nullable().optional(),
     capabilities: z.record(z.string(), z.any()).nullable().optional(),
-    tags: z.array(z.string()).optional(),
 }).passthrough();  // Allow additional properties
 export type ModelMeta = z.infer<typeof ModelMetaSchema>;
 

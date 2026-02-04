@@ -376,6 +376,138 @@ data: text('data', { mode: 'json' }).$type<FolderData>(),
 
 ---
 
+## Models: Removed Tags and Group-Based Access Control
+
+**Date:** 2026-02-04
+
+**Change:** Model tags and group-based access control are not implemented. Access control uses user IDs only.
+
+### What Changed
+
+**Removed Tag System:**
+- No `meta.tags` array on model records
+- No tag-based filtering in model search
+- No `GET /api/v1/models/tags` endpoint
+
+**Removed Group-Based Access Control:**
+- No `group_ids` in `AccessControl` structure
+- Access control only uses `user_ids` arrays
+- No group membership checks in permission logic
+
+**Database Schema:**
+```typescript
+// Before (OpenWebUI)
+{
+    meta: {
+        tags: [{ name: 'coding' }, { name: 'assistant' }],
+        actionIds: ['action-1'],
+        filterIds: ['filter-1']
+    },
+    access_control: {
+        read: {
+            group_ids: ['team-dev'],
+            user_ids: ['user-1']
+        },
+        write: {
+            group_ids: ['team-admin'],
+            user_ids: ['user-1']
+        }
+    }
+}
+
+// After (llama-shim)
+{
+    meta: {
+        profile_image_url: "/static/favicon.png",
+        description: "Model description",
+        capabilities: {}
+    },
+    access_control: {
+        read: {
+            user_ids: ['user-1', 'user-2']
+        },
+        write: {
+            user_ids: ['user-1']
+        }
+    }
+}
+```
+
+**API Endpoints Removed:**
+- `GET /api/v1/models/tags` - List unique tags
+
+**API Query Parameters Removed:**
+- `ModelListQuery.tag` - Filter by tag name
+
+**Operations Not Implemented:**
+- `getModelTags()` - Extract unique tags from models
+- Group membership lookups in access control checks
+- Tag-based model filtering
+
+### Frontend Impact
+
+**Removed UI Elements:**
+- Tag picker/selector for models
+- Tag filtering in model lists
+- Tag display badges on model cards
+- Group selection in access control UI
+
+**Access Control Changes:**
+- Access control forms show only user selection (no group selection)
+- Permission checks simplified to user ID matching only
+- Share dialogs only allow selecting individual users
+
+**Search Changes:**
+- No tag-based filtering in model search
+- Filter by name, owner, or access status only
+
+### Rationale
+
+**Tags Removal:**
+- Designed for large model catalogs with hundreds of models
+- For 3-user deployment with limited models, folders/naming conventions are sufficient
+- Simplifies model metadata structure
+- Reduces database queries and frontend complexity
+
+**Group-Based Access Control Removal:**
+- Group system not implemented in this project
+- With only 3 users, individual user permissions are sufficient
+- Simplifies permission logic significantly
+- Reduces database joins and lookups
+- Users can still share models with multiple specific users via `user_ids` arrays
+
+### Access Control Behavior
+
+**Current Implementation:**
+
+| `access_control` Value | Read Access | Write Access |
+|------------------------|-------------|--------------|
+| `null` | Public (all users) | Owner only |
+| `{}` | Owner only | Owner only |
+| With `read`/`write` | Users in user_ids | Users in user_ids |
+
+**Permission Check Logic:**
+1. Admin users bypass all checks (if `BYPASS_ADMIN_ACCESS_CONTROL` enabled)
+2. Owner always has read and write access
+3. User has access if their user_id is in the permission's `user_ids` array
+4. Public read access when `access_control` is `null`
+
+### Implementation Status
+
+- [x] Database model spec updated
+- [x] Route spec updated
+- [x] Tags removed from ModelMeta structure
+- [x] Group IDs removed from AccessControl structure
+- [x] Access control logic simplified
+- [x] Documentation updated
+- [x] Breaking changes documented
+- [ ] Database schema implemented
+- [ ] Operations implemented
+- [ ] Routes implemented
+- [ ] Frontend simplified
+
+---
+
 ## Future Breaking Changes (Planned)
 
 ### Remove snake_case from API Responses

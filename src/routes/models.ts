@@ -99,29 +99,6 @@ router.get('/list', requireAuth, (
 });
 
 /**
- * Get all unique model tags from accessible models.
- * Access Control: Any authenticated user
- *
- * @returns {string[]} - Array of tag strings
- */
-router.get('/tags', requireAuth, (
-    req: Types.TypedRequest,
-    res: Response<string[] | Types.ErrorResponse>
-) => {
-    // TODO: Filter by user access control
-    // Extract unique tags from all accessible models
-    const allTags = new Set<string>();
-    for (const model of MockData.mockModels) {
-        if (model.meta.tags) {
-            model.meta.tags.forEach(tag => allTags.add(tag));
-        }
-    }
-
-    const tags = Array.from(allTags).sort();
-    res.status(200).json(tags);
-});
-
-/**
  * GET /api/v1/models/model
  * Access Control: Any authenticated user (if they have read access)
  *

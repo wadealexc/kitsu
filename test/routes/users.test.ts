@@ -784,14 +784,14 @@ describe('GET /api/v1/users/', () => {
         assert.strictEqual(response.body.users.length, 6); // 1 admin + 5 users
         assert.strictEqual(response.body.total, 6);
 
-        // Verify response structure includes group_ids
+        // Verify response structure includes group_ids (placeholder to make frontend happy)
         const user = response.body.users[0];
         assert.ok(user.id);
         assert.ok(user.email);
         assert.ok(user.name);
         assert.ok(user.role);
         assert.ok(Array.isArray(user.group_ids));
-        assert.strictEqual(user.group_ids.length, 0); // Empty until groups implemented
+        assert.strictEqual(user.group_ids.length, 0);
     });
 
     test('should support pagination with page parameter', async () => {

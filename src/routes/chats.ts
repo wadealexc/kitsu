@@ -1064,7 +1064,7 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
 
 /**
  * Get computed permissions for a user based on their role
- * TODO: Implement database-backed permissions with user/group overrides
+ * TODO: Implement database-backed permissions with user overrides
  */
 function getPermissions(role: Types.UserRole): Types.UserPermissions {
     const isAdmin = role === 'admin';

@@ -111,6 +111,10 @@ app.get('/api/v1/chats/:id/tags', validateChatId, (req, res) => {
     res.json([]);
 });
 
+app.get('/api/v1/models/tags', (_req, res) => {
+    res.json([]);
+});
+
 app.get('/api/tasks/chat/:chat_id', (req, res) => {
     res.json({
         task_ids: [],

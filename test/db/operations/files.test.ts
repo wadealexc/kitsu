@@ -128,11 +128,9 @@ describe('File Operations', () => {
         test('should create file with access control', async () => {
             const accessControl: AccessControl = {
                 read: {
-                    group_ids: ['group-1'],
                     user_ids: ['user-1', 'user-2']
                 },
                 write: {
-                    group_ids: ['group-1'],
                     user_ids: ['user-1']
                 }
             };

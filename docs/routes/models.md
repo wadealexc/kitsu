@@ -7,8 +7,7 @@
 **Key Concepts:**
 - **Base Models**: Models with `base_model_id = null` - these represent actual AI models (from llama.cpp, Ollama, OpenAI, etc.)
 - **Custom/Proxy Models**: Models with `base_model_id` set - these are user-created entries that reference a base model with custom configurations
-- **Access Control**: Models support granular read/write permissions via group_ids and user_ids
-- **Model Tags**: Models can have tags (stored in `meta.tags`) for categorization
+- **Access Control**: Models support granular read/write permissions via user_ids
 - **Active Status**: Models can be toggled active/inactive to control visibility
 
 ---
@@ -38,7 +37,6 @@ Response (200): OpenAI-compatible format `{"data": [models]}`
   - Aggregates models from OpenAI, Ollama, and custom models registry
   - Filters out "filter" pipeline types from results
   - Removes `profile_image_url` from meta to reduce payload size
-  - Merges and deduplicates tags from `info.meta.tags` and `tags` fields
   - Sorts models by `MODEL_ORDER_LIST` config if configured
   - Respects user access control via `get_filtered_models()` - only returns models user can access
   - When `refresh=true`, fetches fresh data from connected backends
@@ -71,7 +69,7 @@ Response (200): [`ModelAccessListResponse`](#modelaccesslistresponse)
 - _OWUI Implementation Notes:_
   - Returns only custom models (those with `base_model_id != null`) from registry
   - Each model includes `write_access` flag indicating if user can modify it
-  - Filters results based on user's group membership and access control settings
+  - Filters results based on user permissions and access control settings
   - Admin users bypass access control and see all models
   - Pagination: 30 items per page (PAGE_ITEM_COUNT constant)
   - Total count reflects all accessible models (not just current page)
@@ -102,35 +100,6 @@ Response (200): Array of [`ModelResponse`](#modelresponse)
 - _OWUI Implementation Notes:_
   - Returns only models where `base_model_id = null`
   - These represent the actual models available from backends (not user-created proxies)
-
----
-
-### GET `/api/v1/models/tags`
-
-Get all unique model tags from accessible models.
-
-#### Inputs
-
-None
-
-#### Outputs
-
-Response (200): Array of strings
-
-#### Notes
-
-- _Reference Implementation:_
-  - File: `/home/fox/open-webui/backend/open_webui/routers/models.py:127`
-  - Method: `get_model_tags()`
-- _Security:_
-  - Requires `HTTPBearer` authentication (JWT token)
-  - Any verified user can access (`get_verified_user` dependency)
-- _OWUI Implementation Notes:_
-  - Extracts unique tags from `meta.tags` field across all accessible models
-  - Admin users see tags from all models
-  - Regular users only see tags from models they have access to
-  - Returns deduplicated, sorted list of tag strings
-  - Tags are stored as array in model metadata: `meta: { tags: ["tag1", "tag2"] }`
 
 ---
 
@@ -391,8 +360,8 @@ Extended model response with user information and write access flag.
 - `base_model_id` - If null, this is a base model; otherwise references another model
 - `name` - Display name
 - `params` - Model-specific parameters (JSON object)
-- `meta` - Metadata including profile image, description, capabilities, tags
-- `access_control` - Read/write permissions by user/group
+- `meta` - Metadata including profile image, description, capabilities
+- `access_control` - Read/write permissions by user
 - `is_active` - Whether model is active/visible
 - `updated_at` - Last update timestamp (Unix seconds)
 - `created_at` - Creation timestamp (Unix seconds)
@@ -550,7 +519,6 @@ Model metadata with profile image, description, and capabilities.
     profile_image_url?: string | null;  // Default: "/static/favicon.png"
     description?: string | null;
     capabilities?: object | null;
-    tags?: string[];                     // Array of tag strings
     [key: string]: any;                  // additionalProperties: true
 }
 ```
@@ -559,7 +527,6 @@ Model metadata with profile image, description, and capabilities.
 - `profile_image_url` - URL or data:image for model avatar
 - `description` - Human-readable model description
 - `capabilities` - Object describing model capabilities (vision, function calling, etc.)
-- `tags` - Array of category tags
 - Additional properties allowed for extensibility
 
 ---
@@ -571,11 +538,9 @@ Access control structure for read/write permissions.
 ```typescript
 {
     read?: {
-        group_ids?: string[];
         user_ids?: string[];
     };
     write?: {
-        group_ids?: string[];
         user_ids?: string[];
     };
 }
@@ -584,7 +549,7 @@ Access control structure for read/write permissions.
 **Behavior:**
 - `null` access_control = public read access, no write access
 - Empty arrays = no access for that permission level
-- User has access if their ID is in user_ids OR their group is in group_ids
+- User has access if their ID is in user_ids
 - Admin users bypass all access control checks
 
 ---
@@ -630,7 +595,6 @@ Query parameters for GET `/api/v1/models/list`.
 {
     query?: string;
     view_option?: string;
-    tag?: string;
     order_by?: string;
     direction?: "asc" | "desc";
     page?: number;  // default: 1, min: 1
@@ -640,7 +604,6 @@ Query parameters for GET `/api/v1/models/list`.
 **Fields:**
 - `query` - Search query to filter models by name/ID
 - `view_option` - View filter option
-- `tag` - Filter by specific tag
 - `order_by` - Field to sort by (e.g., "name", "created_at", "updated_at")
 - `direction` - Sort direction: "asc" or "desc"
 - `page` - Page number for pagination
