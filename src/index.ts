@@ -26,6 +26,7 @@ import healthRouter from './routes/health.js';
 import pwaRouter from './routes/pwa.js';
 import * as MockData from './routes/mock-data.js';
 import { validateChatId } from './routes/middleware.js';
+import { MockLlama } from '../test/mockLlama.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -77,12 +78,13 @@ const tools = new ToolServer(app, { browser: browser });
 tools.serve();
 
 // Start llama-server
-const llama = new LlamaManager({
-    ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-    models: cfg.models,
-});
+const llama = new MockLlama() as unknown as LlamaManager;
+// const llama = new LlamaManager({
+//     ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+//     logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+//     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+//     models: cfg.models,
+// });
 // await llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */

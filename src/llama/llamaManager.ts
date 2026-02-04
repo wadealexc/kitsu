@@ -58,7 +58,7 @@ type PendingJob = {
     onResponse: (result: proto.Result<LlamaResponse, Error>) => void,
 }
 
-type LlamaRequest = {
+export type LlamaRequest = {
     body: proto.CompletionRequest,
     signal: AbortSignal,
 };
