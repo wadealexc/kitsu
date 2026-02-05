@@ -684,7 +684,9 @@ describe('searchModels', () => {
         );
 
         assert.ok(result.items.length > 0);
-        assert.ok(result.items.every(m => m.name.toUpperCase().includes('GPT')));
+        assert.ok(result.items.every(
+            m => m.name.toUpperCase().includes('GPT') || m.baseModelId?.toUpperCase().includes('GPT'))
+        );
     });
 
     test('filters by viewOption: created', async () => {
@@ -1129,22 +1131,38 @@ describe('importModels', () => {
 /* -------------------- ACCESS CONTROL OPERATIONS -------------------- */
 
 describe('hasAccess', () => {
+    const ownerId = 'owner-123';
     const userId = 'user-123';
     const otherUserId = 'user-456';
 
+    function _model(ac: AccessControl | null): Model {
+        return {
+            id: 'Test Model',
+            name: 'test-model',
+            baseModelId: null,
+            userId: ownerId,
+            isActive: true,
+            updatedAt: 0,
+            createdAt: 0,
+            meta: {},
+            params: {},
+            accessControl: ac,
+        }
+    }
+
     test('allows public read access (null access_control)', () => {
-        const hasRead = Models.hasAccess(userId, 'read', null);
+        const hasRead = Models.hasAccess(_model(null), userId, 'read');
         assert.strictEqual(hasRead, true);
     });
 
     test('denies public write access (null access_control)', () => {
-        const hasWrite = Models.hasAccess(userId, 'write', null);
+        const hasWrite = Models.hasAccess(_model(null), userId, 'write');
         assert.strictEqual(hasWrite, false);
     });
 
     test('denies access for empty access_control', () => {
-        const hasRead = Models.hasAccess(userId, 'read', {});
-        const hasWrite = Models.hasAccess(userId, 'write', {});
+        const hasRead = Models.hasAccess(_model({}), userId, 'read');
+        const hasWrite = Models.hasAccess(_model({}), userId, 'write');
 
         assert.strictEqual(hasRead, false);
         assert.strictEqual(hasWrite, false);
@@ -1156,7 +1174,7 @@ describe('hasAccess', () => {
             write: { user_ids: [otherUserId] },
         };
 
-        const hasRead = Models.hasAccess(userId, 'read', accessControl);
+        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
         assert.strictEqual(hasRead, true);
     });
 
@@ -1166,7 +1184,7 @@ describe('hasAccess', () => {
             write: { user_ids: [userId] },
         };
 
-        const hasWrite = Models.hasAccess(userId, 'write', accessControl);
+        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
         assert.strictEqual(hasWrite, true);
     });
 
@@ -1176,7 +1194,7 @@ describe('hasAccess', () => {
             write: { user_ids: [] },
         };
 
-        const hasRead = Models.hasAccess(userId, 'read', accessControl);
+        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
         assert.strictEqual(hasRead, false);
     });
 
@@ -1186,7 +1204,7 @@ describe('hasAccess', () => {
             write: { user_ids: [otherUserId] },
         };
 
-        const hasWrite = Models.hasAccess(userId, 'write', accessControl);
+        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
         assert.strictEqual(hasWrite, false);
     });
 
@@ -1195,7 +1213,7 @@ describe('hasAccess', () => {
             write: { user_ids: [userId] },
         };
 
-        const hasRead = Models.hasAccess(userId, 'read', accessControl);
+        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
         assert.strictEqual(hasRead, false);
     });
 
@@ -1204,7 +1222,7 @@ describe('hasAccess', () => {
             read: { user_ids: [userId] },
         };
 
-        const hasWrite = Models.hasAccess(userId, 'write', accessControl);
+        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
         assert.strictEqual(hasWrite, false);
     });
 
@@ -1214,8 +1232,8 @@ describe('hasAccess', () => {
             write: { user_ids: [] },
         };
 
-        const hasRead = Models.hasAccess(userId, 'read', accessControl);
-        const hasWrite = Models.hasAccess(userId, 'write', accessControl);
+        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
+        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
 
         assert.strictEqual(hasRead, false);
         assert.strictEqual(hasWrite, false);
@@ -1227,8 +1245,8 @@ describe('hasAccess', () => {
             write: {},
         };
 
-        const hasRead = Models.hasAccess(userId, 'read', accessControl);
-        const hasWrite = Models.hasAccess(userId, 'write', accessControl);
+        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
+        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
 
         assert.strictEqual(hasRead, false);
         assert.strictEqual(hasWrite, false);

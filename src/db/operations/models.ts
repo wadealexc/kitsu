@@ -345,9 +345,11 @@ export async function getModelsByUserId(
     permission: 'read' | 'write',
     txOrDb: DbOrTx = db
 ): Promise<ModelUserResponse[]> {
-    // Build access condition based on permission type
+    // Build access condition based on permission type:
+    // - Public 'read' access is enabled when accessControl is null
+    // - 'write' access requires explicit permission
     const accessCondition = or(
-        isNull(models.accessControl),
+        permission === 'read' ? isNull(models.accessControl) : undefined,
         eq(models.userId, userId),
         sql`json_extract(${models.accessControl}, '$.${sql.raw(permission)}.user_ids') LIKE '%' || ${userId} || '%'`
     );
@@ -519,29 +521,18 @@ export async function importModels(
  * - User IDs check: User ID must be in access_control[type].user_ids array
  */
 export function hasAccess(
+    model: Model,
     userId: string,
     type: 'read' | 'write',
-    accessControl: AccessControl | null
 ): boolean {
-    // Public read access
-    if (accessControl === null && type === 'read') {
-        return true;
+    // User is owner
+    if (model.userId === userId) return true;
+
+    // When accessControl is null, the model has public read access
+    // ...write access requires explicit permissions
+    if (model.accessControl === null) {
+        return type === 'read';
     }
 
-    // No public write access
-    if (accessControl === null && type === 'write') {
-        return false;
-    }
-
-    // Check if access_control is empty object (private)
-    if (accessControl && Object.keys(accessControl).length === 0) {
-        return false;
-    }
-
-    // Check user_ids
-    if (accessControl && accessControl[type]?.user_ids?.includes(userId)) {
-        return true;
-    }
-
-    return false;
+    return model.accessControl[type]?.user_ids?.includes(userId) || false;
 }

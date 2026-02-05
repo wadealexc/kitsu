@@ -67,16 +67,10 @@ router.get('/', requireAuth, async (
             created_at: 0,
         }));
 
-        // Get custom models from database
+        // Get custom models from database and filter by access control
         const customModelsWithUser = await Models.getCustomModels(db);
-
-        // Filter custom models by access control
         const accessibleCustomModels = customModelsWithUser.filter(model => {
-            // Owner access
-            if (model.userId === userId) return true;
-
-            // Access control check
-            return Models.hasAccess(userId, 'read', model.accessControl);
+            return Models.hasAccess(model, userId, 'read');
         });
 
         // Convert to response format
@@ -142,9 +136,7 @@ router.get('/list', requireAuth, async (
 
         // Convert to response format with write_access flag
         const items: Types.ModelAccessResponse[] = result.items.map(model => {
-            const canWrite =
-                model.userId === userId ||
-                Models.hasAccess(userId, 'write', model.accessControl);
+            const canWrite = Models.hasAccess(model, userId, 'write');
 
             return {
                 id: model.id,
@@ -238,17 +230,10 @@ router.get('/model', requireAuth, async (
         const model = await Models.getModelById(modelId, db);
         if (!model) throw NotFoundError('Model not found');
 
-        // Check read access
-        const canRead =
-            model.userId === userId ||
-            Models.hasAccess(userId, 'read', model.accessControl);
-
-        if (!canRead) throw UnauthorizedError('User does not have access to model');
-
-        // Check write access
-        const canWrite =
-            model.userId === userId ||
-            Models.hasAccess(userId, 'write', model.accessControl);
+        // Check permissions
+        const canRead = Models.hasAccess(model, userId, 'read');
+        const canWrite = Models.hasAccess(model, userId, 'write');
+        if (!canRead) throw UnauthorizedError('User does not have access to model');        
 
         // Build response (need to get user info)
         const customModelsWithUser = await Models.getCustomModels(db);
@@ -312,10 +297,7 @@ router.post('/create', requireAuth, async (
     const formData = body.data;
     const userId = req.user!.id;
 
-    try {
-        // Validate ID length
-        if (formData.id.length > 256) throw BadRequestError('Model ID must be 256 characters or less');
-            
+    try {            
         // Check if model ID already exists in database
         const existing = await Models.getModelById(formData.id, db);
         if (existing) throw BadRequestError('model id already taken');
@@ -394,10 +376,7 @@ router.post('/model/toggle', requireAuth, async (
         if (!model) throw NotFoundError('Model not found');
 
         // Check write access
-        const canWrite =
-            model.userId === userId ||
-            Models.hasAccess(userId, 'write', model.accessControl);
-
+        const canWrite = Models.hasAccess(model, userId, 'write');
         if (!canWrite) throw UnauthorizedError('write access required');
 
         // Toggle active status
@@ -466,16 +445,13 @@ router.post('/model/update', requireAuth, async (
         if (!model) throw NotFoundError('Model not found');
 
         // Check write access
-        const canWrite =
-            model.userId === userId ||
-            Models.hasAccess(userId, 'write', model.accessControl);
-
+        const canWrite = Models.hasAccess(model, userId, 'write');
         if (!canWrite) throw UnauthorizedError('write access required');
 
         // If base_model_id is being changed, validate it exists
         if (formData.base_model_id && formData.base_model_id !== model.baseModelId) {
             if (!baseModelNames.includes(formData.base_model_id)) {
-                return res.status(400).json({ detail: `Base model '${formData.base_model_id}' not found` });
+                throw BadRequestError(`base model '${formData.base_model_id}' not found`);
             }
         }
 
@@ -545,10 +521,7 @@ router.post('/model/delete', requireAuth, async (
         if (!model) throw NotFoundError('Model not found');
 
         // Check write access
-        const canWrite =
-            model.userId === userId ||
-            Models.hasAccess(userId, 'write', model.accessControl);
-
+        const canWrite = Models.hasAccess(model, userId, 'write');
         if (!canWrite) throw UnauthorizedError('write access required');
 
         // Delete model from database
