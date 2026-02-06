@@ -24,7 +24,6 @@ import filesRouter from './routes/files.js';
 import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
 import pwaRouter from './routes/pwa.js';
-import * as MockData from './routes/mock-data.js';
 import { validateChatId } from './routes/middleware.js';
 import { MockLlama } from '../test/mockLlama.js';
 
@@ -111,6 +110,10 @@ app.get('/api/v1/chats/:id/tags', validateChatId, (req, res) => {
     res.json([]);
 });
 
+app.get('/api/v1/chats/:id/pinned', validateChatId, (req, res) => {
+    res.json([]);
+});
+
 app.get('/api/v1/models/tags', (_req, res) => {
     res.json([]);
 });
@@ -137,6 +140,36 @@ app.get('/api/v1/models/model/profile/image', (_req, res) => {
     return res.status(200).send(Buffer.from('mock-default-user-image'));
 });
 
+app.get('/api/changelog', (req, res) => {
+    res.json({
+        "1.0.0": {
+            "date": "2026-01-10",
+            "fixed": [],
+        }
+    })
+});
+
+app.get('/api/v1/notes/search', (req, res) => {
+    res.json({
+        items: [],
+        total: 0,
+    })
+});
+
+app.get('/api/v1/knowledge/search', (req, res) => {
+    res.json({
+        items: [],
+        total: 0,
+    })
+});
+
+app.get('/api/v1/knowledge/search/files', (req, res) => {
+    res.json({
+        items: [],
+        total: 0,
+    })
+});
+
 app.use('/api/v1/auths', authsRouter);
 app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);
@@ -151,7 +184,44 @@ app.use('/manifest.json', pwaRouter);
 
 // Backend config endpoint (temporary inline implementation)
 app.get('/api/config', (_req, res) => {
-    res.json(MockData.mockBackendConfig);
+    res.json({
+        status: true,
+        name: 'Open WebUI',
+        version: '0.3.9',
+        default_locale: 'en-US',
+        oauth: {
+            providers: {},
+        },
+        features: {
+            auth: true,
+            auth_trusted_header: false,
+            enable_signup: true,
+            enable_login_form: true,
+            enable_api_keys: false,
+            enable_websocket: false,
+            enable_version_update_check: true,
+            enable_folders: true,
+            enable_web_search: true,
+            enable_image_generation: false,
+            enable_community_sharing: false,
+            enable_memories: false,
+            enable_admin_export: true,
+            enable_admin_chat_access: true,
+            enable_google_drive_integration: false,
+            enable_onedrive_integration: false,
+        },
+        default_models: '',
+        default_prompt_suggestions: [
+            {
+                content: 'Help me brainstorm',
+                title: ['Creative', 'Help me brainstorm'],
+            },
+            {
+                content: 'Explain a concept',
+                title: ['Learning', 'Explain a concept'],
+            },
+        ],
+    });
 });
 
 /* -------------------- ERROR HANDLING AND SHUTDOWN -------------------- */
