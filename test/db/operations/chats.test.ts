@@ -20,35 +20,36 @@ function createTestChatObject(
     return {
         title: title,
         models: models,
-        system: null,
         history: {
             messages: {},
             currentId: null,
         },
         messages: [],
+        timestamp: currentUnixTimestamp(),
     };
 }
 
 /**
  * Creates a ChatForm for testing.
  */
-function createTestChatData(title: string = 'Test Chat', folderId: string | null = null): ChatForm {
+function createTestChatData(title: string = 'Test Chat', folderId: string | null = null): Chats.NewChat {
     return {
+        title,
         chat: createTestChatObject(title),
-        folder_id: folderId,
+        folderId,
     };
 }
 
 /**
  * Creates a chat with a message in its history.
  */
-function createChatWithMessage(title: string = 'Test Chat'): ChatForm {
+function createChatWithMessage(title: string = 'Test Chat'): Chats.NewChat {
     const messageId = crypto.randomUUID();
     return {
+        title: title,
         chat: {
             title: title,
             models: ['test-model'],
-            system: null,
             history: {
                 messages: {
                     [messageId]: {
@@ -63,8 +64,9 @@ function createChatWithMessage(title: string = 'Test Chat'): ChatForm {
                 currentId: messageId,
             },
             messages: [],
+            timestamp: currentUnixTimestamp(),
         },
-        folder_id: null,
+        folderId: null,
     };
 }
 
@@ -475,7 +477,11 @@ describe('Chat Operations', () => {
             assert.ok(chat);
             const originalUpdatedAt = chat.updatedAt;
 
-            const updatedData = createTestChatData('Updated Title');
+            const updatedData: ChatForm = {
+                chat: {
+                    title: 'Updated Title'
+                }
+            };
             const updated = await Chats.updateChat(chat.id, updatedData, db);
 
             assert.ok(updated);
@@ -508,7 +514,11 @@ describe('Chat Operations', () => {
             const folder = await Folders.createFolder(userId, { name: 'New Folder' }, null, db);
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
 
-            const updatedData = createTestChatData('Chat', folder.id);
+            const updatedData: ChatForm = {
+                chat: {},
+                folder_id: folder.id,
+            };
+
             const updated = await Chats.updateChat(chat.id, updatedData, db);
 
             assert.ok(updated);
@@ -516,7 +526,7 @@ describe('Chat Operations', () => {
         });
 
         it('should return null for non-existent chat', async () => {
-            const updated = await Chats.updateChat('non-existent-id', createTestChatData(), db);
+            const updated = await Chats.updateChat('non-existent-id', { chat: {} }, db);
 
             assert.strictEqual(updated, null);
         });

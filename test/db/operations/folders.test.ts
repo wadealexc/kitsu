@@ -1097,12 +1097,17 @@ describe('Folder Operations', () => {
             const chat = await Chats.createChat(
                 userId,
                 {
-                    chat: { 
+                    title: 'Test Chat',
+                    chat: {
                         title: 'Test Chat',
                         models: [],
                         messages: [],
+                        history: {
+                            messages: {},
+                        },
+                        timestamp: currentUnixTimestamp()
                     },
-                    folder_id: folder.id,
+                    folderId: folder.id,
                 },
                 db
             );

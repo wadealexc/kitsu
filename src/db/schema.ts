@@ -10,6 +10,8 @@ import type {
     AccessControl,
     ModelParams,
     ModelMeta,
+    ChatHistory,
+    FlattenedMessage,
 } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */
@@ -264,7 +266,6 @@ export type Auth = typeof auths.$inferSelect;
 export type NewAuth = typeof auths.$inferInsert;
 
 export type Chat = typeof chats.$inferSelect;
-export type NewChat = typeof chats.$inferInsert;
 
 export type ChatFile = typeof chatFiles.$inferSelect;
 export type NewChatFile = typeof chatFiles.$inferInsert;

@@ -1,10 +1,15 @@
 import { eq, ne, desc, asc, or, and, like, sql, inArray, isNotNull } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client.js';
-import { chats, chatFiles, type Chat, type ChatFile, type NewChat, type NewChatFile } from '../schema.js';
+import { chats, chatFiles, type Chat, type ChatFile } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
 import type { ChatForm, ChatImportForm } from '../../routes/types.js';
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */
+
+export type NewChat = Omit<
+    typeof chats.$inferInsert, 
+    'id' | 'userId' | 'updatedAt' | 'createdAt' | 'archived' | 'pinned' | 'meta' | 'shareId'
+>;
 
 /**
  * Creates a new chat for a user.
@@ -15,7 +20,7 @@ import type { ChatForm, ChatImportForm } from '../../routes/types.js';
  */
 export async function createChat(
     userId: string,
-    data: ChatForm,
+    data: NewChat,
     txOrDb: DbOrTx = db
 ): Promise<Chat> {
     const now = currentUnixTimestamp();
@@ -26,9 +31,9 @@ export async function createChat(
         .values({
             id: chatId,
             userId: userId,
-            title: data.chat.title,
+            title: data.title,
             chat: data.chat,
-            folderId: data.folder_id,
+            folderId: data.folderId,
             archived: false,
             pinned: false,
             meta: {},
@@ -1021,11 +1026,14 @@ export async function importChats(
     const now = currentUnixTimestamp();
 
     const values = chatsData.map(data => {
+        const chat = data.chat;
+        if (!chat.models) throw new Error('Chat must have models');
+
         return {
             id: crypto.randomUUID(),
             userId: userId,
             title: data.chat.title,
-            chat: data.chat,
+            chat: { ...chat, models: chat.models },
             meta: data.meta ?? {},
             pinned: data.pinned ?? false,
             archived: false,

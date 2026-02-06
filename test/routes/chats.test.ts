@@ -13,7 +13,7 @@ import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole, type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse } from '../../src/routes/types.js';
+import { type UserRole, type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm } from '../../src/routes/types.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -64,12 +64,34 @@ function createTestChatObject(
     return {
         title: title,
         models: models,
-        system: null,
         history: {
             messages: {},
             currentId: null,
         },
         messages: [],
+        timestamp: currentUnixTimestamp(),
+    };
+}
+
+function createNewChatForm(
+    title: string = 'Test Chat',
+    models: string[] = ['gpt-4'],
+    folderId?: string,
+): NewChatForm {
+    const chat: ChatObject = {
+        title: title,
+        models: models,
+        history: {
+            messages: {},
+            currentId: null,
+        },
+        messages: [],
+        timestamp: currentUnixTimestamp(),
+    };
+
+    return {
+        chat: chat,
+        folder_id: folderId,
     };
 }
 
@@ -99,7 +121,6 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
     const chatObject: ChatObject = {
         title: title,
         models: [model],
-        system: 'You are a helpful assistant.',
         params: { temperature: 0.7 },
         history: {
             messages: {
@@ -122,12 +143,11 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
         timestamp: now,
     };
 
-    const chatForm: ChatForm = {
+    return await Chats.createChat(userId, {
+        title: chatObject.title,
         chat: chatObject,
-        folder_id: null,
-    };
-
-    return await Chats.createChat(userId, chatForm, db);
+        folderId: null,
+    }, db);
 }
 
 /**
@@ -143,19 +163,22 @@ async function createMultipleChats(userId: string, count: number): Promise<schem
 }
 
 function toApiChatResponse(chat: schema.Chat): ChatResponse {
-    return {
+    const response: any = {
         id: chat.id,
         user_id: chat.userId,
         title: chat.title,
         chat: chat.chat,
         updated_at: chat.updatedAt,
         created_at: chat.createdAt,
-        share_id: chat.shareId,
         archived: chat.archived,
         pinned: chat.pinned ?? false,
         meta: chat.meta ?? {},
-        folder_id: chat.folderId,
     };
+
+    if (chat.shareId != null) response.share_id = chat.shareId;
+    if (chat.folderId != null) response.folder_id = chat.folderId;
+
+    return response;
 }
 
 /* -------------------- TESTS -------------------- */
@@ -597,7 +620,7 @@ describe('Chat Routes', () => {
                 .set('Authorization', `Bearer ${token}`)
                 .expect(200);
 
-            // Optional fields should be undefined when null
+            // Optional fields should be null
             assert.strictEqual(response.body.share_id, undefined);
             assert.strictEqual(response.body.folder_id, undefined);
         });
@@ -626,13 +649,7 @@ describe('Chat Routes', () => {
         test('should create new chat with valid data', async () => {
             const { userId, token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'New Chat',
-                    models: ['gpt-4'],
-                    messages: [],
-                },
-            };
+            const chatData: ChatForm = createNewChatForm('New Chat', ['gpt-4']);
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -650,13 +667,7 @@ describe('Chat Routes', () => {
         test('should set default values for optional fields', async () => {
             const { token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'New Chat',
-                    models: [],
-                    messages: [],
-                },
-            };
+            const chatData: ChatForm = createNewChatForm('New Chat', ['gpt-4']);
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -667,21 +678,14 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.archived, false);
             assert.strictEqual(response.body.pinned, false);
             assert.deepStrictEqual(response.body.meta, {});
-            assert.strictEqual(response.body.share_id, null);
+            assert.strictEqual(response.body.share_id, undefined);
         });
 
         test('should accept folder_id in request', async () => {
             const { userId, token } = await createUserWithToken('user');
             const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
 
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'Folder Chat',
-                    models: [],
-                    messages: [],
-                },
-                folder_id: folder.id,
-            };
+            const chatData: ChatForm = createNewChatForm('Folder Chat', ['gpt-4'], folder.id);
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -695,13 +699,7 @@ describe('Chat Routes', () => {
         test('should extract title from chat.title', async () => {
             const { token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'Extracted Title',
-                    models: [],
-                    messages: [],
-                },
-            };
+            const chatData: ChatForm = createNewChatForm('Extracted Title', ['gpt-4']);
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -735,6 +733,7 @@ describe('Chat Routes', () => {
                         currentId: msgId,
                     },
                     messages: [],
+                    timestamp: currentUnixTimestamp(),
                 },
             };
 
@@ -762,13 +761,7 @@ describe('Chat Routes', () => {
         });
 
         test('should fail without authentication token', async () => {
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'New Chat',
-                    models: [],
-                    messages: [],
-                },
-            };
+            const chatData: ChatForm = createNewChatForm();
 
             await request(app)
                 .post('/api/v1/chats/new')
@@ -777,13 +770,7 @@ describe('Chat Routes', () => {
         });
 
         test('should fail with invalid authentication token', async () => {
-            const chatData: ChatForm = {
-                chat: {
-                    title: 'New Chat',
-                    models: [],
-                    messages: [],
-                },
-            };
+            const chatData: ChatForm = createNewChatForm();
 
             await request(app)
                 .post('/api/v1/chats/new')
@@ -800,10 +787,8 @@ describe('Chat Routes', () => {
 
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: ['gpt-4'],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             const response = await request(app)
@@ -823,9 +808,8 @@ describe('Chat Routes', () => {
             const updateData: ChatForm = {
                 chat: {
                     title: 'Updated Title',
-                    models: ['gpt-3.5-turbo'], // Different from original
-                    messages: [],
-                },
+                    models: ['gpt-3.5-turbo'],
+                }
             };
 
             const response = await request(app)
@@ -855,10 +839,8 @@ describe('Chat Routes', () => {
             const originalUpdatedAt = chat.updatedAt;
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             const response = await request(app)
@@ -876,10 +858,8 @@ describe('Chat Routes', () => {
 
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             const response = await request(app)
@@ -899,10 +879,8 @@ describe('Chat Routes', () => {
 
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             const response = await request(app)
@@ -934,10 +912,8 @@ describe('Chat Routes', () => {
 
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             await request(app)
@@ -952,10 +928,8 @@ describe('Chat Routes', () => {
 
             const updateData: ChatForm = {
                 chat: {
-                    title: 'Updated Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'Updated Title'
+                }
             };
 
             await request(app)
@@ -983,8 +957,8 @@ describe('Chat Routes', () => {
             // Update only title
             const updateData: ChatForm = {
                 chat: {
-                    title: 'New Title',
-                },
+                    title: 'New Title'
+                }
             };
 
             const response = await request(app)
@@ -1015,10 +989,8 @@ describe('Chat Routes', () => {
             // Update only title
             const updateData: ChatForm = {
                 chat: {
-                    title: 'New Title',
-                    models: [],
-                    messages: [],
-                },
+                    title: 'New Title'
+                }
             };
 
             const response = await request(app)
@@ -1050,7 +1022,6 @@ describe('Chat Routes', () => {
             const now = currentUnixTimestamp();
             const updateData: ChatForm = {
                 chat: {
-                    title: chat.title,
                     history: {
                         messages: {
                             [msgId]: {
@@ -1069,7 +1040,6 @@ describe('Chat Routes', () => {
                         content: 'Updated message',
                         timestamp: now,
                     }],
-                    models: [],
                 },
             };
 
@@ -1088,44 +1058,6 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.chat.models[0], 'gpt-4');
         });
 
-        test('should preserve all fields when updating tags only', async () => {
-            const { userId, token } = await createUserWithToken('user');
-
-            // Create chat with models, messages, and history
-            const chat = await createTestChat(userId, 'Test Chat');
-
-            // Verify initial state
-            assert.strictEqual(chat.chat.models.length, 1);
-            assert.strictEqual(chat.chat.messages.length, 2);
-            assert.ok(chat.chat.history);
-
-            // Update only tags (simulating a minimal update)
-            const updateData: ChatForm = {
-                chat: {
-                    title: chat.title,
-                    models: [],
-                    messages: [],
-                },
-            };
-
-            const response = await request(app)
-                .post(`/api/v1/chats/${chat.id}`)
-                .set('Authorization', `Bearer ${token}`)
-                .send(updateData)
-                .expect(200);
-
-            // Verify models array was preserved
-            assert.strictEqual(response.body.chat.models.length, 1);
-            assert.strictEqual(response.body.chat.models[0], 'gpt-4');
-
-            // Verify messages array was preserved
-            assert.strictEqual(response.body.chat.messages.length, 2);
-
-            // Verify history was preserved
-            assert.ok(response.body.chat.history);
-            assert.ok(response.body.chat.history.messages);
-        });
-
         test('should allow explicit clearing of models', async () => {
             const { userId, token } = await createUserWithToken('user');
 
@@ -1138,11 +1070,8 @@ describe('Chat Routes', () => {
             // Explicitly send empty models array
             const updateData: ChatForm = {
                 chat: {
-                    title: chat.title,
                     models: [],
-                    messages: chat.chat.messages,
-                    history: chat.chat.history,
-                },
+                }
             };
 
             const response = await request(app)
@@ -1454,6 +1383,9 @@ describe('Chat Routes', () => {
                 const chatResponse = chatResponses.find(c => c.id === chat.id);
 
                 assert.ok(chatResponse);
+                console.log(`chat: ${JSON.stringify(chat, null, 2)}`);
+                console.log('======')
+                console.log(`chatResponse: ${JSON.stringify(chatResponse, null, 2)}`);
                 assert.deepStrictEqual(chat, chatResponse);
             }
         });

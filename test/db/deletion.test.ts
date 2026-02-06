@@ -6,8 +6,9 @@ import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Files from '../../src/db/operations/files.js';
-import type { ChatObject } from '../../src/routes/types.js';
+import type { ChatObject, NewChatForm } from '../../src/routes/types.js';
 import type { User } from '../../src/db/schema.js';
+import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 
@@ -16,6 +17,18 @@ function _createChatObject(title: string = 'Chat'): ChatObject {
         title: title,
         models: [],
         messages: [],
+        history: {
+            messages: {},
+        },
+        timestamp: currentUnixTimestamp()
+    }
+}
+
+function _createNewChatForm(title: string = 'Chat', folderId?: string): Chats.NewChat {
+    return {
+        title: title,
+        chat: _createChatObject(title),
+        folderId: folderId,
     }
 }
 
@@ -72,17 +85,17 @@ describe('Database Cascade Deletion', () => {
             // Create multiple chats
             const chat1 = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Chat 1') },
+                _createNewChatForm('Chat 1'),
                 db
             );
             const chat2 = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Chat 2') },
+                _createNewChatForm('Chat 2'),
                 db
             );
             const chat3 = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Chat 3') },
+                _createNewChatForm('Chat 3'),
                 db
             );
 
@@ -222,15 +235,12 @@ describe('Database Cascade Deletion', () => {
             // Create chats (some in folders, some at root level)
             const chatInFolder = await Chats.createChat(
                 user.id,
-                {
-                    chat: _createChatObject('Project Chat'),
-                    folder_id: subFolder.id,
-                },
+                _createNewChatForm('Project Chat', subFolder.id),
                 db
             );
             const chatAtRoot = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Random Chat') },
+                _createNewChatForm('Random Chat'),
                 db
             );
 
@@ -312,12 +322,12 @@ describe('Database Cascade Deletion', () => {
 
             const user1Chat = await Chats.createChat(
                 user1.id,
-                { chat: _createChatObject('User 1 Chat') },
+                _createNewChatForm('User 1 Chat'),
                 db
             );
             const user2Chat = await Chats.createChat(
                 user2.id,
-                { chat: _createChatObject('User 2 Chat') },
+                _createNewChatForm('User 2 Chat'),
                 db
             );
 
@@ -368,7 +378,7 @@ describe('Database Cascade Deletion', () => {
 
             const chat = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Test Chat') },
+                _createNewChatForm('Test Chat'),
                 db
             );
 
@@ -423,7 +433,7 @@ describe('Database Cascade Deletion', () => {
 
             const chat = await Chats.createChat(
                 user.id,
-                { chat: _createChatObject('Test Chat') },
+                _createNewChatForm('Test Chat'),
                 db
             );
 

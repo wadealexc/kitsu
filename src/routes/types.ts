@@ -610,16 +610,22 @@ export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
 // Individual chat message in history
 export const ChatMessageSchema = z.object({
     id: z.string(),
+    parentId: z.string().nullable(),
+    childrenIds: z.array(z.string()),
     role: z.enum(['user', 'assistant', 'system']),
     content: z.string(),
-    parentId: z.string().nullable(),
-    childrenIds: z.array(z.string()).optional().default([]),
-    timestamp: z.number(),
-    model: z.string().nullable().optional(),
     files: z.array(ChatMessageFileSchema).optional(),
-    favorite: z.boolean().optional(),
-    citation: ChatMessageSourceSchema.optional(),
-    sources: z.array(ChatMessageSourceSchema).optional(),
+    timestamp: z.number(),
+
+    // "Optional" fields:
+    // these fields aren't optional, but short of splitting this type into a 
+    // union of UserMessage and AsstMessage, we're gonna do this for now
+    // - role: user
+    models: z.array(z.string()).optional(),
+    // - role: assistant
+    model: z.string().optional(),
+    modelName: z.string().optional(),
+    modelIdx: z.number().optional(),
     statusHistory: z.array(ChatMessageStatusSchema).optional(),
     usage: ChatMessageUsageSchema.optional(),
     done: z.boolean().optional(),
@@ -637,8 +643,7 @@ export type ChatHistory = z.infer<typeof ChatHistorySchema>;
 export const FlattenedMessageSchema = z.object({
     role: z.enum(['user', 'assistant', 'system']),
     content: z.string(),
-    timestamp: z.number().optional(),
-    model: z.string().optional(),
+    timestamp: z.number(),
 }).passthrough();
 export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
 
@@ -646,32 +651,52 @@ export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
 export interface ChatObject {
     id?: string;
     title: string;
+    // not optional for the DB, but optional for 'updates'
+    // TODO: we need to separate API schema from DB schema
     models: string[];
-    system?: string | null;
     params?: ModelParams;
-    history?: ChatHistory;
+    history: ChatHistory;
     messages: FlattenedMessage[];
-    timestamp?: number;
-    [key: string]: any;
+    timestamp: number;
 }
 
 export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     id: z.string().optional(),
-    title: z.string().default(DEFAULT_CHAT_TITLE),
-    models: z.array(z.string()).optional().default([]),
-    system: z.string().nullable().optional(),
-    params: ModelParamsSchema.optional(),
-    history: ChatHistorySchema.optional(),
-    messages: z.array(FlattenedMessageSchema).optional().default([]),
-    timestamp: z.number().optional(),
+    title: z.string(),
+    models: z.array(z.string()),
+    params: ModelParamsSchema.default({}),
+    history: ChatHistorySchema,
+    messages: z.array(FlattenedMessageSchema),
+    timestamp: z.number(),
 }).passthrough();
 
-// Chat form (for creating/updating chats)
+// TODO - somehow there's a way to apply .partial to ChatObjectSchema, but
+// it's pissing off the typechecker. For now this works.
+export const ChatObjectUpdateSchema = z.object({
+    id: z.string(),
+    title: z.string(),
+    models: z.array(z.string()),
+    params: ModelParamsSchema,
+    history: ChatHistorySchema,
+    messages: z.array(FlattenedMessageSchema),
+    timestamp: z.number(),
+}).partial();
+
+// export const ChatUpdateSchema: z.ZodType<Partial<ChatObject>> = ChatObjectSchema.partial()
+
+// Chat form (for updating chats)
 export const ChatFormSchema = z.object({
-    chat: ChatObjectSchema,
+    chat: ChatObjectUpdateSchema,
     folder_id: FolderIdSchema.nullable().optional(),
 });
 export type ChatForm = z.infer<typeof ChatFormSchema>;
+
+// New Chat Form (for creating chats)
+export const NewChatFormSchema = z.object({
+    chat: ChatObjectSchema,
+    folder_id: FolderIdSchema.nullable().optional(),
+});
+export type NewChatForm = z.infer<typeof NewChatFormSchema>;
 
 // Chat response (complete chat object with all fields)
 export const ChatResponseSchema = z.object({

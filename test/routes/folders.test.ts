@@ -83,12 +83,15 @@ async function createMultipleFolders(userId: string, count: number): Promise<sch
  */
 async function createTestChat(userId: string, title: string = 'Test Chat', folderId: string | null = null): Promise<schema.Chat> {
     const chat = await Chats.createChat(userId, {
+        title,
         chat: {
             title: title,
             models: ['gpt-4'],
-            messages: []
+            messages: [],
+            history: { messages: {} },
+            timestamp: 0,
         },
-        folder_id: folderId
+        folderId
     }, db);
 
     return chat;

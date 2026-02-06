@@ -847,7 +847,6 @@ Complete chat data object (the nested "chat" field in ChatForm and ChatResponse)
     id?: string                     // Optional chat ID (generated server-side if not provided)
     title: string                   // Chat title
     models?: string[]               // Array of model IDs used
-    system?: string | null          // System prompt/instructions
     params?: ModelParams            // Model parameters (see ModelParams)
     history?: ChatHistory           // Tree-structured message history (see ChatHistory)
     messages?: FlattenedMessage[]   // Flattened messages array

@@ -107,11 +107,11 @@ router.get('/all', requireAuth, async (
             chat: chat.chat,
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
-            share_id: chat.shareId,
+            share_id: chat.shareId || undefined,
             archived: chat.archived,
             pinned: chat.pinned ?? false,
             meta: chat.meta || {},
-            folder_id: chat.folderId,
+            folder_id: chat.folderId || undefined,
         }));
 
         return res.json(response);
@@ -275,14 +275,14 @@ router.get('/:id', validateChatId, requireAuth, async (
  *
  * Create a new chat conversation.
  *
- * @body {Types.ChatForm} - chat data and optional folder ID
+ * @body {Types.NewChatForm} - chat data and optional folder ID
  * @returns {Types.ChatResponse | null} - created chat object
  */
 router.post('/new', requireAuth, async (
-    req: Types.TypedRequest<{}, Types.ChatForm>,
+    req: Types.TypedRequest<{}, Types.NewChatForm>,
     res: Response<Types.ChatResponse | null | Types.ErrorResponse>
 ) => {
-    const body = Types.ChatFormSchema.safeParse(req.body);
+    const body = Types.NewChatFormSchema.safeParse(req.body);
     if (!body.success) {
         return res.status(400).json({
             detail: 'Invalid request body',
@@ -293,7 +293,12 @@ router.post('/new', requireAuth, async (
     const userId = req.user!.id;
 
     try {
-        const newChat = await Chats.createChat(userId, body.data, db);
+        const newChat = await Chats.createChat(userId, {
+            title: body.data.chat.title,
+            chat: body.data.chat,
+            folderId: body.data.folder_id,
+        }, db);
+        console.log(`POST chats/new:\n${JSON.stringify(newChat, null, 2)}`);
 
         const response: Types.ChatResponse = {
             id: newChat.id,
@@ -302,11 +307,11 @@ router.post('/new', requireAuth, async (
             chat: newChat.chat,
             updated_at: newChat.updatedAt,
             created_at: newChat.createdAt,
-            share_id: newChat.shareId,
+            share_id: newChat.shareId || undefined,
             archived: newChat.archived,
             pinned: newChat.pinned ?? false,
             meta: newChat.meta || {},
-            folder_id: newChat.folderId,
+            folder_id: newChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -358,6 +363,8 @@ router.post('/:id', validateChatId, requireAuth, async (
         const updatedChat = await Chats.updateChat(chatId, body.data, db);
         if (!updatedChat) throw new Error('Update failed');
 
+        console.log(`POST chats/${chatId}:\n${JSON.stringify(updatedChat, null, 2)}`);
+
         const response: Types.ChatResponse = {
             id: updatedChat.id,
             user_id: updatedChat.userId,
@@ -365,11 +372,11 @@ router.post('/:id', validateChatId, requireAuth, async (
             chat: updatedChat.chat,
             updated_at: updatedChat.updatedAt,
             created_at: updatedChat.createdAt,
-            share_id: updatedChat.shareId,
+            share_id: updatedChat.shareId || undefined,
             archived: updatedChat.archived,
             pinned: updatedChat.pinned ?? false,
             meta: updatedChat.meta || {},
-            folder_id: updatedChat.folderId,
+            folder_id: updatedChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -490,11 +497,11 @@ router.post('/:id/share', validateChatId, requireAuth, async (
             chat: updatedChat.chat,
             updated_at: updatedChat.updatedAt,
             created_at: updatedChat.createdAt,
-            share_id: updatedChat.shareId,
+            share_id: updatedChat.shareId || undefined,
             archived: updatedChat.archived,
             pinned: updatedChat.pinned ?? false,
             meta: updatedChat.meta || {},
-            folder_id: updatedChat.folderId,
+            folder_id: updatedChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -626,8 +633,9 @@ router.post('/:id/clone/shared', validateChatId, requireAuth, async (
 
         // Create new chat owned by current user with copied data
         const clonedChat = await Chats.createChat(userId, {
+            title: originalChat.title,
             chat: originalChat.chat,
-            folder_id: null,  // Don't copy folder assignment
+            folderId: null,  // Don't copy folder assignment
         }, db);
 
         const response: Types.ChatResponse = {
@@ -697,8 +705,9 @@ router.post('/:id/clone', validateChatId, requireAuth, async (
         };
 
         const clonedChat = await Chats.createChat(userId, {
+            title: chatData.title,
             chat: chatData,
-            folder_id: null,  // Don't copy folder assignment
+            folderId: null,  // Don't copy folder assignment
         }, db);
 
         const response: Types.ChatResponse = {
@@ -831,11 +840,11 @@ router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
             chat: chat.chat,
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
-            share_id: chat.shareId,
+            share_id: chat.shareId || undefined,
             archived: chat.archived,
             pinned: chat.pinned ?? false,
             meta: chat.meta || {},
-            folder_id: chat.folderId,
+            folder_id: chat.folderId || undefined,
         }));
 
         return res.json(response);
