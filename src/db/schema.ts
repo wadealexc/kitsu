@@ -46,6 +46,10 @@ export const users = sqliteTable('user', {
 
 /* -------------------- AUTH TABLE -------------------- */
 
+/**
+ * 'auth' stores authentication credentials (username and password) for users. 
+ * It has a 1:1 relationship with users via the `id` field.
+ */
 export const auths = sqliteTable('auth', {
     id: text('id')
         .primaryKey()
@@ -227,6 +231,9 @@ export const models = sqliteTable('model', {
 
 /**
  * Validate and normalize username.
+ * - Length: 3-50 characters
+ * - Characters: Alphanumeric + underscore + dash only (`a-zA-Z0-9_-`)
+ * - Normalized to lowercase for consistency
  *
  * @param username - Username to validate
  * @returns Normalized username (lowercase, trimmed)
@@ -261,9 +268,6 @@ export function validateUsername(username: string): string {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-
-export type Auth = typeof auths.$inferSelect;
-export type NewAuth = typeof auths.$inferInsert;
 
 export type Chat = typeof chats.$inferSelect;
 

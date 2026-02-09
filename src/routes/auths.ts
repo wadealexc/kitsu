@@ -138,7 +138,11 @@ router.post('/signup', async (
             }, tx);
 
             // Create auth credentials
-            await Auths.createAuth(newUser.id, email, password, tx);
+            await Auths.createAuth({
+                id: newUser.id,
+                username: email,
+                password,
+            }, tx);
 
             return newUser;
         });
@@ -408,7 +412,11 @@ router.post('/add', requireAdmin, async (
             }, tx);
 
             // Create auth credentials
-            await Auths.createAuth(newUser.id, email, password, tx);
+            await Auths.createAuth({
+                id: newUser.id,
+                username: email,
+                password,
+            }, tx);
 
             return newUser;
         });

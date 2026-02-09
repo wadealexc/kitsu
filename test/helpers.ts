@@ -1,11 +1,15 @@
+import assert from 'node:assert';
+
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
+import * as JWT from '../src/routes/jwt.js';
 import * as Users from '../src/db/operations/users.js';
 import * as Auths from '../src/db/operations/auths.js';
 import * as schema from '../src/db/schema.js';
 import { databasePath } from '../src/db/client.js';
+import { db } from '../src/db/client.js';
 import type { UserRole } from '../src/routes/types.js';
 
 /**
@@ -50,9 +54,41 @@ export async function newDBWithAdmin() {
     const testDb = await createTestDatabase();
 
     await Users.createUser(TEST_ADMIN, testDb);
-    await Auths.createAuth(TEST_ADMIN.id, TEST_ADMIN.username, TEST_PASSWORD, testDb);
+    await Auths.createAuth({
+        id: TEST_ADMIN.id, 
+        username: TEST_ADMIN.username, 
+        password: TEST_PASSWORD
+    }, testDb);
 
     return testDb;
+}
+
+/**
+ * Create a test user and return JWT token
+ */
+export async function createUserWithToken(role: UserRole = 'user', profileImageUrl?: string): Promise<{ 
+    userId: string;
+    token: string;
+    user: schema.User;
+}> {
+    const userParams = newUserParams(role);
+    if (profileImageUrl) userParams.profileImageUrl = profileImageUrl;
+
+    const user = await Users.createUser(userParams, db);
+    await Auths.createAuth({
+        id: userParams.id, 
+        username: userParams.username, 
+        password: TEST_PASSWORD
+    }, db);
+    
+    const token = JWT.createToken(userParams.id);
+
+    assert.strictEqual(user.role, role);
+    return { 
+        userId: userParams.id, 
+        token,
+        user,
+    };
 }
 
 /* -------------------- TEST SAFETY -------------------- */

@@ -61,7 +61,11 @@ describe('Database Cascade Deletion', () => {
             // Create user + auth
             const userParams = newUserParams('admin');
             const user = await Users.createUser(userParams, db);
-            await Auths.createAuth(user.id, userParams.username, TEST_PASSWORD, db);
+            await Auths.createAuth({
+                id: user.id,
+                username: userParams.username,
+                password: TEST_PASSWORD
+            }, db);
 
             // Verify auth exists
             const authBefore = await Auths.getAuthById(user.id, db);
@@ -216,7 +220,11 @@ describe('Database Cascade Deletion', () => {
             // Create user with comprehensive data
             const userParams = newUserParams('admin');
             const user = await Users.createUser(userParams, db);
-            await Auths.createAuth(user.id, userParams.username, TEST_PASSWORD, db);
+            await Auths.createAuth({
+                id: user.id,
+                username: userParams.username,
+                password: TEST_PASSWORD
+            }, db);
 
             // Create folders (root level + nested hierarchy)
             const rootFolder = await Folders.createFolder(

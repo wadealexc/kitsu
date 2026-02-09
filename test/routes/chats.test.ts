@@ -4,16 +4,13 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
-import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole, type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm } from '../../src/routes/types.js';
+import { type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm } from '../../src/routes/types.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -41,18 +38,6 @@ app.use('/api/v1/chats', chatsRouter);
 
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
-/**
- * Create a test user and return JWT token
- */
-async function createUserWithToken(role: UserRole = 'user'): Promise<{ userId: string; token: string }> {
-    const userParams = newUserParams(role);
-    const user = await Users.createUser(userParams, db);
-    await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-    const token = JWT.createToken(userParams.id);
-
-    assert.strictEqual(user.role, role);
-    return { userId: userParams.id, token };
-}
 
 /**
  * Creates a minimal ChatObject for testing.

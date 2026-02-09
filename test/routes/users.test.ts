@@ -3,9 +3,8 @@ import assert from 'node:assert';
 import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
-import jwt from 'jsonwebtoken';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken, newUserParams, TEST_PASSWORD } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
@@ -38,19 +37,6 @@ app.use('/api/v1/users', usersRouter);
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
 /**
- * Create a test user and return JWT token
- */
-async function createUserWithToken(role: UserRole = 'user'): Promise<{ userId: string; token: string }> {
-    const userParams = newUserParams(role);
-    const user = await Users.createUser(userParams, db);
-    await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-    const token = JWT.createToken(userParams.id);
-
-    assert.strictEqual(user.role, role);
-    return { userId: userParams.id, token };
-}
-
-/**
  * Create multiple test users and return their data
  */
 async function createMultipleUsers(count: number, role: UserRole = 'user'): Promise<Array<{ userId: string; username: string }>> {
@@ -58,7 +44,11 @@ async function createMultipleUsers(count: number, role: UserRole = 'user'): Prom
     for (let i = 0; i < count; i++) {
         const userParams = newUserParams(role);
         await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: userParams.id, 
+            username: userParams.username, 
+            password: TEST_PASSWORD
+        }, db);
         users.push({ userId: userParams.id, username: userParams.username });
     }
     return users;
@@ -636,14 +626,11 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should return 302 redirect for HTTP URL profile images', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-        userParams.profileImageUrl = 'https://example.com/image.png';
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        const profileImage = 'https://example.com/image.png';
+        const { token, user } = await createUserWithToken('user', profileImage);
 
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
@@ -651,14 +638,11 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should return 302 redirect to default image for missing profile image', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-        userParams.profileImageUrl = '/user.png';
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        const profileImage = '/user.png';
+        const { token, user } = await createUserWithToken('user', profileImage);
 
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
@@ -666,17 +650,12 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should decode and return data URI images with correct content type', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-
         // Simple 1x1 red PNG as data URI
-        const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
-        userParams.profileImageUrl = dataUri;
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-
+        const profileImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+        const { token, user } = await createUserWithToken('user', profileImage);
+        
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -685,16 +664,11 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should handle JPEG data URIs correctly', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-
-        const dataUri = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgICAwUDAwMDAwYEBAMFBwYHBwcGBwcICQsJCAgKCAcHCg0KCgsMDAwMBwkODw0MDgsMDAz/2wBDAQICAgMDAwYDAwYMCAcIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAz/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA==';
-        userParams.profileImageUrl = dataUri;
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        const profileImage = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgICAwUDAwMDAwYEBAMFBwYHBwcGBwcICQsJCAgKCAcHCg0KCgsMDAwMBwkODw0MDgsMDAz/2wBDAQICAgMDAwYDAwYMCAcIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAz/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA==';
+        const { token, user } = await createUserWithToken('user', profileImage);
 
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -702,16 +676,12 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should fallback to default image for invalid data URIs', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-
         // Invalid data URI (missing data after comma)
-        userParams.profileImageUrl = 'data:image/png;base64,';
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        const profileImage = 'data:image/png;base64,';
+        const { token, user } = await createUserWithToken('user', profileImage);
 
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
@@ -719,16 +689,12 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
     });
 
     test('should fallback to default image for malformed data URIs', async () => {
-        const { token } = await createUserWithToken('user');
-        const userParams = newUserParams('user');
-
         // Malformed data URI (no comma separator)
-        userParams.profileImageUrl = 'data:image/png;base64';
-        await Users.createUser(userParams, db);
-        await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
+        const profileImage = 'data:image/png;base64';
+        const { token, user } = await createUserWithToken('user', profileImage);
 
         const response = await request(app)
-            .get(`/api/v1/users/${userParams.id}/profile/image`)
+            .get(`/api/v1/users/${user.id}/profile/image`)
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
@@ -1081,7 +1047,11 @@ describe('POST /api/v1/users/:user_id/update', () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
         await Users.createUser(primaryAdmin, db);
-        await Auths.createAuth(primaryAdmin.id, primaryAdmin.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: primaryAdmin.id, 
+            username: primaryAdmin.username, 
+            password: TEST_PASSWORD
+        }, db);
 
         // Create second admin
         const { token } = await createUserWithToken('admin');
@@ -1106,7 +1076,11 @@ describe('POST /api/v1/users/:user_id/update', () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
         await Users.createUser(primaryAdmin, db);
-        await Auths.createAuth(primaryAdmin.id, primaryAdmin.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: primaryAdmin.id, 
+            username: primaryAdmin.username, 
+            password: TEST_PASSWORD
+        }, db);
         const token = JWT.createToken(primaryAdmin.id);
 
         const updateData = {
@@ -1253,7 +1227,11 @@ describe('DELETE /api/v1/users/:user_id', () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
         await Users.createUser(primaryAdmin, db);
-        await Auths.createAuth(primaryAdmin.id, primaryAdmin.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: primaryAdmin.id, 
+            username: primaryAdmin.username, 
+            password: TEST_PASSWORD
+        }, db);
 
         // Create second admin
         const { token } = await createUserWithToken('admin');
