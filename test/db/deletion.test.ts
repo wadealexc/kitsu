@@ -1,13 +1,14 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+
 import { createTestDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
 import * as Users from '../../src/db/operations/users.js';
+import type { User } from '../../src/db/operations/users.js';
 import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Files from '../../src/db/operations/files.js';
 import type { ChatObject, NewChatForm } from '../../src/routes/types.js';
-import type { User } from '../../src/db/schema.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
@@ -73,8 +74,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(authBefore.id, user.id);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify auth is gone
             const authAfter = await Auths.getAuthById(user.id, db);
@@ -108,8 +108,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(chatsBefore.total, 3);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all chats are gone
             const chat1After = await Chats.getChatById(chat1.id, db);
@@ -158,8 +157,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(foldersBefore.length, 4);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all folders are gone (including nested)
             const rootAfter = await Folders.getFolderById(rootFolder.id, user.id, db);
@@ -205,8 +203,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(filesBefore.total, 2);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all files are gone
             const file1After = await Files.getFileById(file1.id, db);
@@ -280,8 +277,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(filesBefore.total, 1);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify everything is gone (comprehensive check)
             const userAfter = await Users.getUserById(user.id, db);
@@ -340,8 +336,7 @@ describe('Database Cascade Deletion', () => {
             );
 
             // Delete user 1
-            const deleted = await Users.deleteUser(user1.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user1.id, db);
 
             // Verify user 1 data is gone
             const user1After = await Users.getUserById(user1.id, db);

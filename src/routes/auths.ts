@@ -1,10 +1,3 @@
-/**
- * Authentication and Authorization Routes
- *
- * Handles user authentication (signin/signup/signout), session management,
- * profile updates, password management, admin user creation, and admin configuration.
- */
-
 import { Router, type Request, type Response } from 'express';
 import type { StringValue } from 'ms';
 
@@ -12,9 +5,10 @@ import * as Types from './types.js';
 import { requireAuth, requireAdmin } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';
+import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
 import * as JWT from './jwt.js';
-import { DEFAULT_USER_ROLE, type User } from '../db/schema.js';
+import { DEFAULT_USER_ROLE } from '../db/schema.js';
 import type { UserRole } from './types.js';
 import { HttpError, BadRequestError, NotFoundError } from './errors.js';
 
@@ -131,7 +125,6 @@ router.post('/signup', async (
 
             // Create user (email used as username)
             const newUser = await Users.createUser({
-                id: crypto.randomUUID(),
                 username: email,
                 role,
                 profileImageUrl: profileImageUrl,
@@ -405,7 +398,6 @@ router.post('/add', requireAdmin, async (
         const user = await db.transaction(async (tx) => {
             // Create user with specified role
             const newUser = await Users.createUser({
-                id: crypto.randomUUID(),
                 username: email,
                 role: role,
                 profileImageUrl: profileImageUrl,

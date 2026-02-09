@@ -39,12 +39,9 @@ export const TEST_PASSWORD = 'password123';
 
 const TEST_ADMIN = newUserParams('admin');
 
-export function newUserParams(role: UserRole = 'user'): Users.CreateUserParams {
-    const id = crypto.randomUUID();
-
+export function newUserParams(role: UserRole = 'user'): Users.NewUser {
     return {
-        id: id,
-        username: `${role}-${id}@gg.com`,
+        username: `${role}-${crypto.randomUUID()}@gg.com`,
         role: role,
     }
 }
@@ -53,9 +50,9 @@ export function newUserParams(role: UserRole = 'user'): Users.CreateUserParams {
 export async function newDBWithAdmin() {
     const testDb = await createTestDatabase();
 
-    await Users.createUser(TEST_ADMIN, testDb);
+    const admin = await Users.createUser(TEST_ADMIN, testDb);
     await Auths.createAuth({
-        id: TEST_ADMIN.id, 
+        id: admin.id, 
         username: TEST_ADMIN.username, 
         password: TEST_PASSWORD
     }, testDb);
@@ -69,23 +66,23 @@ export async function newDBWithAdmin() {
 export async function createUserWithToken(role: UserRole = 'user', profileImageUrl?: string): Promise<{ 
     userId: string;
     token: string;
-    user: schema.User;
+    user: Users.User;
 }> {
     const userParams = newUserParams(role);
     if (profileImageUrl) userParams.profileImageUrl = profileImageUrl;
 
     const user = await Users.createUser(userParams, db);
     await Auths.createAuth({
-        id: userParams.id, 
+        id: user.id, 
         username: userParams.username, 
         password: TEST_PASSWORD
     }, db);
     
-    const token = JWT.createToken(userParams.id);
+    const token = JWT.createToken(user.id);
 
     assert.strictEqual(user.role, role);
     return { 
-        userId: userParams.id, 
+        userId: user.id, 
         token,
         user,
     };

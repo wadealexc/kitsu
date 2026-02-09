@@ -1,17 +1,11 @@
-/**
- * User Management Routes
- *
- * Handles user account management, search/listing, personal settings,
- * permissions management, and profile operations.
- */
-
 import { Router, type Response, type NextFunction } from 'express';
+
 import * as Types from './types.js';
 import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';
+import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
-import type { User } from '../db/schema.js';
 import type { UserRole } from './types.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
 
@@ -210,16 +204,15 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
                 throw NotFoundError('User not found');
             }
 
-            // Check if can modify (primary admin protection)
-            const canModify = await Users.canModifyUser(req.user!.id, userId, tx);
-            if (!canModify) {
-                throw ForbiddenError('Cannot modify primary admin');
-            }
-
-            // Check if trying to change primary admin's role
+            // Even the primary admin is NOT allowed to modify the primary admin's role
             const isPrimary = await Users.isPrimaryAdmin(userId, tx);
             if (isPrimary && role !== 'admin') {
                 throw ForbiddenError('Cannot change primary admin role');
+            }
+
+            // Other admins are not allowed to modify the primary admin at all
+            if (isPrimary && req.user!.id !== userId) {
+                throw ForbiddenError('User cannot modify primary admin');
             }
 
             // Check if email is already taken by another user
@@ -296,9 +289,9 @@ router.delete('/:user_id', validateUserId, requireAdmin, async (
         }
 
         // Delete user (automatically checks primary admin protection)
-        const success = await Users.deleteUser(userId, db);
+        await Users.deleteUser(userId, db);
 
-        return res.json(success);
+        return res.json(true);
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });

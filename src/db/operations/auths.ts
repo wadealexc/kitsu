@@ -1,25 +1,30 @@
 import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
+
 import { db, type DbOrTx } from '../client.js';
-import { auths, users, validateUsername, type User } from '../schema.js';
+import { auths, users, validateUsername } from '../schema.js';
+import { type User } from './users.js';
 import { RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
 
 const TABLE = 'auths';
 
 /* -------------------- CREATE -------------------- */
 
-export type NewAuth = typeof auths.$inferInsert;
 export type Auth = typeof auths.$inferSelect;
+export type NewAuth = typeof auths.$inferInsert;
 
 /**
  * Creates a new auth record. Used during signup and admin user creation.
+ * @note Caller should combine with user creation in a transaction
  *
  * @param {NewAuth} params - User id, username, and plaintext password
  * @param txOrDb
  * 
+ * @returns the created Auth record
+ * 
  * @throws if username format validation fails
  * @throws if password format validation fails
- * @throws if db creation fails
+ * @throws if record creation fails
  */
 export async function createAuth(
     params: NewAuth,
@@ -53,7 +58,7 @@ export async function createAuth(
  * @param txOrDb
  * 
  * @throws if password format validation fails
- * @throws if auths record not found
+ * @throws if record update fails
  */
 export async function updatePassword(
     id: string,
@@ -81,7 +86,7 @@ export async function updatePassword(
  * @param txOrDb
  * 
  * @throws if username format validation fails
- * @throws if auths record not found
+ * @throws if record update fails
  */
 export async function updateUsername(
     id: string,
@@ -122,8 +127,8 @@ export async function getAuthById(
 }
 
 /**
- * Retrieve auth record by username. Username will be automatically normalized
- * before querying.
+ * Retrieve auth record by username.
+ * @note Username will be automatically normalized to lowercase before querying.
  * 
  * @param username
  * @param txOrDb

@@ -43,13 +43,13 @@ async function createMultipleUsers(count: number, role: UserRole = 'user'): Prom
     const users = [];
     for (let i = 0; i < count; i++) {
         const userParams = newUserParams(role);
-        await Users.createUser(userParams, db);
+        const user = await Users.createUser(userParams, db);
         await Auths.createAuth({
-            id: userParams.id, 
+            id: user.id, 
             username: userParams.username, 
             password: TEST_PASSWORD
         }, db);
-        users.push({ userId: userParams.id, username: userParams.username });
+        users.push({ userId: user.id, username: userParams.username });
     }
     return users;
 }
@@ -1046,9 +1046,9 @@ describe('POST /api/v1/users/:user_id/update', () => {
     test('should return 403 when trying to modify primary admin', async () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
-        await Users.createUser(primaryAdmin, db);
+        const admin = await Users.createUser(primaryAdmin, db);
         await Auths.createAuth({
-            id: primaryAdmin.id, 
+            id: admin.id, 
             username: primaryAdmin.username, 
             password: TEST_PASSWORD
         }, db);
@@ -1064,24 +1064,24 @@ describe('POST /api/v1/users/:user_id/update', () => {
         };
 
         const response = await request(app)
-            .post(`/api/v1/users/${primaryAdmin.id}/update`)
+            .post(`/api/v1/users/${admin.id}/update`)
             .set('Authorization', `Bearer ${token}`)
             .send(updateData)
             .expect(403);
 
-        assert.strictEqual(response.body.detail, 'Cannot modify primary admin');
+        assert.strictEqual(response.body.detail, 'User cannot modify primary admin');
     });
 
     test('should return 403 when trying to change primary admin role', async () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
-        await Users.createUser(primaryAdmin, db);
+        const admin = await Users.createUser(primaryAdmin, db);
         await Auths.createAuth({
-            id: primaryAdmin.id, 
+            id: admin.id, 
             username: primaryAdmin.username, 
             password: TEST_PASSWORD
         }, db);
-        const token = JWT.createToken(primaryAdmin.id);
+        const token = JWT.createToken(admin.id);
 
         const updateData = {
             role: 'user', // Try to demote primary admin
@@ -1091,7 +1091,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
         };
 
         const response = await request(app)
-            .post(`/api/v1/users/${primaryAdmin.id}/update`)
+            .post(`/api/v1/users/${admin.id}/update`)
             .set('Authorization', `Bearer ${token}`)
             .send(updateData)
             .expect(403);
@@ -1226,9 +1226,9 @@ describe('DELETE /api/v1/users/:user_id', () => {
     test('should return 403 when trying to delete primary admin', async () => {
         // Create primary admin (first user)
         const primaryAdmin = newUserParams('admin');
-        await Users.createUser(primaryAdmin, db);
+        const admin = await Users.createUser(primaryAdmin, db);
         await Auths.createAuth({
-            id: primaryAdmin.id, 
+            id: admin.id, 
             username: primaryAdmin.username, 
             password: TEST_PASSWORD
         }, db);
@@ -1237,14 +1237,14 @@ describe('DELETE /api/v1/users/:user_id', () => {
         const { token } = await createUserWithToken('admin');
 
         const response = await request(app)
-            .delete(`/api/v1/users/${primaryAdmin.id}`)
+            .delete(`/api/v1/users/${admin.id}`)
             .set('Authorization', `Bearer ${token}`)
             .expect(403);
 
         assert.strictEqual(response.body.detail, 'Cannot delete primary admin');
 
         // Verify primary admin still exists
-        const user = await Users.getUserById(primaryAdmin.id, db);
+        const user = await Users.getUserById(admin.id, db);
         assert.ok(user);
     });
 

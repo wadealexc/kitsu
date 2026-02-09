@@ -1,62 +1,247 @@
-import { eq, ne, desc, asc, or, like, sql } from 'drizzle-orm';
+import { eq, ne, desc, asc, or, like, sql, count } from 'drizzle-orm';
+
 import { db, type DbOrTx } from '../client.js';
-import { users, validateUsername, DEFAULT_USER_ROLE, DEFAULT_USER_IMAGE, type User } from '../schema.js';
+import { users, validateUsername, DEFAULT_USER_ROLE } from '../schema.js';
 import type { UserSettings, UserRole } from '../../routes/types.js';
 import { currentUnixTimestamp } from '../utils.js';
+import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+const TABLE = 'users';
 
-/**
- * Parameters for creating a new user.
- * Timestamps are auto-generated and not included as parameters.
- */
-export type CreateUserParams = {
-    // Required
-    id: string;
-    username: string;
-    role: UserRole;
+/* -------------------- CREATE -------------------- */
 
-    // Optional profile fields
-    profileImageUrl?: string;
-    profileBannerImageUrl?: string;
-    info?: Record<string, any>;
-    settings?: UserSettings;
-};
+export type User = typeof users.$inferSelect;
+export type NewUser = Omit<
+    typeof users.$inferInsert,
+    'id' | 'lastActiveAt' | 'createdAt' | 'updatedAt'
+>;
 
 /**
  * Creates a new user record.
- * Typically combined with auth creation in a transaction.
+ * @note Caller should combine with auth creation in a transaction
  *
- * Required fields: id, username, role
- * Auto-generated: createdAt, updatedAt, lastActiveAt
+ * @param {NewUser} params - username and role
+ * @param txOrDb
+ * 
+ * @returns the created User record
+ * 
+ * @throws if username format validation fails
+ * @throws if record creation fails
  */
 export async function createUser(
-    data: CreateUserParams,
+    params: NewUser,
     txOrDb: DbOrTx = db
 ): Promise<User> {
+    const normalizedUsername = validateUsername(params.username);
+    
     const now = currentUnixTimestamp();
-
-    // Validate and normalize username
-    const normalizedUsername = validateUsername(data.username);
+    const userId = crypto.randomUUID();
 
     const [user] = await txOrDb
         .insert(users)
         .values({
-            ...data,
+            ...params,
+            id: userId,
             username: normalizedUsername,
+            profileImageUrl: params.profileImageUrl,
             createdAt: now,
             updatedAt: now,
             lastActiveAt: now,
-            profileImageUrl: data.profileImageUrl ?? DEFAULT_USER_IMAGE,
         })
         .returning();
 
-    if (!user) throw new Error('Error creating user record');
+    if (!user) throw new RecordCreationError(TABLE);
+    return user;
+}
+
+/* -------------------- UPDATE -------------------- */
+
+export type UpdateUser = Partial<NewUser>;
+
+/**
+ * Updates user record. Also automatically updates `updatedAt`.
+ * @note This is intended for admin-only access. Caller should validate that the user
+ * modification is valid (e.g. not modifying primary admin role).
+ * 
+ * @param id - User id
+ * @param {UpdateUser} params - fields to update. Only explicitly provided fields are updated.
+ * @param txOrDb
+ * 
+ * @returns the updated User record
+ * 
+ * @throws if attempting to update username to an invalid username
+ * @throws if record update fails
+ */
+export async function updateUser(
+    id: string,
+    params: UpdateUser,
+    txOrDb: DbOrTx = db
+): Promise<User> {
+    // Validate new username if provided
+    if (params.username) 
+        params.username = validateUsername(params.username);
+
+    const [user] = await txOrDb
+        .update(users)
+        .set({
+            ...params,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(users.id, id))
+        .returning();
+
+    if (!user) throw new RecordNotFoundError(TABLE, id);
     return user;
 }
 
 /**
+ * Updates user's last activity timestamp.
+ * 
+ * @param id - User id
+ * @param txOrDb
+ * 
+ * @throws if record update fails
+ */
+export async function updateLastActive(
+    id: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    await txOrDb
+        .update(users)
+        .set({ lastActiveAt: currentUnixTimestamp() })
+        .where(eq(users.id, id));
+}
+
+/**
+ * Update user's settings object.
+ * 
+ * @param id - User id
+ * @param settings
+ * @param txOrDb
+ * 
+ * @returns the updated UserSettings
+ * 
+ * @throws if record update fails
+ */
+export async function updateUserSettings(
+    id: string,
+    settings: UserSettings,
+    txOrDb: DbOrTx = db
+): Promise<UserSettings> {
+    const [user] = await txOrDb
+        .update(users)
+        .set({
+            settings,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(users.id, id))
+        .returning();
+
+    if (!user) throw new RecordNotFoundError(TABLE, id);
+    if (!user.settings) throw new DatabaseError('Settings not found after update');
+    return user.settings;
+}
+
+/**
+ * Update user's info object.
+ * 
+ * @param id - User id
+ * @param info
+ * @param txOrDb
+ * 
+ * @returns the updated user info object
+ * 
+ * @throws if record update fails
+ */
+export async function updateUserInfo(
+    id: string,
+    info: Record<string, any>,
+    txOrDb: DbOrTx = db
+): Promise<Record<string, any>> {
+    const [user] = await txOrDb
+        .update(users)
+        .set({
+            info,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(users.id, id))
+        .returning();
+
+    if (!user) throw new RecordNotFoundError(TABLE, id);
+    return user.info || {};
+}
+
+export type UpdateUserProfile = {
+    profileImageUrl?: string;
+    profileBannerImageUrl?: string;
+};
+
+/**
+ * Update user's profile and/or banner image
+ * 
+ * @param id - User id
+ * @param {UpdateUserProfile} params
+ * @param txOrDb
+ * 
+ * @returns the updated User record
+ * 
+ * @throws if record update fails
+ */
+export async function updateProfile(
+    id: string,
+    params: UpdateUserProfile,
+    txOrDb: DbOrTx = db
+): Promise<User> {
+    const [user] = await txOrDb
+        .update(users)
+        .set({
+            ...params,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(users.id, id))
+        .returning();
+
+    if (!user) throw new RecordNotFoundError(TABLE, id);
+    return user;
+}
+
+/* -------------------- DELETE -------------------- */
+
+/**
+ * Delete user record, automatically cascading deletion to auth, chats, files, etc.
+ * @note This method explicitly checks that the target for deletion is not the primary
+ * admin. Any other checks are the responsibility of the caller.
+ * 
+ * @param id 
+ * @param txOrDb 
+ * 
+ * @throws if attempting to delete the primary admin
+ * @throws if deletion fails
+ */
+export async function deleteUser(
+    id: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    // Protect primary admin from deletion
+    const isPrimary = await isPrimaryAdmin(id, txOrDb);
+    if (isPrimary) throw new DatabaseError('Cannot delete primary admin');
+
+    const result = await txOrDb
+        .delete(users)
+        .where(eq(users.id, id));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/* -------------------- READ -------------------- */
+
+/**
  * Retrieves user by ID.
+ * 
+ * @param id - User id
+ * @param txOrDb
+ * 
+ * @returns the user record (or null, if not found)
  */
 export async function getUserById(
     id: string,
@@ -72,8 +257,13 @@ export async function getUserById(
 }
 
 /**
- * Retrieves user by username.
- * Username should be normalized to lowercase before querying.
+ * Retrieve auth record by username. 
+ * @note Username will be automatically normalized to lowercase before querying.
+ * 
+ * @param username
+ * @param txOrDb
+ * 
+ * @returns the user record (or null, if not found)
  */
 export async function getUserByUsername(
     username: string,
@@ -103,11 +293,17 @@ export type GetUsersOptions = {
 };
 
 /**
- * Lists users with pagination, filtering, and sorting.
- * If limit is not provided, returns all matching users.
+ * List users with optional pagination, filtering, and sorting
+ * @note if no skip or limit is specified, returns all users matching username query/role
+ * 
+ * @param {GetUsersOptions} opts
+ * @param txOrDb
+ * 
+ * @returns a list of user records matching the query with pagination settings
+ * @returns the total number of users
  */
 export async function getUsers(
-    options: GetUsersOptions = {},
+    opts: GetUsersOptions = {},
     txOrDb: DbOrTx = db
 ): Promise<{ users: User[]; total: number }> {
     const {
@@ -115,125 +311,43 @@ export async function getUsers(
         role,
         orderBy = 'created_at',
         direction = 'desc',
-        skip = 0,
+        skip,
         limit,
-    } = options;
+    } = opts;
 
-    // Build where conditions
-    const conditions = [];
-    if (query) conditions.push(like(users.username, `%${query}%`));
-    if (role) conditions.push(eq(users.role, role));
-
-    // Determine sort column
+    // Determine output order
+    const sortFn = direction === 'asc' ? asc : desc;
     const sortColumn =
         orderBy === 'role' ? users.role :
         orderBy === 'username' ? users.username :
         orderBy === 'last_active_at' ? users.lastActiveAt :
         users.createdAt;
 
-    const sortFn = direction === 'asc' ? asc : desc;
+    // Build where conditions
+    const conditions = [];
+    if (query) conditions.push(like(users.username, `%${query.toLowerCase()}%`));
+    if (role) conditions.push(eq(users.role, role));
+    const whereClause = or(...conditions);
 
     // Execute query
-    const whereClause = conditions.length > 0 ? or(...conditions) : undefined;
-
     const usersList = await txOrDb
         .select()
         .from(users)
         .where(whereClause)
         .orderBy(sortFn(sortColumn))
         .limit(limit ?? 999999)
-        .offset(skip);
+        .offset(skip ?? 0);
 
     // Get total count
-    const countResult = await txOrDb
-        .select({ count: sql<number>`count(*)` })
+    const [countResult] = await txOrDb
+        .select({ value: count() })
         .from(users)
         .where(whereClause);
 
-    const total = countResult[0]?.count ?? 0;
-
     return {
         users: usersList,
-        total,
+        total: countResult?.value || 0,
     };
-}
-
-/**
- * Updates user fields.
- * Automatically sets updatedAt to current timestamp.
- * Only updates fields that are explicitly provided (not undefined).
- */
-export async function updateUser(
-    id: string,
-    updates: Partial<User>,
-    txOrDb: DbOrTx = db
-): Promise<User> {
-    // Filter out undefined values to avoid overwriting with NULL
-    const filteredUpdates: Partial<User> = { updatedAt: currentUnixTimestamp() };
-    
-    for (const [key, value] of Object.entries(updates)) {
-        if (value !== undefined) filteredUpdates[key as keyof User] = value as any;
-    }
-
-    const [user] = await txOrDb
-        .update(users)
-        .set(filteredUpdates)
-        .where(eq(users.id, id))
-        .returning();
-
-    if (!user) throw new Error('Error updating user record');
-    return user;
-}
-
-/**
- * Updates user's last activity timestamp.
- * 
- * TODO: Throttle to avoid excessive writes (e.g., max once per minute).
- */
-export async function updateLastActive(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<void> {
-    await txOrDb
-        .update(users)
-        .set({ lastActiveAt: currentUnixTimestamp() })
-        .where(eq(users.id, id));
-}
-
-/**
- * Deletes user and cascades to auth, chats, files, folders.
- * Protected: Cannot delete primary admin (first user).
- */
-export async function deleteUser(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    // Protect primary admin from deletion
-    const isPrimary = await isPrimaryAdmin(id, txOrDb);
-    if (isPrimary) throw new Error('Cannot delete primary admin');
-
-    const result = await txOrDb
-        .delete(users)
-        .where(eq(users.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/* -------------------- USER QUERIES -------------------- */
-
-/**
- * Checks if any users exist in the system.
- * Used to determine if first signup should be admin.
- */
-export async function hasUsers(
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const [result] = await txOrDb
-        .select({ exists: sql<number>`1` })
-        .from(users)
-        .limit(1);
-
-    return result !== undefined;
 }
 
 /**
@@ -252,124 +366,6 @@ export async function getFirstUser(
     return user || null;
 }
 
-/**
- * Searches users by username (case-insensitive).
- */
-export async function searchUsers(
-    query: string,
-    limit: number = 10,
-    txOrDb: DbOrTx = db
-): Promise<User[]> {
-    return await txOrDb
-        .select()
-        .from(users)
-        .where(like(users.username, `%${query.toLowerCase()}%`))
-        .limit(limit);
-}
-
-/* -------------------- SETTINGS & METADATA -------------------- */
-
-/**
- * Updates user's settings object.
- */
-export async function updateUserSettings(
-    id: string,
-    settings: UserSettings,
-    txOrDb: DbOrTx = db
-): Promise<UserSettings> {
-    const [user] = await txOrDb
-        .update(users)
-        .set({
-            settings,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(users.id, id))
-        .returning();
-
-    if (!user) throw new Error('Error updating user record');
-    if (!user.settings) throw new Error('Settings not found after update');
-    return user.settings;
-}
-
-/**
- * Updates user's custom info object.
- */
-export async function updateUserInfo(
-    id: string,
-    info: Record<string, any>,
-    txOrDb: DbOrTx = db
-): Promise<Record<string, any>> {
-    const [user] = await txOrDb
-        .update(users)
-        .set({
-            info,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(users.id, id))
-        .returning();
-
-    if (!user) throw new Error('Error updating user record');
-    return user.info || {};
-}
-
-/* -------------------- ROLE & PERMISSIONS -------------------- */
-
-/**
- * Updates user's role.
- * Protected: Cannot change primary admin's role from 'admin'.
- */
-export async function updateUserRole(
-    id: string,
-    role: UserRole,
-    txOrDb: DbOrTx = db
-): Promise<User> {
-    const [user] = await txOrDb
-        .update(users)
-        .set({
-            role,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(users.id, id))
-        .returning();
-
-    if (!user) throw new Error('Error updating user record');
-    return user;
-}
-
-/* -------------------- PROFILE OPERATIONS -------------------- */
-
-export type UpdateProfileData = {
-    profileImageUrl?: string;
-    profileBannerImageUrl?: string;
-};
-
-/**
- * Updates user's profile fields.
- * Only updates fields that are explicitly provided (not undefined).
- */
-export async function updateProfile(
-    id: string,
-    profile: UpdateProfileData,
-    txOrDb: DbOrTx = db
-): Promise<User> {
-    // Filter out undefined values to avoid overwriting with NULL
-    const updates: Partial<User> = { updatedAt: currentUnixTimestamp() };
-
-    if (profile.profileImageUrl !== undefined) 
-        updates.profileImageUrl = profile.profileImageUrl;
-    if (profile.profileBannerImageUrl !== undefined) 
-        updates.profileBannerImageUrl = profile.profileBannerImageUrl;
-
-    const [user] = await txOrDb
-        .update(users)
-        .set(updates)
-        .where(eq(users.id, id))
-        .returning();
-
-    if (!user) throw new Error('Error updating user record');
-    return user;
-}
-
 /* -------------------- SPECIAL LOGIC -------------------- */
 
 /**
@@ -379,7 +375,7 @@ export async function updateProfile(
 export async function determineRole(
     txOrDb: DbOrTx = db
 ): Promise<UserRole> {
-    const hasExistingUsers = await hasUsers(txOrDb);
+    const hasExistingUsers = await getFirstUser(txOrDb);
     return hasExistingUsers ? DEFAULT_USER_ROLE : 'admin';
 }
 
@@ -392,37 +388,4 @@ export async function isPrimaryAdmin(
 ): Promise<boolean> {
     const firstUser = await getFirstUser(txOrDb);
     return firstUser?.id === userId;
-}
-
-/**
- * Checks if actor can modify target user.
- * Other admins cannot modify primary admin.
- */
-export async function canModifyUser(
-    actorId: string,
-    targetId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const isPrimary = await isPrimaryAdmin(targetId, txOrDb);
-
-    if (isPrimary && actorId !== targetId) {
-        // Other admins cannot modify primary admin
-        return false;
-    }
-
-    return true;
-}
-
-/* -------------------- VALIDATION UTILITIES -------------------- */
-
-/**
- * Validates that a role is one of the allowed values.
- * @throws Error if role is invalid
- */
-export function validateRole(role: string): asserts role is UserRole {
-    const validRoles: UserRole[] = ['admin', 'user', 'pending'];
-
-    if (!validRoles.includes(role as UserRole)) {
-        throw new Error(`Invalid role: ${role}`);
-    }
 }

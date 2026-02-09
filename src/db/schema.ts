@@ -19,11 +19,15 @@ import type {
 export const DEFAULT_USER_ROLE: UserRole = 'user';
 export const DEFAULT_USER_IMAGE = '/user.png';
 
+/**
+ * The User model stores user profile information, settings, permissions, and metadata. 
+ * It has a 1:1 relationship with auths via the `id` field.
+ */
 export const users = sqliteTable('user', {
     // Identity
     id: text('id').primaryKey().notNull(),
     username: text('username').notNull().unique(),
-    role: text('role').$type<UserRole>().notNull().default(DEFAULT_USER_ROLE),
+    role: text('role').$type<UserRole>().notNull(),
 
     // Profile
     profileImageUrl: text('profile_image_url').notNull().default(DEFAULT_USER_IMAGE),
@@ -265,9 +269,6 @@ export function validateUsername(username: string): string {
 }
 
 /* -------------------- TYPE EXPORTS -------------------- */
-
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
 
 export type Chat = typeof chats.$inferSelect;
 
