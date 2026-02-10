@@ -31,7 +31,7 @@ CREATE TABLE `chat` (
 	`chat` text NOT NULL,
 	`folder_id` text,
 	`archived` integer DEFAULT false NOT NULL,
-	`pinned` integer DEFAULT false,
+	`pinned` integer DEFAULT false NOT NULL,
 	`meta` text DEFAULT '{}',
 	`share_id` text,
 	`created_at` integer NOT NULL,
@@ -115,7 +115,7 @@ CREATE INDEX `idx_model_base_updated` ON `model` (`base_model_id`,`updated_at`);
 CREATE TABLE `user` (
 	`id` text PRIMARY KEY NOT NULL,
 	`username` text NOT NULL,
-	`role` text DEFAULT 'user' NOT NULL,
+	`role` text NOT NULL,
 	`profile_image_url` text DEFAULT '/user.png' NOT NULL,
 	`profile_banner_image_url` text,
 	`info` text,

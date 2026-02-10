@@ -10,6 +10,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Chats from '../../src/db/operations/chats.js';
+import { type Chat } from '../../src/db/operations/chats.js';
 import foldersRouter from '../../src/routes/folders.js';
 
 /* -------------------- TEST SETUP -------------------- */
@@ -64,7 +65,7 @@ async function createMultipleFolders(userId: string, count: number): Promise<sch
 /**
  * Create a test chat
  */
-async function createTestChat(userId: string, title: string = 'Test Chat', folderId: string | null = null): Promise<schema.Chat> {
+async function createTestChat(userId: string, title: string = 'Test Chat', folderId: string | null = null): Promise<Chat> {
     const chat = await Chats.createChat(userId, {
         title,
         chat: {
@@ -812,8 +813,8 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
             .expect(200);
 
         // Verify all chats deleted
-        const chats = await Chats.getChatsByUserId(userId, {}, db);
-        assert.strictEqual(chats.items.length, 0);
+        const chats = await Chats.getChatsByUserId(userId, db);
+        assert.strictEqual(chats.length, 0);
     });
 
     test('should move chats from all descendant folders to root when delete_contents=false', async () => {

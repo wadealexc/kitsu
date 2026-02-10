@@ -181,7 +181,7 @@ describe('updatePassword', () => {
     test('throws for non-existent user', async () => {
         await assert.rejects(
             async () => await Auths.updatePassword('non-existent', 'newpassword123', db),
-            { message: `auths record with id 'non-existent' not found` }
+            { message: `auth record with id 'non-existent' not found` }
         );
     });
 });

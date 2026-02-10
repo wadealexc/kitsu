@@ -1,8 +1,10 @@
 import { eq, desc, asc, like, inArray, sql, and } from 'drizzle-orm';
+
 import { db, type DbOrTx } from '../client.js';
 import { files, users, chatFiles, type File, type NewFile } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
 import type { FileMeta, FileData, AccessControl } from '../../routes/types.js';
+import * as Chats from './chats.js';
 
 /* -------------------- TYPES -------------------- */
 
@@ -399,13 +401,17 @@ export async function searchFiles(
 /* -------------------- ACCESS CONTROL -------------------- */
 
 /**
- * Checks if user has access to a file.
- *
- * Access checks (in order) - returns true if ANY is satisfied:
- * 1. User owns file (file.user_id == userId)
- * 2. User is admin
- * 3. User has explicit permission in accessControl
- * 4. File is in user's shared chats
+ * Check whether the user has access to a file. Returns true if ANY:
+ * 1. User owns file (via file.userId)
+ * 2. User has been granted permission to the file (via file.accessControl)
+ * 3. File is in a publicly shared chat
+ * 
+ * @param fileId
+ * @param userId
+ * @param accessType - whether we're looking for 'read' or 'write' access
+ * @param txOrDb
+ * 
+ * @returns true if the user has access
  */
 export async function hasFileAccess(
     fileId: string,
@@ -417,49 +423,24 @@ export async function hasFileAccess(
     const file = await getFileById(fileId, txOrDb);
     if (!file) return false;
 
-    // Check 1: User owns file
+    // 1. User owns file
     if (file.userId === userId) return true;
 
-    // Check 2: User is admin
-    const [user] = await txOrDb
-        .select({ role: users.role })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-    if (user && user.role === 'admin') return true;
-
-    // Check 3: Explicit permission in accessControl
+    // 2. Explicit permission in accessControl
     if (file.accessControl) {
-        const ac = file.accessControl;
-        const accessLevel = accessType === 'read' ? ac?.read : ac?.write;
+        const accessLevel = accessType === 'read'
+            ? file.accessControl.read 
+            : file.accessControl.write;
 
         if (accessLevel && accessLevel.user_ids?.includes(userId)) return true;
     }
 
-    // Check 4: File is in user's shared chats
-    // Get all chats where this file is attached
-    const chatFileRecords = await txOrDb
-        .select({ chatId: chatFiles.chatId })
-        .from(chatFiles)
-        .where(eq(chatFiles.fileId, fileId));
+    // At this point, if we're checking for 'write' access, that's a no.
+    if (accessType === 'write') return false;
 
-    const chatIds = chatFileRecords.map((cf: { chatId: string }) => cf.chatId);
-
-    if (chatIds.length > 0) {
-        // Check if user has access to any of these chats
-        // This is a simplified check - in production you'd check shareId or chat ownership
-        const userChats = await txOrDb
-            .select({ chatId: chatFiles.chatId })
-            .from(chatFiles)
-            .where(and(
-                inArray(chatFiles.chatId, chatIds),
-                eq(chatFiles.userId, userId)
-            ))
-            .limit(1);
-
-        if (userChats.length > 0) return true;
-    }
+    // 3. User has read access if the file is in a publicly-shared chat.
+    const sharedChats = await Chats.getSharedChatsByFileId(fileId, txOrDb);
+    if (sharedChats.length > 0) return true;
 
     return false;
 }

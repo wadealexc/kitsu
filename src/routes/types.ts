@@ -649,6 +649,7 @@ export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
 
 // Complete chat object (the nested "chat" field)
 export interface ChatObject {
+    // TODO: Seems unused by frontend
     id?: string;
     title: string;
     // not optional for the DB, but optional for 'updates'

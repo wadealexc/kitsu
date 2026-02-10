@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9feae14f-fb17-4a18-bf5d-7425baa06cd6",
+  "id": "17af09d0-024a-4e0b-aa9d-abccf4340754",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth": {
@@ -243,7 +243,7 @@
           "name": "pinned",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false,
           "default": false
         },
@@ -845,8 +845,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'user'"
+          "autoincrement": false
         },
         "profile_image_url": {
           "name": "profile_image_url",

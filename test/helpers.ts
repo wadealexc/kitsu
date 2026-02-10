@@ -7,10 +7,14 @@ import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as JWT from '../src/routes/jwt.js';
 import * as Users from '../src/db/operations/users.js';
 import * as Auths from '../src/db/operations/auths.js';
+import * as Files from '../src/db/operations/files.js';
+import * as Chats from '../src/db/operations/chats.js';
+import type { FileMeta, FileData, AccessControl, ChatObject } from '../src/routes/types.js';
 import * as schema from '../src/db/schema.js';
 import { databasePath } from '../src/db/client.js';
 import { db } from '../src/db/client.js';
 import type { UserRole } from '../src/routes/types.js';
+import { currentUnixTimestamp } from '../src/db/utils.js';
 
 /**
  * Creates an in-memory SQLite database with the full schema applied.
@@ -85,6 +89,54 @@ export async function createUserWithToken(role: UserRole = 'user', profileImageU
         userId: user.id, 
         token,
         user,
+    };
+}
+
+/**
+ * Creates a minimal FileForm for testing.
+ */
+export function createTestFileForm(
+    filename: string = 'test-file.pdf',
+    meta?: FileMeta,
+    data?: FileData
+): Files.FileForm {
+    return {
+        id: crypto.randomUUID(),
+        filename: filename,
+        path: `${crypto.randomUUID()}_${filename}`,
+        hash: null,
+        meta: meta,
+        data: data,
+    };
+}
+
+/**
+ * Creates a minimal ChatObject for testing.
+ */
+export function createTestChatObject(
+    title: string = 'Test Chat',
+    models: string[] = ['test-model'],
+): ChatObject {
+    return {
+        title: title,
+        models: models,
+        history: {
+            messages: {},
+            currentId: null,
+        },
+        messages: [],
+        timestamp: currentUnixTimestamp(),
+    };
+}
+
+/**
+ * Creates a NewChat for testing.
+ */
+export function createTestChatData(title: string = 'Test Chat', folderId: string | null = null): Chats.NewChat {
+    return {
+        title,
+        chat: createTestChatObject(title),
+        folderId,
     };
 }
 

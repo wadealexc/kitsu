@@ -104,8 +104,8 @@ describe('Database Cascade Deletion', () => {
             );
 
             // Verify chats exist
-            const chatsBefore = await Chats.getChatsByUserId(user.id, {}, db);
-            assert.strictEqual(chatsBefore.total, 3);
+            const chatsBefore = await Chats.getChatsByUserId(user.id, db);
+            assert.strictEqual(chatsBefore.length, 3);
 
             // Delete user
             await Users.deleteUser(user.id, db);
@@ -270,8 +270,8 @@ describe('Database Cascade Deletion', () => {
             const foldersBefore = await Folders.getFoldersByUserId(user.id, db);
             assert.strictEqual(foldersBefore.length, 2);
 
-            const chatsBefore = await Chats.getChatsByUserId(user.id, {}, db);
-            assert.strictEqual(chatsBefore.total, 2);
+            const chatsBefore = await Chats.getChatsByUserId(user.id, db);
+            assert.strictEqual(chatsBefore.length, 2);
 
             const filesBefore = await Files.getFilesByUserId(user.id, {}, db);
             assert.strictEqual(filesBefore.total, 1);
@@ -384,7 +384,7 @@ describe('Database Cascade Deletion', () => {
                 _createNewChatForm('Test Chat'),
                 db
             );
-
+            
             // Associate file with chat
             const chatFileRecords = await Chats.insertChatFiles(
                 chat.id,
@@ -400,8 +400,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(chatFilesBefore.length, 1);
 
             // Delete chat
-            const deleted = await Chats.deleteChat(chat.id, db);
-            assert.strictEqual(deleted, true);
+            await Chats.deleteChat(chat.id, user.id, db);
 
             // Verify chat is gone
             const chatAfter = await Chats.getChatById(chat.id, db);

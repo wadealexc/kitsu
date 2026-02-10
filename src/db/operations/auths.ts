@@ -6,7 +6,7 @@ import { auths, users, validateUsername } from '../schema.js';
 import { type User } from './users.js';
 import { RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
 
-const TABLE = 'auths';
+const TABLE = 'auth';
 
 /* -------------------- CREATE -------------------- */
 

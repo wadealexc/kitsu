@@ -589,7 +589,7 @@ describe('File Routes', () => {
             assert.ok(typeof response.body.updated_at === 'number');
         });
 
-        test('should return file metadata when user is admin', async () => {
+        test('should return 401 when user is admin but not authorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt');
@@ -597,9 +597,9 @@ describe('File Routes', () => {
             const response = await request(app)
                 .get(`/api/v1/files/${file.id}`)
                 .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
+                .expect(401);
 
-            assert.strictEqual(response.body.id, file.id);
+            assert.ok(response.body.detail);
         });
 
         test('should return 404 when file not found', async () => {
@@ -665,7 +665,7 @@ describe('File Routes', () => {
             assert.strictEqual(deletedFile, null);
         });
 
-        test('should delete file when user is admin', async () => {
+        test('should return 401 when user is admin but unauthorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt');
@@ -673,10 +673,11 @@ describe('File Routes', () => {
             await request(app)
                 .delete(`/api/v1/files/${file.id}`)
                 .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
+                .expect(401);
 
-            const deletedFile = await Files.getFileById(file.id, db);
-            assert.strictEqual(deletedFile, null);
+            // Verify file not deleted
+            const existingFile = await Files.getFileById(file.id, db);
+            assert.ok(existingFile);
         });
 
         test('should return 404 when file not found', async () => {
@@ -1077,7 +1078,7 @@ describe('File Routes', () => {
             assert.strictEqual(updatedFile?.data?.content, 'new content');
         });
 
-        test('should update content when user is admin', async () => {
+        test('should return 401 when user is admin but not authorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt', 'old content');
@@ -1086,9 +1087,9 @@ describe('File Routes', () => {
                 .post(`/api/v1/files/${file.id}/data/content/update`)
                 .set('Authorization', `Bearer ${adminToken}`)
                 .send({ content: 'new content' })
-                .expect(200);
+                .expect(401);
 
-            assert.strictEqual(response.body.data.content, 'new content');
+            assert.ok(response.body.detail);
         });
 
         test('should set status to pending after update', async () => {

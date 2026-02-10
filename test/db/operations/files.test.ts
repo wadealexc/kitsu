@@ -1,6 +1,6 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { createTestDatabase, newUserParams, type TestDatabase } from '../../helpers.js';
+import { createTestDatabase, newUserParams, createTestFileForm, type TestDatabase, createTestChatData } from '../../helpers.js';
 import * as Files from '../../../src/db/operations/files.js';
 import * as Users from '../../../src/db/operations/users.js';
 import * as Chats from '../../../src/db/operations/chats.js';
@@ -9,24 +9,6 @@ import type { FileMeta, FileData, AccessControl } from '../../../src/routes/type
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
-
-/**
- * Creates a minimal FileForm for testing.
- */
-function createTestFileForm(
-    filename: string = 'test-file.pdf',
-    meta?: FileMeta,
-    data?: FileData
-): Files.FileForm {
-    return {
-        id: crypto.randomUUID(),
-        filename: filename,
-        path: `${crypto.randomUUID()}_${filename}`,
-        hash: null,
-        meta: meta,
-        data: data,
-    };
-}
 
 /**
  * Create a file with 'createdAt' and 'updatedAt' set to specific values.
@@ -876,22 +858,20 @@ describe('File Operations', () => {
             assert.strictEqual(hasAccess, true);
         });
 
-        test('should grant access to admin user', async () => {
+        test('should deny access to admin user if admin user is not owner', async () => {
             const regularUser = await Users.createUser(newUserParams(), db);
             const file = await Files.createFile(regularUser.id, createTestFileForm(), db);
 
             // userId is admin created in beforeEach
             const hasAccess = await Files.hasFileAccess(file.id, userId, 'read', db);
-
-            assert.strictEqual(hasAccess, true);
+            assert.strictEqual(hasAccess, false);
         });
 
-        test('should deny access to non-owner non-admin', async () => {
+        test('should deny access to non-owner', async () => {
             const user2 = await Users.createUser(newUserParams(), db);
             const file = await Files.createFile(userId, createTestFileForm(), db);
 
             const hasAccess = await Files.hasFileAccess(file.id, user2.id, 'read', db);
-
             assert.strictEqual(hasAccess, false);
         });
 
@@ -940,6 +920,48 @@ describe('File Operations', () => {
 
             const hasAccess = await Files.hasFileAccess(file.id, user2.id, 'write', db);
 
+            assert.strictEqual(hasAccess, false);
+        });
+
+        test('should grant read access to a publicly shared file', async () => {
+            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const user2 = await Users.createUser(newUserParams(), db);
+
+            // File created - owner should have read access, user2 should not
+            let hasAccess = await Files.hasFileAccess(file.id, userId, 'read', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, userId, 'write', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'read', db);
+            assert.strictEqual(hasAccess, false);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'write', db);
+            assert.strictEqual(hasAccess, false);
+
+            // Owner associates file with chat
+            const chat = await Chats.createChat(userId, createTestChatData(), db);
+            await Chats.insertChatFiles(chat.id, null, [file.id], userId, db);
+
+            // access should not change
+            hasAccess = await Files.hasFileAccess(file.id, userId, 'read', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, userId, 'write', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'read', db);
+            assert.strictEqual(hasAccess, false);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'write', db);
+            assert.strictEqual(hasAccess, false);
+
+            // Owner publicly shares chat
+            await Chats.shareChat(chat.id, db);
+
+            // Owner should retain read/write access; and now other users should have read-only access
+            hasAccess = await Files.hasFileAccess(file.id, userId, 'read', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, userId, 'write', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'read', db);
+            assert.strictEqual(hasAccess, true);
+            hasAccess = await Files.hasFileAccess(file.id, user2.id, 'write', db);
             assert.strictEqual(hasAccess, false);
         });
 

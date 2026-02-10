@@ -20,7 +20,7 @@ export const DEFAULT_USER_ROLE: UserRole = 'user';
 export const DEFAULT_USER_IMAGE = '/user.png';
 
 /**
- * The User model stores user profile information, settings, permissions, and metadata. 
+ * 'user' stores user profile information, settings, permissions, and metadata. 
  * It has a 1:1 relationship with auths via the `id` field.
  */
 export const users = sqliteTable('user', {
@@ -67,6 +67,10 @@ export const auths = sqliteTable('auth', {
 
 /* -------------------- CHAT TABLE -------------------- */
 
+/**
+ * The Chat model stores conversation data, including message history, metadata, and sharing information.
+ * It supports multi-user access with folder organization, pinning, archiving, and public sharing capabilities.
+ */
 export const chats = sqliteTable('chat', {
     // Identity
     id: text('id').primaryKey().notNull(),
@@ -82,7 +86,7 @@ export const chats = sqliteTable('chat', {
     folderId: text('folder_id')
         .references(() => folders.id, { onDelete: 'set null' }),
     archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
-    pinned: integer('pinned', { mode: 'boolean' }).default(false),
+    pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
 
     // Metadata
     meta: text('meta', { mode: 'json' }).$type<Record<string, any>>().default({}),
@@ -269,11 +273,6 @@ export function validateUsername(username: string): string {
 }
 
 /* -------------------- TYPE EXPORTS -------------------- */
-
-export type Chat = typeof chats.$inferSelect;
-
-export type ChatFile = typeof chatFiles.$inferSelect;
-export type NewChatFile = typeof chatFiles.$inferInsert;
 
 export type Folder = typeof folders.$inferSelect;
 export type NewFolder = typeof folders.$inferInsert;
