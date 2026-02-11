@@ -6,7 +6,7 @@ import type { UserSettings, UserRole } from '../../routes/types.js';
 import { currentUnixTimestamp } from '../utils.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
-const TABLE = 'users';
+const TABLE = 'user';
 
 /* -------------------- CREATE -------------------- */
 

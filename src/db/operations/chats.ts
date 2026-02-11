@@ -6,7 +6,7 @@ import type { ChatImportForm, ChatObject } from '../../routes/types.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
 import * as Files from './files.js';
 
-const TABLE = 'chat'
+const TABLE = 'chat';
 
 /* -------------------- CREATE -------------------- */
 

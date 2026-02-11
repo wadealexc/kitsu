@@ -53,12 +53,12 @@ CREATE INDEX `idx_chat_folder_id_user_id` ON `chat` (`folder_id`,`user_id`);--> 
 CREATE TABLE `file` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
-	`hash` text,
+	`hash` text NOT NULL,
 	`filename` text NOT NULL,
-	`path` text,
-	`data` text,
-	`meta` text,
-	`access_control` text,
+	`path` text NOT NULL,
+	`data` text NOT NULL,
+	`meta` text NOT NULL,
+	`access_control` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade

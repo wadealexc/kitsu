@@ -180,20 +180,34 @@ describe('Database Cascade Deletion', () => {
 
             // Create multiple files
             const file1 = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document1.pdf',
                     path: '/path/to/doc1.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document1.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
             const file2 = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
-                    filename: 'document2.pdf',
-                    path: '/path/to/doc2.pdf',
+                    userId: user.id,
+                    filename: 'document2.jpeg',
+                    path: '/path/to/doc2.jpeg',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document2.jpeg',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -251,11 +265,18 @@ describe('Database Cascade Deletion', () => {
 
             // Create files
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'important.pdf',
                     path: '/path/to/important.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'important.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -370,11 +391,18 @@ describe('Database Cascade Deletion', () => {
             const user = await Users.createUser(userParams, db);
 
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -424,11 +452,18 @@ describe('Database Cascade Deletion', () => {
             const user = await Users.createUser(userParams, db);
 
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -454,8 +489,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(chatFilesBefore.length, 1);
 
             // Delete file
-            const deleted = await Files.deleteFile(file.id, db);
-            assert.strictEqual(deleted, true);
+            await Files.deleteFile(file.id, db);
 
             // Verify file is gone
             const fileAfter = await Files.getFileById(file.id, db);

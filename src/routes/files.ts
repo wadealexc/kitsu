@@ -1,20 +1,12 @@
-/**
- * File routes - file management for multimodal chat and attachments.
- *
- * Handles file uploads, downloads, content extraction, and lifecycle management.
- * Files are user-scoped with granular access control.
- */
-
 import { Router, type Response } from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import multer from 'multer';
+
 import * as Types from './types.js';
 import { requireAuth, requireAdmin, validateFileId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Files from '../db/operations/files.js';
-import * as Users from '../db/operations/users.js';
-import type { File } from '../db/schema.js';
 import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 import { StorageProvider } from '../storage/provider.js';
 
@@ -66,7 +58,7 @@ const upload = multer({
 
 /**
  * GET /api/v1/files/
- * Access Control: User can only access their own files (admin sees all)
+ * Access Control: User can only access their own files
  *
  * Get all files accessible to the current user.
  *
@@ -87,13 +79,10 @@ router.get('/', requireAuth, async (
 
     const { content } = query.data;
     const userId = req.user!.id;
-    const isAdmin = req.user!.role === 'admin';
 
     try {
         // Admin users see all files, regular users only see their own
-        const files = isAdmin
-            ? await Files.getFiles(db)
-            : (await Files.getFilesByUserId(userId, {}, db)).items;
+        const files = (await Files.getFilesByUserId(userId, {}, db)).items
 
         // Map to FileModelResponse (exclude path and access_control fields)
         const response: Types.FileModelResponse[] = files.map(file => ({
@@ -101,8 +90,9 @@ router.get('/', requireAuth, async (
             user_id: file.userId,
             hash: file.hash,
             filename: file.filename,
+            // TODO - fetch from StorageProvider?
             data: content === false ? null : (file.data),
-            meta: file.meta || {},
+            meta: file.meta,
             created_at: file.createdAt,
             updated_at: file.updatedAt,
         }));
@@ -116,7 +106,7 @@ router.get('/', requireAuth, async (
 
 /**
  * GET /api/v1/files/search
- * Access Control: User can only search their own files (admin sees all)
+ * Access Control: User can only search their own files
  *
  * Search files using filename patterns (wildcards).
  *
@@ -137,12 +127,11 @@ router.get('/search', requireAuth, async (
 
     const { filename, content, skip, limit } = query.data;
     const userId = req.user!.id;
-    const isAdmin = req.user!.role === 'admin';
 
     try {
         // Admin users search all files, regular users only their own
         const files = await Files.searchFiles(
-            isAdmin ? null : userId,
+            userId,
             filename,
             skip,
             limit,
@@ -157,8 +146,9 @@ router.get('/search', requireAuth, async (
             user_id: file.userId,
             hash: file.hash,
             filename: file.filename,
+            // TODO - should we return from the StorageProvider here?
             data: content === false ? null : (file.data),
-            meta: file.meta || {},
+            meta: file.meta,
             created_at: file.createdAt,
             updated_at: file.updatedAt,
         }));
@@ -204,16 +194,16 @@ router.post('/', requireAuth, upload.single('file'), async (
         });
     }
 
-    const { process, process_in_background: processInBackground } = query.data;
+    // const { process, process_in_background: processInBackground } = query.data;
 
     // Validate file exists and has valid extension
-    if (!req.file) return res.status(400).json({ 
-        detail: 'File required' 
+    if (!req.file) return res.status(400).json({
+        detail: 'File required'
     });
 
     // Validate file extension
-    if (!validateFileExtension(req.file.originalname)) return res.status(400).json({ 
-        detail: 'File type not allowed' 
+    if (!validateFileExtension(req.file.originalname)) return res.status(400).json({
+        detail: 'File type not allowed'
     });
 
     // Parse metadata
@@ -234,10 +224,12 @@ router.post('/', requireAuth, upload.single('file'), async (
     const mimeType = req.file.mimetype;
 
     try {
+        // TODO: avoid duplicate uploads with hash field
+        // - use hash as upload file name
+        // - uploadFile checks if file exists before writing
+        // - when deleting a file, check if the hash is in use by
+        //   any other file records before clearing it from StorageProvider
         const file = await db.transaction(async (tx) => {
-            // Generate file ID
-            const fileId = crypto.randomUUID();
-
             // Calculate hash
             const hash = crypto.createHash('sha256')
                 .update(fileBuffer)
@@ -245,21 +237,20 @@ router.post('/', requireAuth, upload.single('file'), async (
 
             // Upload to storage
             const uploadPath = await StorageProvider.uploadFile(
-                fileId,
                 fileBuffer,
                 metadata
             );
 
             // Create file record
-            const newFile = await Files.createFile(userId, {
-                id: fileId,
+            const newFile = await Files.createFile({
+                userId: userId,
                 filename: originalFilename,
                 path: uploadPath,
                 hash: hash,
                 data: { status: 'completed' },
                 meta: {
                     name: originalFilename,
-                    content_type: mimeType,
+                    contentType: mimeType,
                     size: fileBuffer.length,
                     data: metadata,
                 },
@@ -284,7 +275,7 @@ router.post('/', requireAuth, upload.single('file'), async (
             hash: file.hash,
             filename: file.filename,
             data: file.data,
-            meta: file.meta || {},
+            meta: file.meta,
             created_at: file.createdAt,
             updated_at: file.updatedAt,
         };
@@ -320,19 +311,10 @@ router.delete('/all', requireAdmin, async (
 
             // Delete physical files asynchronously
             allFiles.forEach(file => {
-                if (file.path) {
-                    StorageProvider.deleteFile(file.path).catch(err => {
-                        console.error(`Failed to delete file ${file.id}:`, err);
-                    });
-                }
+                StorageProvider.deleteFile(file.path).catch(err => {
+                    console.error(`Failed to delete file ${file.id}:`, err);
+                });
             });
-
-            // TODO: Delete all vector database collections
-            // for (const file of allFiles) {
-            //     VectorDB.deleteCollection(`file-${file.id}`).catch(err => {
-            //         console.error(`Failed to delete collection for ${file.id}:`, err);
-            //     });
-            // }
         });
 
         return res.json({ message: 'All files deleted successfully' });
@@ -346,7 +328,7 @@ router.delete('/all', requireAdmin, async (
 
 /**
  * GET /api/v1/files/:file_id
- * Access Control: User owns file, is admin, or has access via knowledge base/channel/shared chat
+ * Access Control: User owns or has read access to file
  *
  * Get file metadata by ID.
  *
@@ -499,7 +481,7 @@ router.get('/:file_id/content', validateFileId, requireAuth, async (
         const fileBuffer = await StorageProvider.downloadFile(file.path);
 
         // Set content type
-        const contentType = file.meta?.content_type
+        const contentType = file.meta?.contentType
             || 'application/octet-stream';
         res.setHeader('Content-Type', contentType);
 
@@ -560,7 +542,7 @@ router.get('/:file_id/content/:file_name', validateFileId, requireAuth, async (
                 const fileBuffer = await StorageProvider.downloadFile(file.path);
 
                 // Use custom filename from path parameter
-                const contentType = file.meta?.content_type
+                const contentType = file.meta?.contentType
                     || 'application/octet-stream';
                 res.setHeader('Content-Type', contentType);
 
@@ -604,59 +586,6 @@ router.get('/:file_id/content/:file_name', validateFileId, requireAuth, async (
         return res.status(500).json({ detail: 'Internal server error' });
     }
 });
-
-/**
- * GET /api/v1/files/:file_id/content/html
- * Access Control: Admin-owned files only
- *
- * Get file content as raw HTML.
- *
- * @param {Types.FileIdParams} - path parameters with file ID
- * @returns Raw file content
- */
-// TODO - not needed for now
-// router.get('/:file_id/content/html', validateFileId, requireAuth, async (
-//     req: Types.TypedRequest<Types.FileIdParams>,
-//     res: Response
-// ) => {
-//     const { file_id: fileId } = req.params;
-//     const userId = req.user!.id;
-
-//     try {
-//         // Get file
-//         const file = await Files.getFileById(fileId, db);
-//         if (!file) throw NotFoundError('File not found');
-
-//         // Check if file is admin-owned
-//         const owner = await Users.getUserById(file.userId, db);
-//         if (!owner || owner.role !== 'admin') throw UnauthorizedError('User does not have access to file');
-
-//         // Check read access
-//         const hasReadAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
-//         if (!hasReadAccess) throw UnauthorizedError('User does not have access to file');
-
-//         // Check physical file exists
-//         if (!file.path) throw NotFoundError('File not found');
-
-//         // Download and return raw file content
-//         const fileBuffer = await StorageProvider.downloadFile(file.path);
-
-//         // Return raw content (no Content-Type or Content-Disposition headers)
-//         return res.status(200).send(fileBuffer);
-//     } catch (error) {
-//         if (error instanceof HttpError) {
-//             return res.status(error.statusCode).json({ detail: error.message });
-//         }
-
-//         // Handle validation errors from operations
-//         if (error instanceof Error) {
-//             return res.status(400).json({ detail: error.message });
-//         }
-
-//         console.error('Get HTML content error:', error);
-//         return res.status(500).json({ detail: 'Internal server error' });
-//     }
-// });
 
 /* -------------------- FILE DATA & CONTENT MANAGEMENT -------------------- */
 
@@ -707,9 +636,9 @@ router.get('/:file_id/data/content', validateFileId, requireAuth, async (
 
 /**
  * POST /api/v1/files/:file_id/data/content/update
- * Access Control: Write access required (owner, admin, or write access to associated resources)
+ * Access Control: Write access to file required
  *
- * Update file's extracted content and reprocess.
+ * Update file's extracted content
  *
  * @param {Types.FileIdParams} - path parameters with file ID
  * @body {Types.ContentForm} - new content
@@ -733,7 +662,7 @@ router.post('/:file_id/data/content/update', validateFileId, requireAuth, async 
 
     try {
         const updatedFile = await db.transaction(async (tx) => {
-            // Get file
+
             const file = await Files.getFileById(fileId, tx);
             if (!file) throw NotFoundError('File not found');
 
@@ -742,21 +671,17 @@ router.post('/:file_id/data/content/update', validateFileId, requireAuth, async 
             if (!hasWriteAccess) throw UnauthorizedError('User does not have access to file');
 
             // Update file data
+            // TODO - this is a bit wonky; investigate frontend use and whether this is needed.
             const updated = await Files.updateFileData(fileId, {
                 content: content,
-                status: 'pending',  // Mark for reprocessing
+                status: 'completed',
             }, tx);
 
             // TODO: Trigger reprocessing
             // processFileInBackground(fileId);
 
-            // TODO: Update vector database
-            // VectorDB.updateCollection(`file-${fileId}`, content);
-
             return updated;
         });
-
-        if (!updatedFile) throw NotFoundError('File not found');
 
         // Map to FileModelResponse
         const response: Types.FileModelResponse = {
@@ -765,7 +690,7 @@ router.post('/:file_id/data/content/update', validateFileId, requireAuth, async 
             hash: updatedFile.hash,
             filename: updatedFile.filename,
             data: updatedFile.data,
-            meta: updatedFile.meta || {},
+            meta: updatedFile.meta,
             created_at: updatedFile.createdAt,
             updated_at: updatedFile.updatedAt,
         };
@@ -842,6 +767,7 @@ router.get('/:file_id/process/status', validateFileId, requireAuth, async (
         const pollInterval = 1000; // 1 second
         const startTime = Date.now();
 
+        // TODO - hmm. Maybe nuke it?
         const poll = async () => {
             // Check timeout
             if (Date.now() - startTime > maxDuration) {

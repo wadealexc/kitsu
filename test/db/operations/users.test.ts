@@ -204,7 +204,7 @@ describe('updateUser', () => {
     test('throws for non-existent user', async () => {
         await assert.rejects(
             async () => await Users.updateUser('non-existent', { role: 'admin' }, db),
-            { message: `users record with id 'non-existent' not found` }
+            { message: `user record with id 'non-existent' not found` }
         );
     });
 });
@@ -262,7 +262,7 @@ describe('deleteUser', () => {
     test('throws for non-existent user', async () => {
         await assert.rejects(
             async () => await Users.deleteUser('non-existent', db), 
-            { message: `users record with id 'non-existent' not found` }
+            { message: `user record with id 'non-existent' not found` }
         );
     });
 });

@@ -433,12 +433,12 @@ export type UserListQuery = z.infer<typeof UserListQuerySchema>;
 // Access control structure (read/write permissions)
 export const AccessControlSchema = z.object({
     read: z.object({
-        user_ids: z.array(UserIdSchema).optional(),
-    }).passthrough().optional(),
+        user_ids: z.array(UserIdSchema),
+    }).optional(),
     write: z.object({
-        user_ids: z.array(UserIdSchema).optional(),
-    }).passthrough().optional(),
-}).passthrough().nullable();
+        user_ids: z.array(UserIdSchema),
+    }).optional(),
+});
 export type AccessControl = z.infer<typeof AccessControlSchema>;
 
 // Model parameters
@@ -477,7 +477,7 @@ export const ModelResponseSchema = z.object({
     name: z.string(),
     params: ModelParamsSchema,
     meta: ModelMetaSchema,
-    access_control: AccessControlSchema,
+    access_control: AccessControlSchema.optional(),
     is_active: z.boolean(),
     updated_at: z.number(),
     created_at: z.number(),
@@ -982,10 +982,10 @@ export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;
 
 // File metadata structure
 export const FileMetaSchema = z.object({
-    name: z.string().optional(),
-    content_type: z.string().optional(),
-    size: z.number().optional(),
-    data: z.record(z.string(), z.any()).optional(),
+    name: z.string(),
+    contentType: z.string(),
+    size: z.number(),
+    data: z.record(z.string(), z.any()),
 });
 export type FileMeta = z.infer<typeof FileMetaSchema>;
 
@@ -994,7 +994,7 @@ export const FileDataSchema = z.object({
     status: z.enum(['pending', 'completed', 'failed']).optional(),
     error: z.string().optional(),
     content: z.string().optional(),
-}).passthrough();  // Allow additional properties
+});
 export type FileData = z.infer<typeof FileDataSchema>;
 
 // Full file model (includes internal path field)
@@ -1026,7 +1026,7 @@ export const FileModelResponseSchema = z.object({
 export type FileModelResponse = z.infer<typeof FileModelResponseSchema>;
 
 // Upload file form (multipart form-data)
-// Note: Actual file upload validation happens at Express middleware level (e.g., multer)
+// Note: Actual file upload validation happens in express middleware, via multer
 export const UploadFileFormSchema = z.object({
     file: z.any(),
     metadata: z.union([

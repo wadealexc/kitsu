@@ -1,10 +1,3 @@
-/**
- * Chat Completion API Router
- *
- * Provides the main chat completion endpoint for AI interactions.
- * OpenAI-compatible with OpenWebUI extensions.
- */
-
 import { Router, type Response, type NextFunction } from 'express';
 import chalk from 'chalk';
 

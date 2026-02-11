@@ -96,16 +96,22 @@ export async function createUserWithToken(role: UserRole = 'user', profileImageU
  * Creates a minimal FileForm for testing.
  */
 export function createTestFileForm(
+    userId: string,
     filename: string = 'test-file.pdf',
     meta?: FileMeta,
-    data?: FileData
-): Files.FileForm {
+    data: FileData = { status: 'completed' },
+): Files.NewFile {
     return {
-        id: crypto.randomUUID(),
+        userId: userId,
         filename: filename,
         path: `${crypto.randomUUID()}_${filename}`,
-        hash: null,
-        meta: meta,
+        hash: '',
+        meta: meta || {
+            name: filename,
+            contentType: '',
+            size: 0,
+            data: {},
+        },
         data: data,
     };
 }

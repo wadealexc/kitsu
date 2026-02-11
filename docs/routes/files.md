@@ -1,7 +1,5 @@
 # Files API Specification
 
-**Note:** This implementation differs from OpenWebUI by using `:file_id` instead of `:id` in path parameters for consistency and clarity. This makes the API more explicit and easier to understand when working with file-related routes.
-
 ## Endpoints
 
 **Context:** Core file management - upload, download, and process files for multimodal chat and attachments.

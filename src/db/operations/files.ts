@@ -1,93 +1,148 @@
 import { eq, desc, asc, like, inArray, sql, and } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '../client.js';
-import { files, users, chatFiles, type File, type NewFile } from '../schema.js';
+import { files, chatFiles } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
 import type { FileMeta, FileData, AccessControl } from '../../routes/types.js';
 import * as Chats from './chats.js';
+import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
-/* -------------------- TYPES -------------------- */
+const TABLE = 'file';
 
-/**
- * Form data for creating a file.
- */
-export type FileForm = {
-    id: string;
-    filename: string;
-    path: string | null;
-    hash?: string | null;
-    data?: FileData;
-    meta?: FileMeta;
-    accessControl?: AccessControl;
-};
+/* -------------------- CREATE -------------------- */
 
-/**
- * Form data for updating a file.
- */
-export type FileUpdateForm = {
-    hash?: string;
-    data?: FileData;
-    meta?: FileMeta;
-};
-
-/**
- * Lightweight file metadata (excludes content).
- */
-export type FileMetadata = {
-    id: string;
-    hash: string | null;
-    meta: FileMeta | null;
-    createdAt: number;
-    updatedAt: number;
-};
-
-/**
- * Pagination options.
- */
-export type PaginationOptions = {
-    skip?: number;
-    limit?: number;
-    orderBy?: 'createdAt' | 'updatedAt';
-    direction?: 'asc' | 'desc';
-};
-
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+export type File = typeof files.$inferSelect;
+export type NewFile = Omit<
+    typeof files.$inferInsert,
+    'id' | 'createdAt' | 'updatedAt' | 'accessControl'
+>;
 
 /**
  * Creates a new file record after upload.
- *
- * Required fields: userId, data.id, data.filename, data.path
- * Auto-generated: createdAt, updatedAt
+ * @note Files are created with empty accessControl. By default, this grants the owner
+ * sole read/write permissions. See `hasFileAccess`.
+ * 
+ * @param data
+ * @param txOrDb
+ * 
+ * @returns the new file record
+ * 
+ * @throws if record creation fails
  */
 export async function createFile(
-    userId: string,
-    data: FileForm,
+    data: NewFile,
     txOrDb: DbOrTx = db
 ): Promise<File> {
+    const fileId = crypto.randomUUID();
     const now = currentUnixTimestamp();
 
     const [file] = await txOrDb
         .insert(files)
         .values({
-            id: data.id,
-            userId: userId,
+            id: fileId,
+            userId: data.userId,
             filename: data.filename,
             path: data.path,
             hash: data.hash,
             data: data.data,
             meta: data.meta,
-            accessControl: data.accessControl,
+            accessControl: {},
             createdAt: now,
             updatedAt: now,
         })
         .returning();
 
-    if (!file) throw new Error('Error creating file record');
+    if (!file) throw new RecordCreationError('Error creating file record');
     return file;
 }
 
+/* -------------------- UPDATE -------------------- */
+
 /**
- * Retrieves full file by ID, including all metadata and internal path.
+ * Updates only the data field (processing status, content, errors)
+ * TODO - not 100% sure this is needed.
+ * 
+ * @param id - file id
+ * @param data
+ * @param txOrDb
+ * 
+ * @returns the updated file record
+ * 
+ * @throws if the specified file cannot be found
+ * @throws if the file update fails
+ */
+export async function updateFileData(
+    id: string,
+    data: Partial<FileData>,
+    txOrDb: DbOrTx = db
+): Promise<File> {
+    const existing = await getFileById(id, txOrDb);
+    if (!existing) throw new RecordNotFoundError(TABLE, id);
+
+    const now = currentUnixTimestamp();
+
+    // Merge data field
+    const mergedData = { ...existing.data, ...data };
+
+    const [updated] = await txOrDb
+        .update(files)
+        .set({
+            data: mergedData,
+            updatedAt: now,
+        })
+        .where(eq(files.id, id))
+        .returning();
+
+    if (!updated) throw new DatabaseError(`file update failed`);
+    return updated;
+}
+
+/* -------------------- DELETE -------------------- */
+
+/**
+ * Deletes a file record. Corresponding chat_file records are deleted by cascade.
+ * @note this does NOT delete the file from the storage provider; that is the caller's
+ * responsibility.
+ * 
+ * @param id - file id
+ * @param txOrDb
+ * 
+ * @throws if deletion fails
+ */
+export async function deleteFile(
+    id: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    const result = await txOrDb
+        .delete(files)
+        .where(eq(files.id, id));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/**
+ * Deletes all file records from the database. Corresponding chat_file records are
+ * deleted by cascade.
+ * @note this does NOT delete files from the storage provider; that is the caller's
+ * responsibility.
+ * 
+ * @param txOrDb
+ */
+export async function deleteAllFiles(
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    await txOrDb.delete(files);
+}
+
+/* -------------------- READ -------------------- */
+
+/**
+ * Retrieves a complete file record
+ * 
+ * @param id
+ * @param txOrDb
+ * 
+ * @returns the file record (or null, if not found)
  */
 export async function getFileById(
     id: string,
@@ -103,52 +158,12 @@ export async function getFileById(
 }
 
 /**
- * Retrieves file by ID, verifying ownership.
- * Used for ownership verification before operations.
- */
-export async function getFileByIdAndUserId(
-    id: string,
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<File | null> {
-    const [file] = await txOrDb
-        .select()
-        .from(files)
-        .where(and(
-            eq(files.id, id),
-            eq(files.userId, userId)
-        ))
-        .limit(1);
-
-    return file || null;
-}
-
-/**
- * Retrieves lightweight file metadata without full content.
- * Faster queries when content not needed (e.g., file listing).
- */
-export async function getFileMetadataById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<FileMetadata | null> {
-    const [file] = await txOrDb
-        .select({
-            id: files.id,
-            hash: files.hash,
-            meta: files.meta,
-            createdAt: files.createdAt,
-            updatedAt: files.updatedAt,
-        })
-        .from(files)
-        .where(eq(files.id, id))
-        .limit(1);
-
-    return file || null;
-}
-
-/**
- * Retrieves multiple files by ID list.
- * Returns array ordered by updatedAt DESC.
+ * Retrieve complete file records for each specified file id
+ * 
+ * @param ids - list of file ids
+ * @param txOrDb
+ * 
+ * @returns a list of file records
  */
 export async function getFilesByIds(
     ids: string[],
@@ -175,6 +190,16 @@ export async function getFiles(
         .from(files)
         .orderBy(desc(files.updatedAt));
 }
+
+/**
+ * Pagination options.
+ */
+export type PaginationOptions = {
+    skip?: number;
+    limit?: number;
+    orderBy?: 'createdAt' | 'updatedAt';
+    direction?: 'asc' | 'desc';
+};
 
 /**
  * Retrieves all files for a specific user with pagination and sorting.
@@ -215,159 +240,21 @@ export async function getFilesByUserId(
     return { items, total };
 }
 
-/**
- * Updates file metadata and data fields.
- * Performs merge on JSON fields (doesn't overwrite entirely).
- * Auto-updated: updatedAt timestamp.
- */
-export async function updateFile(
-    id: string,
-    updates: FileUpdateForm,
-    txOrDb: DbOrTx = db
-): Promise<File | null> {
-    const existing = await getFileById(id, txOrDb);
-    if (!existing) return null;
-
-    const now = currentUnixTimestamp();
-
-    // Merge JSON fields
-    const mergedData = updates.data
-        ? { ...existing.data, ...updates.data }
-        : existing.data;
-
-    const mergedMeta = updates.meta
-        ? { ...existing.meta, ...updates.meta }
-        : existing.meta;
-
-    const [updated] = await txOrDb
-        .update(files)
-        .set({
-            hash: updates.hash !== undefined ? updates.hash : existing.hash,
-            data: mergedData,
-            meta: mergedMeta,
-            updatedAt: now,
-        })
-        .where(eq(files.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Updates only the data field (processing status, content, errors).
- * Used for setting processing status during file processing pipeline.
- */
-export async function updateFileData(
-    id: string,
-    data: Partial<FileData>,
-    txOrDb: DbOrTx = db
-): Promise<File | null> {
-    const existing = await getFileById(id, txOrDb);
-    if (!existing) return null;
-
-    const now = currentUnixTimestamp();
-
-    // Merge data field
-    const mergedData = { ...existing.data, ...data };
-
-    const [updated] = await txOrDb
-        .update(files)
-        .set({
-            data: mergedData,
-            updatedAt: now,
-        })
-        .where(eq(files.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Updates only the meta field (name, contentType, size, custom data).
- * Used for updating file metadata after processing or user edits.
- */
-export async function updateFileMetadata(
-    id: string,
-    meta: Partial<FileMeta>,
-    txOrDb: DbOrTx = db
-): Promise<File | null> {
-    const existing = await getFileById(id, txOrDb);
-    if (!existing) return null;
-
-    const now = currentUnixTimestamp();
-
-    // Merge meta field
-    const mergedMeta = { ...existing.meta, ...meta };
-
-    const [updated] = await txOrDb
-        .update(files)
-        .set({
-            meta: mergedMeta,
-            updatedAt: now,
-        })
-        .where(eq(files.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Hard deletes a file record.
- *
- * Cascade: chat_file records with this fileId are automatically deleted (FK ON DELETE CASCADE).
- *
- * Manual cleanup required in application code:
- * - Physical file at {DATA_DIR}/uploads/{path}
- * - Vector database collection named file-{id}
- */
-export async function deleteFile(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(files)
-        .where(eq(files.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Admin only: Deletes all file records from the database.
- *
- * Cascade: All junction table records are automatically deleted (FK ON DELETE CASCADE).
- *
- * Manual cleanup required in application code:
- * - All physical files in {DATA_DIR}/uploads/
- * - All vector database collections
- */
-export async function deleteAllFiles(
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(files);
-
-    return result.rowsAffected > 0;
-}
-
 /* -------------------- SEARCH & FILTERING -------------------- */
 
 /**
- * Searches files by filename with glob pattern matching.
- *
- * Parameters:
- * - userId: Optional - filter by owner. If null, searches all files (admin).
- * - filename: Glob pattern - * matches any, ? matches single char.
- * - skip: Pagination offset (default: 0).
- * - limit: Page size (default: 100, max: 1000).
- *
- * Behavior:
- * - Case-insensitive SQL LIKE matching.
- * - Converts glob patterns: * → %, ? → _.
- * - Returns empty array if no matches.
- * - Ordered by updatedAt DESC.
+ * Search a user's files by filename with glob pattern matching. Orders results
+ * by updatedAt DESC.
+ * 
+ * @param userId - the user whose files will be searched
+ * @param filename - Glob pattern: * matches any, ? matches one char
+ * @param skip - pagination offset
+ * @param limit - page size
+ * 
+ * @returns a list of file records matching the search
  */
 export async function searchFiles(
-    userId: string | null,
+    userId: string,
     filename: string,
     skip: number = 0,
     limit: number = 100,
@@ -379,16 +266,13 @@ export async function searchFiles(
         .replace(/\?/g, '_');
 
     // Build where conditions
-    const conditions = [like(files.filename, pattern)];
-    if (userId !== null) {
-        conditions.push(eq(files.userId, userId));
-    }
-
-    const whereClause = and(...conditions);
+    const whereClause = and(
+        like(files.filename, pattern),
+        eq(files.userId, userId)
+    );
 
     // Enforce max limit
     const effectiveLimit = Math.min(limit, 1000);
-
     return await txOrDb
         .select()
         .from(files)
@@ -427,13 +311,11 @@ export async function hasFileAccess(
     if (file.userId === userId) return true;
 
     // 2. Explicit permission in accessControl
-    if (file.accessControl) {
-        const accessLevel = accessType === 'read'
-            ? file.accessControl.read 
-            : file.accessControl.write;
+    const accessLevel = accessType === 'read'
+        ? file.accessControl.read
+        : file.accessControl.write;
 
-        if (accessLevel && accessLevel.user_ids?.includes(userId)) return true;
-    }
+    if (accessLevel && accessLevel.user_ids.includes(userId)) return true;
 
     // At this point, if we're checking for 'write' access, that's a no.
     if (accessType === 'write') return false;
@@ -447,12 +329,20 @@ export async function hasFileAccess(
 
 /**
  * Updates file's granular access control permissions.
+ * 
+ * @param id - file id
+ * @param accessControl - the new permissions
+ * @param txOrDb
+ * 
+ * @returns the updated file record
+ * 
+ * @throws if the update fails
  */
 export async function updateFileAccessControl(
     id: string,
     accessControl: AccessControl,
     txOrDb: DbOrTx = db
-): Promise<File | null> {
+): Promise<File> {
     const now = currentUnixTimestamp();
 
     const [updated] = await txOrDb
@@ -464,5 +354,6 @@ export async function updateFileAccessControl(
         .where(eq(files.id, id))
         .returning();
 
-    return updated || null;
+    if (!updated) throw new RecordNotFoundError(TABLE, id);
+    return updated;
 }

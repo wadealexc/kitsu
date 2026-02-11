@@ -17,7 +17,7 @@ function createModelForm(overrides?: Partial<ModelForm>): ModelForm {
         base_model_id: overrides?.base_model_id !== undefined ? overrides.base_model_id : null,
         params: overrides?.params || {},
         meta: overrides?.meta || {},
-        access_control: overrides?.access_control !== undefined ? overrides.access_control : null,
+        access_control: overrides?.access_control,
         is_active: overrides?.is_active !== undefined ? overrides.is_active : true,
     };
 }
@@ -635,7 +635,7 @@ describe('searchModels', () => {
             id: 'user2-public',
             name: 'User2 Public Model',
             base_model_id: 'base-gpt4',
-            access_control: null,
+            access_control: {},
         });
 
         // Create custom models for user2 (private)
@@ -849,7 +849,7 @@ describe('getModelsByUserId', () => {
         await createTestModel(db, user2.id, {
             id: 'public-model',
             base_model_id: 'base',
-            access_control: null,
+            access_control: {},
         });
 
         // Create private models (no access for user1)
@@ -1241,8 +1241,8 @@ describe('hasAccess', () => {
 
     test('handles undefined user_ids', () => {
         const accessControl: AccessControl = {
-            read: {},
-            write: {},
+            read: { user_ids: [] },
+            write: { user_ids: [] },
         };
 
         const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');

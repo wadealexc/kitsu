@@ -697,8 +697,8 @@ describe('Chat Operations', () => {
     describe('insertChatFiles', () => {
         it('should associate files with chat', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-            const file1 = await Files.createFile(userId, createTestFileForm(), db);
-            const file2 = await Files.createFile(userId, createTestFileForm(), db);
+            const file1 = await Files.createFile(createTestFileForm(userId), db);
+            const file2 = await Files.createFile(createTestFileForm(userId), db);
 
             const cfs = await Chats.insertChatFiles(chat.id, null, [file1.id, file2.id], userId, db);
 
@@ -710,7 +710,7 @@ describe('Chat Operations', () => {
         it('should associate files with specific message', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
             const messageId = crypto.randomUUID();
-            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const file = await Files.createFile(createTestFileForm(userId), db);
 
             const cfs = await Chats.insertChatFiles(chat.id, messageId, [file.id], userId, db);
 
@@ -720,7 +720,7 @@ describe('Chat Operations', () => {
 
         it('should prevent duplicate file associations', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const file = await Files.createFile(createTestFileForm(userId), db);
 
             let cfs = await Chats.insertChatFiles(chat.id, null, [file.id], userId, db);
             assert.strictEqual(cfs.length, 1);
@@ -741,7 +741,7 @@ describe('Chat Operations', () => {
 
         it('should throw if attempting to insert a file the user does not own', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
-            const otherUserFile = await Files.createFile(otherUser.id, createTestFileForm(), db);
+            const otherUserFile = await Files.createFile(createTestFileForm(otherUser.id), db);
             
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
 
@@ -757,8 +757,8 @@ describe('Chat Operations', () => {
         it('should retrieve files for specific message', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
             const messageId = crypto.randomUUID();
-            const file1 = await Files.createFile(userId, createTestFileForm(), db);
-            const file2 = await Files.createFile(userId, createTestFileForm(), db);
+            const file1 = await Files.createFile(createTestFileForm(userId), db);
+            const file2 = await Files.createFile(createTestFileForm(userId), db);
 
             await Chats.insertChatFiles(chat.id, messageId, [file1.id, file2.id], userId, db);
 
@@ -779,8 +779,8 @@ describe('Chat Operations', () => {
         it('should return files sorted by createdAt ascending', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
             const messageId = crypto.randomUUID();
-            const file1 = await Files.createFile(userId, createTestFileForm(), db);
-            const file2 = await Files.createFile(userId, createTestFileForm(), db);
+            const file1 = await Files.createFile(createTestFileForm(userId), db);
+            const file2 = await Files.createFile(createTestFileForm(userId), db);
 
             // Manually insert old file
             const now = currentUnixTimestamp();
@@ -806,7 +806,7 @@ describe('Chat Operations', () => {
     describe('getSharedChatsByFileId', () => {
         it('should retrieve shared chats using specific file', async () => {
             const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const file = await Files.createFile(createTestFileForm(userId), db);
             await Chats.insertChatFiles(chat.id, null, [file.id], userId, db);
             await Chats.shareChat(chat.id, db);
 
@@ -818,7 +818,7 @@ describe('Chat Operations', () => {
         it('should only return chats with shareId set', async () => {
             const chat1 = await Chats.createChat(userId, createTestChatData('Shared Chat'), db);
             const chat2 = await Chats.createChat(userId, createTestChatData('Private Chat'), db);
-            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const file = await Files.createFile(createTestFileForm(userId), db);
 
             await Chats.insertChatFiles(chat1.id, null, [file.id], userId, db);
             await Chats.insertChatFiles(chat2.id, null, [file.id], userId, db);
@@ -832,7 +832,7 @@ describe('Chat Operations', () => {
         });
 
         it('should return empty array if file not used', async () => {
-            const file = await Files.createFile(userId, createTestFileForm(), db);
+            const file = await Files.createFile(createTestFileForm(userId), db);
 
             const sharedChats = await Chats.getSharedChatsByFileId(file.id, db);
             assert.strictEqual(sharedChats.length, 0);

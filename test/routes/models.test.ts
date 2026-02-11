@@ -10,6 +10,7 @@ import * as schema from '../../src/db/schema.js';
 import * as Models from '../../src/db/operations/models.js';
 import { MockLlama } from '../mockLlama.js';
 import modelsRouter from '../../src/routes/models.js';
+import type { ModelForm, SyncModelsForm } from '../../src/routes/types.js';
 
 /* -------------------- TEST SETUP -------------------- */
 
@@ -339,7 +340,7 @@ describe('POST /api/v1/models/create', () => {
     test('should create custom model with valid data', async () => {
         const { userId, token } = await createUserWithToken('user');
 
-        const modelData = {
+        const modelData: ModelForm = {
             id: 'test-custom-model',
             name: 'Test Custom Model',
             base_model_id: 'qwen3-vl-30b',
@@ -349,7 +350,6 @@ describe('POST /api/v1/models/create', () => {
                 description: 'Test description',
                 capabilities: null,
             },
-            access_control: null,
             is_active: true,
         };
 
@@ -997,7 +997,7 @@ describe('POST /api/v1/models/sync', () => {
         // Create initial model
         await createCustomModel(userId, { id: 'existing-model' });
 
-        const syncData = {
+        const syncData: SyncModelsForm = {
             models: [
                 {
                     id: 'existing-model',
@@ -1006,7 +1006,6 @@ describe('POST /api/v1/models/sync', () => {
                     name: 'Updated Existing Model',
                     params: { temperature: 0.8 },
                     meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
                     is_active: true,
                     created_at: 0,
                     updated_at: 0,
@@ -1018,7 +1017,6 @@ describe('POST /api/v1/models/sync', () => {
                     name: 'New Model',
                     params: {},
                     meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
                     is_active: true,
                     created_at: 0,
                     updated_at: 0,
@@ -1051,7 +1049,7 @@ describe('POST /api/v1/models/sync', () => {
         await createCustomModel(userId, { id: 'to-be-deleted' });
         await createCustomModel(userId, { id: 'to-be-kept' });
 
-        const syncData = {
+        const syncData: SyncModelsForm = {
             models: [
                 {
                     id: 'to-be-kept',
@@ -1060,7 +1058,6 @@ describe('POST /api/v1/models/sync', () => {
                     name: 'Kept Model',
                     params: {},
                     meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
                     is_active: true,
                     created_at: 0,
                     updated_at: 0,
@@ -1086,7 +1083,7 @@ describe('POST /api/v1/models/sync', () => {
     test('should fail when base_model_id is missing', async () => {
         const { userId, token } = await createUserWithToken('admin');
 
-        const syncData = {
+        const syncData: SyncModelsForm = {
             models: [
                 {
                     id: 'invalid-model',
@@ -1095,7 +1092,6 @@ describe('POST /api/v1/models/sync', () => {
                     name: 'Invalid Model',
                     params: {},
                     meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
                     is_active: true,
                     created_at: 0,
                     updated_at: 0,
@@ -1116,7 +1112,7 @@ describe('POST /api/v1/models/sync', () => {
     test('should fail when base_model_id does not exist in LlamaManager', async () => {
         const { userId, token } = await createUserWithToken('admin');
 
-        const syncData = {
+        const syncData: SyncModelsForm = {
             models: [
                 {
                     id: 'invalid-model',
@@ -1125,7 +1121,6 @@ describe('POST /api/v1/models/sync', () => {
                     name: 'Invalid Model',
                     params: {},
                     meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
                     is_active: true,
                     created_at: 0,
                     updated_at: 0,

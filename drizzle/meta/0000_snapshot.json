@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "17af09d0-024a-4e0b-aa9d-abccf4340754",
+  "id": "8e1bde42-4eeb-4f89-98cc-9fff0183abae",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth": {
@@ -406,7 +406,7 @@
           "name": "hash",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "filename": {
@@ -420,28 +420,28 @@
           "name": "path",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "data": {
           "name": "data",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "meta": {
           "name": "meta",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "access_control": {
           "name": "access_control",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "created_at": {

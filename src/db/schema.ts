@@ -20,8 +20,9 @@ export const DEFAULT_USER_ROLE: UserRole = 'user';
 export const DEFAULT_USER_IMAGE = '/user.png';
 
 /**
- * 'user' stores user profile information, settings, permissions, and metadata. 
- * It has a 1:1 relationship with auths via the `id` field.
+ * The user table stores user profile information, settings, permissions, and metadata. 
+ * It is the root table for a user; deleting a user from this table will cascade
+ * deletion to their auth, chats, files, folders, etc.
  */
 export const users = sqliteTable('user', {
     // Identity
@@ -51,7 +52,7 @@ export const users = sqliteTable('user', {
 /* -------------------- AUTH TABLE -------------------- */
 
 /**
- * 'auth' stores authentication credentials (username and password) for users. 
+ * The auth table stores authentication credentials (username and password) for users. 
  * It has a 1:1 relationship with users via the `id` field.
  */
 export const auths = sqliteTable('auth', {
@@ -68,8 +69,7 @@ export const auths = sqliteTable('auth', {
 /* -------------------- CHAT TABLE -------------------- */
 
 /**
- * The Chat model stores conversation data, including message history, metadata, and sharing information.
- * It supports multi-user access with folder organization, pinning, archiving, and public sharing capabilities.
+ * The chat table stores conversation data, including message history, metadata, and sharing information.
  */
 export const chats = sqliteTable('chat', {
     // Identity
@@ -110,6 +110,12 @@ export const chats = sqliteTable('chat', {
 
 /* -------------------- CHAT FILE TABLE -------------------- */
 
+/**
+ * The chat file table is used to associate files with specific chats,
+ * mostly used to grant read permissions to files included in publicly-shared chats
+ * 
+ * TODO - user cascade deletion does not clean up actual uploaded files
+ */
 export const chatFiles = sqliteTable('chat_file', {
     // Identity
     id: text('id').primaryKey().notNull(),
@@ -170,6 +176,17 @@ export const folders = sqliteTable('folder', {
 
 /* -------------------- FILE TABLE -------------------- */
 
+/**
+ * The file table stores uploaded file metadata with processing status 
+ * and content extraction results. 
+ * 
+ * **File content is stored on the local filesystem** (not in the database), 
+ * while the database contains metadata, paths, and processing state. 
+ * 
+ * Files are user-scoped with granular access control. 
+ * 
+ * Files relate to chats through the `chat_file` junction table.
+ */
 export const files = sqliteTable('file', {
     // Identity
     id: text('id').primaryKey().notNull(),
@@ -178,14 +195,14 @@ export const files = sqliteTable('file', {
         .references(() => users.id, { onDelete: 'cascade' }),
 
     // File Info
-    hash: text('hash'),
+    hash: text('hash').notNull(),
     filename: text('filename').notNull(),
-    path: text('path'),
+    path: text('path').notNull(),
 
     // Metadata (JSON)
-    data: text('data', { mode: 'json' }).$type<FileData>(),
-    meta: text('meta', { mode: 'json' }).$type<FileMeta>(),
-    accessControl: text('access_control', { mode: 'json' }).$type<AccessControl>(),
+    data: text('data', { mode: 'json' }).$type<FileData>().notNull(),
+    meta: text('meta', { mode: 'json' }).$type<FileMeta>().notNull(),
+    accessControl: text('access_control', { mode: 'json' }).$type<AccessControl>().notNull(),
 
     // Timestamps (unix seconds)
     createdAt: integer('created_at').notNull(),
@@ -276,9 +293,6 @@ export function validateUsername(username: string): string {
 
 export type Folder = typeof folders.$inferSelect;
 export type NewFolder = typeof folders.$inferInsert;
-
-export type File = typeof files.$inferSelect;
-export type NewFile = typeof files.$inferInsert;
 
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
