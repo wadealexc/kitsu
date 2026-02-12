@@ -4,7 +4,7 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
-import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken, createTestFolderForm } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
@@ -268,7 +268,7 @@ describe('Chat Routes', () => {
             const chat2 = await createTestChat(userId, 'Folder Chat');
 
             // Move second chat to folder
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             await Chats.updateChatFolder(chat2.id, userId, folder.id, db);
 
             // Without include_folders (default: false)
@@ -493,7 +493,7 @@ describe('Chat Routes', () => {
         test('should include folder chats', async () => {
             const { userId, token } = await createUserWithToken('user');
             const chat = await createTestChat(userId, 'Folder Chat');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             await Chats.updateChatFolder(chat.id, userId, folder.id, db);
 
             const response = await request(app)
@@ -672,7 +672,7 @@ describe('Chat Routes', () => {
 
         test('should accept folder_id in request', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             const chatData: ChatForm = createNewChatForm('Folder Chat', ['gpt-4'], folder.id);
 
@@ -1207,7 +1207,7 @@ describe('Chat Routes', () => {
     describe('POST /api/v1/chats/:id/folder', () => {
         test('should move chat to folder', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const chat = await createTestChat(userId, 'Test Chat');
 
             const response = await request(app)
@@ -1227,7 +1227,7 @@ describe('Chat Routes', () => {
         // TODO
         // test('should set pinned to false when moving to folder', async () => {
         //     const { userId, token } = await createUserWithToken('user');
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+        //     const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
         //     const chat = await createTestChat(userId, 'Pinned Chat');
 
         //     // Pin the chat first
@@ -1248,7 +1248,7 @@ describe('Chat Routes', () => {
 
         test('should remove chat from folder when folder_id is null', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const chat = await createTestChat(userId, 'Test Chat');
 
             // Move to folder first
@@ -1266,7 +1266,7 @@ describe('Chat Routes', () => {
 
         test('should return 404 when chat not found', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const nonExistentId = crypto.randomUUID();
 
             const response = await request(app)
@@ -1282,7 +1282,7 @@ describe('Chat Routes', () => {
             const { userId: user1Id } = await createUserWithToken('user');
             const { userId: user2Id, token: token2 } = await createUserWithToken('user');
 
-            const folder = await Folders.createFolder(user2Id, { name: 'User 2 Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(user2Id, 'Test Folder'), db);
             const chat = await createTestChat(user1Id, 'User 1 Chat');
 
             const response = await request(app)
@@ -1296,7 +1296,7 @@ describe('Chat Routes', () => {
 
         test('should update updatedAt timestamp', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const now = currentUnixTimestamp();
 
             // Create old chat
@@ -1322,7 +1322,7 @@ describe('Chat Routes', () => {
 
         test('should fail without authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const chat = await createTestChat(userId, 'Test Chat');
 
             await request(app)
@@ -1333,7 +1333,7 @@ describe('Chat Routes', () => {
 
         test('should fail with invalid authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const chat = await createTestChat(userId, 'Test Chat');
 
             await request(app)
@@ -1347,7 +1347,7 @@ describe('Chat Routes', () => {
     describe('GET /api/v1/chats/folder/:folder_id', () => {
         test('should return all chats in folder with full data', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             let chat1 = await createTestChat(userId, 'Chat 1');
             let chat2 = await createTestChat(userId, 'Chat 2');
@@ -1383,10 +1383,10 @@ describe('Chat Routes', () => {
         test('should return chats in subfolders', async () => {
             const { userId, token } = await createUserWithToken('user');
 
-            const parentFolder = await Folders.createFolder(userId, { name: 'Parent Folder' }, null, db);
-            const childFolder1 = await Folders.createFolder(userId, { name: 'Child Folder 1' }, parentFolder.id, db);
-            const childFolder2 = await Folders.createFolder(userId, { name: 'Child Folder 2' }, parentFolder.id, db);
-            const childChildFolder1 = await Folders.createFolder(userId, { name: 'Child Child Folder 1' }, childFolder1.id, db);
+            const parentFolder = await Folders.createFolder(createTestFolderForm(userId, 'Parent Folder'), db);
+            const childFolder1 = await Folders.createFolder(createTestFolderForm(userId, 'Child1 Folder', parentFolder.id), db);
+            const childFolder2 = await Folders.createFolder(createTestFolderForm(userId, 'Child2 Folder', parentFolder.id), db);
+            const childChildFolder1 = await Folders.createFolder(createTestFolderForm(userId, 'Child1Child Folder', childFolder1.id), db);
 
             let parentChat = await createTestChat(userId, 'Chat 1');
             let child1Chat = await createTestChat(userId, 'Chat 2');
@@ -1421,7 +1421,7 @@ describe('Chat Routes', () => {
 
         test('should return empty array for folder with no chats', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Empty Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             const response = await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}`)
@@ -1435,8 +1435,8 @@ describe('Chat Routes', () => {
             const { userId: user1Id, token: token1 } = await createUserWithToken('user');
             const { userId: user2Id } = await createUserWithToken('user');
 
-            const folder1 = await Folders.createFolder(user1Id, { name: 'User 1 Folder' }, null, db);
-            const folder2 = await Folders.createFolder(user2Id, { name: 'User 2 Folder' }, null, db);
+            const folder1 = await Folders.createFolder(createTestFolderForm(user1Id, 'Test Folder'), db);
+            const folder2 = await Folders.createFolder(createTestFolderForm(user2Id, 'Test Folder'), db);
 
             const chat1 = await createTestChat(user1Id, 'User 1 Chat');
             const chat2 = await createTestChat(user2Id, 'User 2 Chat');
@@ -1456,7 +1456,7 @@ describe('Chat Routes', () => {
         // TODO
         // test('should exclude archived chats from folder', async () => {
         //     const { userId, token } = await createUserWithToken('user');
-        //     const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+        //     const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
         //     const chat1 = await createTestChat(userId, 'Normal Chat');
         //     const chat2 = await createTestChat(userId, 'Archived Chat');
@@ -1478,7 +1478,7 @@ describe('Chat Routes', () => {
 
         test('should fail without authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}`)
@@ -1487,7 +1487,7 @@ describe('Chat Routes', () => {
 
         test('should fail with invalid authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}`)
@@ -1499,7 +1499,7 @@ describe('Chat Routes', () => {
     describe('GET /api/v1/chats/folder/:folder_id/list', () => {
         test('should return paginated chat list with minimal data', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             // Create 12 chats in folder
             for (let i = 0; i < 12; i++) {
@@ -1540,7 +1540,7 @@ describe('Chat Routes', () => {
 
         test('should default to page 1 when not specified', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             // Create 5 chats
             for (let i = 0; i < 5; i++) {
@@ -1558,7 +1558,7 @@ describe('Chat Routes', () => {
 
         test('should return empty array for empty folder', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Empty Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             const response = await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}/list`)
@@ -1571,7 +1571,7 @@ describe('Chat Routes', () => {
 
         test('should validate query parameters', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             const response = await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}/list`)
@@ -1585,7 +1585,7 @@ describe('Chat Routes', () => {
 
         test('should fail without authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}/list`)
@@ -1594,7 +1594,7 @@ describe('Chat Routes', () => {
 
         test('should fail with invalid authentication token', async () => {
             const { userId } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             await request(app)
                 .get(`/api/v1/chats/folder/${folder.id}/list`)
@@ -1971,7 +1971,7 @@ describe('Chat Routes', () => {
             const { userId: user1Id, token: token1 } = await createUserWithToken('user');
             const { token: token2 } = await createUserWithToken('user');
 
-            const folder = await Folders.createFolder(user1Id, { name: 'User 1 Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(user1Id, 'Test Folder'), db);
             const originalChat = await createTestChat(user1Id, 'Chat in Folder');
 
             await Chats.updateChatFolder(originalChat.id, user1Id, folder.id, db);
@@ -2134,7 +2134,7 @@ describe('Chat Routes', () => {
 
         test('should clear folder_id on cloned chat', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
             const originalChat = await createTestChat(userId, 'Chat in Folder');
 
             await Chats.updateChatFolder(originalChat.id, userId, folder.id, db);

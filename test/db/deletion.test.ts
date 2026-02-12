@@ -128,27 +128,34 @@ describe('Database Cascade Deletion', () => {
 
             // Create folder hierarchy
             const rootFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Root Folder' },
-                null,
+                {
+                    userId: user.id,
+                    name: 'Root Folder',
+                },
                 db
             );
             const childFolder1 = await Folders.createFolder(
-                user.id,
-                { name: 'Child Folder 1' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Child Folder 1',
+                    parentId: rootFolder.id,
+                },
                 db
             );
             const childFolder2 = await Folders.createFolder(
-                user.id,
-                { name: 'Child Folder 2' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Child Folder 2',
+                    parentId: rootFolder.id,
+                },
                 db
             );
             const grandchildFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Grandchild Folder' },
-                childFolder1.id,
+                {
+                    userId: user.id,
+                    name: 'Grandchild Folder',
+                    parentId: childFolder1.id,
+                },
                 db
             );
 
@@ -239,15 +246,18 @@ describe('Database Cascade Deletion', () => {
 
             // Create folders (root level + nested hierarchy)
             const rootFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Work' },
-                null,
+                {
+                    userId: user.id,
+                    name: 'Work',
+                },
                 db
             );
             const subFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Projects' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Projects',
+                    parentId: rootFolder.id,
+                },
                 db
             );
 
@@ -333,15 +343,17 @@ describe('Database Cascade Deletion', () => {
 
             // Create data for both users
             const user1Folder = await Folders.createFolder(
-                user1.id,
-                { name: 'User 1 Folder' },
-                null,
+                {
+                    userId: user1.id,
+                    name: 'User 1 Folder',
+                },
                 db
             );
             const user2Folder = await Folders.createFolder(
-                user2.id,
-                { name: 'User 2 Folder' },
-                null,
+                {
+                    userId: user2.id,
+                    name: 'User 2 Folder',
+                },
                 db
             );
 

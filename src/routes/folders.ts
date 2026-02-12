@@ -10,8 +10,8 @@ import * as Types from './types.js';
 import { requireAuth, validateFolderId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Folders from '../db/operations/folders.js';
+import type { Folder } from '../db/operations/folders.js';
 import * as Chats from '../db/operations/chats.js';
-import type { Folder } from '../db/schema.js';
 import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 
 const router = Router();
@@ -49,11 +49,11 @@ router.get('/', requireAuth, async (
  * Get a specific folder by ID with all details.
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
- * @returns {Types.FolderModel | null} - full folder object or null
+ * @returns {Types.FolderModel} - full folder object
  */
 router.get('/:folder_id', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
-    res: Response<Types.FolderModel | null | Types.ErrorResponse>
+    res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
     const { folder_id: folderId } = req.params;
     const userId = req.user!.id;
@@ -101,17 +101,11 @@ router.post('/', requireAuth, async (
         });
     }
 
-    const { name, data, meta } = body.data;
     const userId = req.user!.id;
 
     try {
-        // Create folder at root level (parent_id = null)
-        const folder = await Folders.createFolder(
-            userId,
-            { name, data, meta },
-            null,
-            db
-        );
+        // Create folder at root level
+        const folder = await Folders.createFolder({ ...body.data, userId }, db);
 
         return res.json(toFolderModel(folder));
     } catch (error: any) {
@@ -160,11 +154,9 @@ router.post('/:folder_id/update', validateFolderId, requireAuth, async (
         const folder = await Folders.updateFolder(
             folderId,
             userId,
-            { name, data, meta },
+            { name: name || undefined, data, meta },
             db
         );
-
-        if (!folder) throw NotFoundError('Folder not found');
 
         return res.json(toFolderModel(folder));
     } catch (error: any) {
@@ -216,8 +208,6 @@ router.post('/:folder_id/update/parent', validateFolderId, requireAuth, async (
             db
         );
 
-        if (!folder) throw NotFoundError('Folder not found');
-
         return res.json(toFolderModel(folder));
     } catch (error: any) {
         if (error instanceof HttpError) {
@@ -267,8 +257,6 @@ router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, async 
             isExpanded,
             db
         );
-
-        if (!folder) throw NotFoundError('Folder not found');
 
         return res.json(toFolderModel(folder));
     } catch (error) {

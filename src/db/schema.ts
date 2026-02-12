@@ -142,6 +142,14 @@ export const chatFiles = sqliteTable('chat_file', {
 
 /* -------------------- FOLDER TABLE -------------------- */
 
+/**
+ * The file table stores hierarchical folder structures for organizing chats. Folders 
+ * support parent-child relationships, allowing users to create nested folder trees. 
+ * 
+ * Each folder is user-scoped and can contain chats and other folders.
+ * 
+ * Folders maintain UI state (expansion), custom metadata, and flexible data payloads.
+ */
 export const folders = sqliteTable('folder', {
     // Identity
     id: text('id').primaryKey().notNull(),
@@ -290,9 +298,6 @@ export function validateUsername(username: string): string {
 }
 
 /* -------------------- TYPE EXPORTS -------------------- */
-
-export type Folder = typeof folders.$inferSelect;
-export type NewFolder = typeof folders.$inferInsert;
 
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;

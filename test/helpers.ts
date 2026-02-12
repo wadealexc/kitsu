@@ -9,7 +9,8 @@ import * as Users from '../src/db/operations/users.js';
 import * as Auths from '../src/db/operations/auths.js';
 import * as Files from '../src/db/operations/files.js';
 import * as Chats from '../src/db/operations/chats.js';
-import type { FileMeta, FileData, AccessControl, ChatObject } from '../src/routes/types.js';
+import * as Folders from '../src/db/operations/folders.js';
+import type { FileMeta, FileData, ChatObject, FolderMeta, FolderData } from '../src/routes/types.js';
 import * as schema from '../src/db/schema.js';
 import { databasePath } from '../src/db/client.js';
 import { db } from '../src/db/client.js';
@@ -144,6 +145,27 @@ export function createTestChatData(title: string = 'Test Chat', folderId: string
         chat: createTestChatObject(title),
         folderId,
     };
+}
+
+/**
+ * Creates a minimal FolderForm for testing.
+ */
+export function createTestFolderForm(
+    userId: string,
+    name: string = 'Test Folder',
+    parentId?: string,
+    meta?: FolderMeta,
+    data?: FolderData
+): Folders.NewFolder {
+    const newFolder: Folders.NewFolder = {
+        userId,
+        name: name,
+        meta: meta,
+        data: data,
+    };
+
+    if (parentId) newFolder.parentId = parentId;
+    return newFolder;
 }
 
 /* -------------------- TEST SAFETY -------------------- */
