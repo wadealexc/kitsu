@@ -2,7 +2,7 @@
  * Type extensions for Express
  */
 
-import type { User } from '../db/schema.js';
+import type { User } from '../db/operations/users.js';
 
 declare global {
     namespace Express {

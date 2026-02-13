@@ -453,7 +453,7 @@ export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata
 export const ModelMetaSchema = z.object({
-    profile_image_url: z.string().nullable().optional(),
+    profile_image_url: z.string().default('/static/favicon.png'),
     description: z.string().nullable().optional(),
     capabilities: z.record(z.string(), z.any()).nullable().optional(),
 }).passthrough();  // Allow additional properties
@@ -505,12 +505,12 @@ export type ModelAccessListResponse = z.infer<typeof ModelAccessListResponseSche
 // Model form (for create/update)
 export const ModelFormSchema = z.object({
     id: z.string().max(256),
-    base_model_id: z.string().nullable().optional(),
-    name: z.string(),
+    base_model_id: z.string().max(256),
+    name: z.string().max(256),
     meta: ModelMetaSchema,
     params: ModelParamsSchema,
     access_control: AccessControlSchema.optional(),
-    is_active: z.boolean().optional().default(true),
+    is_active: z.boolean().default(true),
 });
 export type ModelForm = z.infer<typeof ModelFormSchema>;
 

@@ -1,8 +1,8 @@
-import { eq, and, or, isNull, sql, desc } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
+
 import { db, type DbOrTx } from '../client.js';
 import { folders } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { FolderForm, FolderUpdateForm } from '../../routes/types.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
 
 const TABLE = 'folder';

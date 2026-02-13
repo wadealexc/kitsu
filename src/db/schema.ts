@@ -297,8 +297,3 @@ export function validateUsername(username: string): string {
     return trimmed.toLowerCase();
 }
 
-/* -------------------- TYPE EXPORTS -------------------- */
-
-export type Model = typeof models.$inferSelect;
-export type NewModel = typeof models.$inferInsert;
-

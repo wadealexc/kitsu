@@ -1,9 +1,9 @@
 import { eq, desc, asc, like, inArray, sql, and } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '../client.js';
-import { files, chatFiles } from '../schema.js';
+import { files } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { FileMeta, FileData, AccessControl } from '../../routes/types.js';
+import type { FileData, AccessControl } from '../../routes/types.js';
 import * as Chats from './chats.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
