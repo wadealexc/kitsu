@@ -4,16 +4,13 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken, createTestFolderForm } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Chats from '../../src/db/operations/chats.js';
-import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole } from '../../src/routes/types.js';
+import { type Chat } from '../../src/db/operations/chats.js';
 import foldersRouter from '../../src/routes/folders.js';
 
 /* -------------------- TEST SETUP -------------------- */
@@ -41,27 +38,16 @@ app.use('/api/v1/folders', foldersRouter);
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
 /**
- * Create a test user and return JWT token
- */
-async function createUserWithToken(role: UserRole = 'user'): Promise<{ userId: string; token: string }> {
-    const userParams = newUserParams(role);
-    const user = await Users.createUser(userParams, db);
-    await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-    const token = JWT.createToken(userParams.id);
-
-    assert.strictEqual(user.role, role);
-    return { userId: userParams.id, token };
-}
-
-/**
  * Create a test folder
  */
-async function createTestFolder(userId: string, name: string, parentId: string | null = null): Promise<schema.Folder> {
-    const folder = await Folders.createFolder(userId, {
-        name: name,
-        meta: { icon: ':folder:' },
-        data: { system_prompt: 'Test prompt' }
-    }, parentId, db);
+async function createTestFolder(userId: string, name: string, parentId?: string): Promise<Folders.Folder> {
+    const folder = await Folders.createFolder(createTestFolderForm(
+        userId,
+        name,
+        parentId,
+        { icon: ':folder:' },
+        { system_prompt: 'Test prompt' }
+     ), db);
 
     return folder;
 }
@@ -69,8 +55,8 @@ async function createTestFolder(userId: string, name: string, parentId: string |
 /**
  * Create multiple test folders
  */
-async function createMultipleFolders(userId: string, count: number): Promise<schema.Folder[]> {
-    const folders: schema.Folder[] = [];
+async function createMultipleFolders(userId: string, count: number): Promise<Folders.Folder[]> {
+    const folders: Folders.Folder[] = [];
     for (let i = 0; i < count; i++) {
         const folder = await createTestFolder(userId, `Folder ${i + 1}`);
         folders.push(folder);
@@ -81,7 +67,7 @@ async function createMultipleFolders(userId: string, count: number): Promise<sch
 /**
  * Create a test chat
  */
-async function createTestChat(userId: string, title: string = 'Test Chat', folderId: string | null = null): Promise<schema.Chat> {
+async function createTestChat(userId: string, title: string = 'Test Chat', folderId: string | null = null): Promise<Chat> {
     const chat = await Chats.createChat(userId, {
         title,
         chat: {
@@ -399,11 +385,13 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
 
     test('should merge data and meta with existing values', async () => {
         const { userId, token } = await createUserWithToken('user');
-        const folder = await Folders.createFolder(userId, {
-            name: 'Test',
-            meta: { icon: ':folder:' },
-            data: { system_prompt: 'Original', model_ids: ['gpt-4'] }
-        }, null, db);
+        const folder = await Folders.createFolder(createTestFolderForm(
+            userId,
+            'Test Folder',
+            undefined,
+            { icon: ':folder:' },
+            { system_prompt: 'Original', model_ids: ['gpt-4'] }
+        ), db);
 
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update`)
@@ -451,7 +439,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
         assert.strictEqual(response.body.name, 'SameName');
     });
 
-    test('should return 404 when folder not found', async () => {
+    test('should return 400 when folder not found', async () => {
         const { token } = await createUserWithToken('user');
         const nonExistentId = crypto.randomUUID();
 
@@ -459,9 +447,9 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .post(`/api/v1/folders/${nonExistentId}/update`)
             .set('Authorization', `Bearer ${token}`)
             .send({ name: 'New Name' })
-            .expect(404);
+            .expect(400);
 
-        assert.strictEqual(response.body.detail, 'Folder not found');
+        assert.strictEqual(response.body.detail, `folder record with id '${nonExistentId}' not found`);
     });
 
     test('should fail when user does not own folder', async () => {
@@ -474,7 +462,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .post(`/api/v1/folders/${folder.id}/update`)
             .set('Authorization', `Bearer ${token2}`)
             .send({ name: 'New Name' })
-            .expect(404);
+            .expect(400);
     });
 
     test('should fail without authentication token', async () => {
@@ -595,7 +583,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         assert.ok(response.body.detail);
     });
 
-    test('should return 404 when folder not found', async () => {
+    test('should return 400 when folder not found', async () => {
         const { token } = await createUserWithToken('user');
         const nonExistentId = crypto.randomUUID();
 
@@ -603,9 +591,9 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
             .post(`/api/v1/folders/${nonExistentId}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
             .send({ parent_id: null })
-            .expect(404);
+            .expect(400);
 
-        assert.strictEqual(response.body.detail, 'Folder not found');
+        assert.strictEqual(response.body.detail, `folder record with id '${nonExistentId}' not found`);
     });
 
     test('should fail without authentication token', async () => {
@@ -639,11 +627,10 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
 
     test('should update expansion state to false', async () => {
         const { userId, token } = await createUserWithToken('user');
-        const folder = await Folders.createFolder(userId, {
-            name: 'Test',
-            meta: null,
-            data: null
-        }, null, db);
+        const folder = await Folders.createFolder(createTestFolderForm(
+            userId,
+            'Test',
+        ), db);
 
         await Folders.updateFolderExpanded(folder.id, userId, true, db);
 
@@ -656,7 +643,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         assert.strictEqual(response.body.is_expanded, false);
     });
 
-    test('should return 404 when folder not found', async () => {
+    test('should return 400 when folder not found', async () => {
         const { token } = await createUserWithToken('user');
         const nonExistentId = crypto.randomUUID();
 
@@ -664,9 +651,9 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
             .post(`/api/v1/folders/${nonExistentId}/update/expanded`)
             .set('Authorization', `Bearer ${token}`)
             .send({ is_expanded: true })
-            .expect(404);
+            .expect(400);
 
-        assert.strictEqual(response.body.detail, 'Folder not found');
+        assert.strictEqual(response.body.detail, `folder record with id '${nonExistentId}' not found`);
     });
 
     test('should fail when user does not own folder', async () => {
@@ -679,7 +666,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
             .set('Authorization', `Bearer ${token2}`)
             .send({ is_expanded: true })
-            .expect(404);
+            .expect(400);
     });
 
     test('should fail without authentication token', async () => {
@@ -829,8 +816,8 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
             .expect(200);
 
         // Verify all chats deleted
-        const chats = await Chats.getChatsByUserId(userId, {}, db);
-        assert.strictEqual(chats.items.length, 0);
+        const chats = await Chats.getChatsByUserId(userId, db);
+        assert.strictEqual(chats.length, 0);
     });
 
     test('should move chats from all descendant folders to root when delete_contents=false', async () => {

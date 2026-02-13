@@ -1,10 +1,3 @@
-/**
- * Filesystem storage provider.
- *
- * Stores uploaded files in local filesystem directory.
- * Default location: ./data/uploads/
- */
-
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { StorageProvider } from './provider.js';
@@ -13,21 +6,27 @@ const UPLOAD_DIR = process.env.DATA_DIR
     ? path.join(process.env.DATA_DIR, 'uploads')
     : './data/uploads';
 
+/**
+ * Filesystem storage provider.
+ *
+ * Stores uploaded files in local filesystem directory.
+ * Default location: ./data/uploads/
+ */
 export const filesystemProvider: StorageProvider = {
     /**
      * Upload file to filesystem storage.
      *
-     * @param fileId - UUID for file (used as filename)
      * @param buffer - File content buffer
-     * @param metadata - Optional metadata (unused in filesystem provider)
      * @returns Absolute path to stored file
      */
-    async uploadFile(fileId: string, buffer: Buffer, metadata: any): Promise<string> {
+    async uploadFile(buffer: Buffer): Promise<string> {
+        const fileName = crypto.randomUUID();
+
         // Ensure upload directory exists
         await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
         // Write file with UUID as filename
-        const filePath = path.join(UPLOAD_DIR, fileId);
+        const filePath = path.join(UPLOAD_DIR, fileName);
         await fs.writeFile(filePath, buffer);
 
         return filePath;

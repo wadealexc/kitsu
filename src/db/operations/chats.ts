@@ -1,13 +1,19 @@
-import { eq, ne, desc, asc, or, and, like, sql, inArray, isNotNull } from 'drizzle-orm';
+import { eq, desc, asc, and, like, inArray, isNull, isNotNull, SQL } from 'drizzle-orm';
+
 import { db, type DbOrTx } from '../client.js';
-import { chats, chatFiles, type Chat, type ChatFile } from '../schema.js';
+import { chats, chatFiles } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { ChatForm, ChatImportForm } from '../../routes/types.js';
+import type { ChatImportForm, ChatObject } from '../../routes/types.js';
+import { DatabaseError, RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
+import * as Files from './files.js';
 
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+const TABLE = 'chat';
 
+/* -------------------- CREATE -------------------- */
+
+export type Chat = typeof chats.$inferSelect;
 export type NewChat = Omit<
-    typeof chats.$inferInsert, 
+    typeof chats.$inferInsert,
     'id' | 'userId' | 'updatedAt' | 'createdAt' | 'archived' | 'pinned' | 'meta' | 'shareId'
 >;
 
@@ -43,12 +49,107 @@ export async function createChat(
         })
         .returning();
 
-    if (!chat) throw new Error('Error creating chat record');
+    if (!chat) throw new RecordCreationError(TABLE);
     return chat;
 }
 
+/* -------------------- UPDATE -------------------- */
+
+export type UpdateChatObject = Partial<ChatObject>;
+export type UpdateChat = Omit<Partial<NewChat>, 'chat'> & { chat: UpdateChatObject };
+
+/**
+ * Updates chat data (history, messages, models, params, ...), title, and folderId.
+ * @note Updates properties via shallow copy
+ * 
+ * @param id - Chat id
+ * @param {UpdateChat} params - A new chat object, which is shallow-copied over the existing one
+ * @param txOrDb
+ * 
+ * @returns the updated Chat record
+ * 
+ * @throws if chat could not be found
+ * @throws if record update fails
+ */
+export async function updateChat(
+    id: string,
+    params: UpdateChat,
+    txOrDb: DbOrTx = db
+): Promise<Chat> {
+    const existing = await getChatById(id, txOrDb);
+    if (!existing) throw new RecordNotFoundError(TABLE, id);
+
+    // Merge chat data
+    // TODO - storing title both inside and outside ChatObject seems redundant
+    const mergedChat = { ...existing.chat, ...params.chat };
+    const mergedTitle = mergedChat.title;
+    const mergedFolderId = params.folderId !== undefined ? params.folderId : existing.folderId;
+
+    const [updated] = await txOrDb
+        .update(chats)
+        .set({
+            chat: mergedChat,
+            title: mergedTitle,
+            folderId: mergedFolderId,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(chats.id, id))
+        .returning();
+
+    if (!updated) throw new DatabaseError('Chat update failed');
+    return updated;
+}
+
+/* -------------------- DELETE -------------------- */
+
+/**
+ * Deletes a user's chat, automatically cascading deletion to any chat files.
+ * 
+ * @param id - Chat id
+ * @param userId
+ * @param txOrDb
+ * 
+ * @throws if deletion fails
+ */
+export async function deleteChat(
+    id: string,
+    userId: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    const result = await txOrDb
+        .delete(chats)
+        .where(and(
+            eq(chats.id, id),
+            eq(chats.userId, userId)
+        ));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/**
+ * Deletes all chats for a user.
+ * 
+ * @param userId
+ * @param txOrDb
+ */
+export async function deleteAllChatsByUserId(
+    userId: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    await txOrDb
+        .delete(chats)
+        .where(eq(chats.userId, userId));
+}
+
+/* -------------------- READ -------------------- */
+
 /**
  * Retrieves full chat by ID, including all messages.
+ * 
+ * @param id - Chat id
+ * @param txOrDb
+ * 
+ * @returns the chat record (or null, if not found)
  */
 export async function getChatById(
     id: string,
@@ -64,8 +165,13 @@ export async function getChatById(
 }
 
 /**
- * Retrieves chat by ID, verifying ownership.
- * Used for ownership verification before operations like update/delete.
+ * Retrieves chat by ID and user id
+ * 
+ * @param id - Chat id
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns the chat record (or null, if not found)
  */
 export async function getChatByIdAndUserId(
     id: string,
@@ -85,118 +191,27 @@ export async function getChatByIdAndUserId(
 }
 
 /**
- * Retrieves chat by its public share ID (for shared chat viewing).
- * No user verification - allows public access to shared chats.
- */
-export async function getChatByShareId(
-    shareId: string,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const [chat] = await txOrDb
-        .select()
-        .from(chats)
-        .where(eq(chats.shareId, shareId))
-        .limit(1);
-
-    return chat || null;
-}
-
-/**
- * Admin only: Retrieves ALL chats from ALL users (no filtering).
- * Used for admin data export/backup.
- */
-export async function getChats(
-    options?: { skip?: number; limit?: number },
-    txOrDb: DbOrTx = db
-): Promise<Chat[]> {
-    const { skip = 0, limit } = options || {};
-
-    return await txOrDb
-        .select()
-        .from(chats)
-        .orderBy(desc(chats.createdAt))
-        .limit(limit ?? 999999)
-        .offset(skip);
-}
-
-/**
- * Options for querying chats with filtering and pagination.
- */
-export type QueryOptions = {
-    skip?: number;
-    limit?: number;
-    filter?: {
-        query?: string;
-        updatedAt?: number;
-        orderBy?: 'updatedAt' | 'createdAt' | 'title';
-        direction?: 'asc' | 'desc';
-    };
-};
-
-/**
- * Retrieves all chats for a specific user with pagination and filtering.
- * Default sort: updatedAt DESC (most recent first).
+ * Retrieves all chats for a specific user
+ * 
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns a list of the user's chats
  */
 export async function getChatsByUserId(
     userId: string,
-    options: QueryOptions = {},
     txOrDb: DbOrTx = db
-): Promise<{ items: Chat[]; total: number }> {
-    const {
-        skip = 0,
-        limit,
-        filter = {},
-    } = options;
-
-    const {
-        query: searchQuery,
-        updatedAt: updatedAtFilter,
-        orderBy = 'updatedAt',
-        direction = 'desc',
-    } = filter;
-
-    // Build where conditions
-    const conditions = [eq(chats.userId, userId)];
-
-    if (searchQuery) {
-        conditions.push(like(chats.title, `%${searchQuery}%`));
-    }
-
-    if (updatedAtFilter !== undefined) {
-        conditions.push(sql`${chats.updatedAt} > ${updatedAtFilter}`);
-    }
-
-    const whereClause = and(...conditions);
-
-    // Determine sort column
-    const sortColumn =
-        orderBy === 'title' ? chats.title :
-        orderBy === 'createdAt' ? chats.createdAt :
-        chats.updatedAt;
-
-    const sortFn = direction === 'asc' ? asc : desc;
-
-    // Execute query
-    const items = await txOrDb
+): Promise<Chat[]> {
+    return await txOrDb
         .select()
         .from(chats)
-        .where(whereClause)
-        .orderBy(sortFn(sortColumn))
-        .limit(limit ?? 999999)
-        .offset(skip);
-
-    // Get total count
-    const countResult = await txOrDb
-        .select({ count: sql<number>`count(*)` })
-        .from(chats)
-        .where(whereClause);
-
-    const total = countResult[0]?.count ?? 0;
-    return { items, total };
+        .where(eq(chats.userId, userId))
+        .orderBy(desc(chats.updatedAt));
 }
 
 /**
  * Options for listing chats with minimal data.
+ * @field skip - bingus
  */
 export type ListOptions = {
     includeArchived?: boolean;
@@ -218,45 +233,38 @@ export type ChatTitleIdResponse = {
 
 /**
  * Retrieves minimal chat info (title, id, timestamps) without message history.
- * Default pagination: 60 items per page.
  * Used for chat list views (sidebar, etc.).
+ * 
+ * @param userId
+ * @param {ListOptions} opts - options for filters/pagination
+ * @param txOrDb
+ * 
+ * @returns a list of chats that belong to the user
  */
-export async function getChatTitleIdListByUserId(
+export async function getChatTitleListByUserId(
     userId: string,
     options: ListOptions = {},
     txOrDb: DbOrTx = db
 ): Promise<ChatTitleIdResponse[]> {
     const {
         includeArchived = false,
-        includeFolders = false,
         includePinned = false,
-        skip = 0,
+        includeFolders = false,
+        skip,
         limit,
     } = options;
 
     // Build where conditions
-    const conditions = [eq(chats.userId, userId)];
+    const conditions: (SQL<unknown> | undefined)[] = [eq(chats.userId, userId)];
 
-    if (!includeArchived) {
-        conditions.push(eq(chats.archived, false));
-    }
-
-    if (!includeFolders) {
-        conditions.push(sql`${chats.folderId} IS NULL`);
-    }
-
-    if (!includePinned) {
-        const pinnedCondition = or(
-            eq(chats.pinned, false),
-            sql`${chats.pinned} IS NULL`
-        );
-        if (pinnedCondition) conditions.push(pinnedCondition);
-    }
+    if (!includeArchived) conditions.push(eq(chats.archived, false));
+    if (!includePinned) conditions.push(eq(chats.pinned, false));
+    if (!includeFolders) conditions.push(isNull(chats.folderId));
 
     const whereClause = and(...conditions);
 
-    // Query with only needed fields
-    const result = await txOrDb
+    // TODO - typically pagination methods also return total items for followup queries?
+    return await txOrDb
         .select({
             id: chats.id,
             title: chats.title,
@@ -267,236 +275,8 @@ export async function getChatTitleIdListByUserId(
         .where(whereClause)
         .orderBy(desc(chats.updatedAt))
         .limit(limit ?? 999999)
-        .offset(skip);
-
-    return result;
+        .offset(skip ?? 0);
 }
-
-/**
- * Options for pagination.
- */
-export type PaginationOptions = {
-    skip?: number;
-    limit?: number;
-};
-
-/**
- * Retrieves chats in a specific folder or folders
- * Filters by userId to prevent cross-user access.
- * Excludes pinned and archived chats.
- * Default sort: updatedAt DESC.
- */
-export async function getChatsByFolderIdAndUserId(
-    folderIds: string[],
-    userId: string,
-    options: PaginationOptions = {},
-    txOrDb: DbOrTx = db
-): Promise<Chat[]> {
-    const { skip = 0, limit } = options;
-
-    return await txOrDb
-        .select()
-        .from(chats)
-        .where(and(
-            inArray(chats.folderId, folderIds),
-            eq(chats.userId, userId),
-            eq(chats.archived, false),
-            or(
-                eq(chats.pinned, false),
-                sql`${chats.pinned} IS NULL`
-            )
-        ))
-        .orderBy(desc(chats.updatedAt))
-        .limit(limit ?? 999999)
-        .offset(skip);
-}
-
-/**
- * Updates chat data and title.
- * Auto-updates: updatedAt timestamp.
- * Merges provided chat data with existing chat.
- * Extracts new title from data.chat.title if provided.
- */
-export async function updateChat(
-    id: string,
-    data: ChatForm,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const existing = await getChatById(id, txOrDb);
-    if (!existing) return null;
-
-    const now = currentUnixTimestamp();
-
-    // Merge chat data
-    const mergedChat = { ...existing.chat, ...data.chat };
-
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            chat: mergedChat,
-            title: mergedChat.title,
-            folderId: data.folder_id !== undefined ? data.folder_id : existing.folderId,
-            updatedAt: now,
-        })
-        .where(eq(chats.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Moves chat to a folder (or removes from folder if folderId is null).
- * Side effects: Sets pinned = false when moving to folder (can't be pinned in folder).
- * Updates updatedAt timestamp.
- */
-export async function updateChatFolderIdByIdAndUserId(
-    id: string,
-    userId: string,
-    folderId: string | null,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const now = currentUnixTimestamp();
-
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            folderId: folderId,
-            pinned: false,  // Can't be pinned in folder
-            updatedAt: now,
-        })
-        .where(and(
-            eq(chats.id, id),
-            eq(chats.userId, userId)
-        ))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Updates the share_id for a chat.
- * Pass null to unshare.
- */
-export async function updateChatShareIdById(
-    id: string,
-    shareId: string | null,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            shareId: shareId,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Toggles pinned status.
- * Converts pinned: null to pinned: false before toggling.
- * Automatically updates updatedAt.
- */
-export async function updateChatPinnedById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const existing = await getChatById(id, txOrDb);
-    if (!existing) return null;
-
-    const currentPinned = existing.pinned ?? false;
-
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            pinned: !currentPinned,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Toggles archived status.
- * Side effects: Clears folderId when archiving (archived chats can't be in folders).
- * Automatically updates updatedAt.
- */
-export async function updateChatArchivedById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const existing = await getChatById(id, txOrDb);
-    if (!existing) return null;
-
-    const currentArchived = existing.archived;
-
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            archived: !currentArchived,
-            folderId: !currentArchived ? null : existing.folderId,  // Clear folder if archiving
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Deletes a chat by ID (hard delete).
- * Cascade: chat_file records with this chatId are automatically deleted (FK ON DELETE CASCADE).
- */
-export async function deleteChat(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(chats)
-        .where(eq(chats.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Deletes a chat with ownership verification.
- * Ensures user owns the chat before deletion.
- */
-export async function deleteChatByIdAndUserId(
-    id: string,
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(chats)
-        .where(and(
-            eq(chats.id, id),
-            eq(chats.userId, userId)
-        ));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Deletes all chats for a user (cannot be undone).
- * Used for account deletion or user requested deletion.
- */
-export async function deleteAllChatsByUserId(
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(chats)
-        .where(eq(chats.userId, userId));
-
-    return result.rowsAffected > 0;
-}
-
-/* -------------------- SEARCH & FILTERING -------------------- */
 
 /**
  * Options for searching chats.
@@ -508,24 +288,29 @@ export type SearchOptions = {
 };
 
 /**
- * Searches chats by title and message content.
- * Search syntax:
- * - Plain text: searches chat title and message content
- *
- * Note: Advanced search syntax (folder:, pinned:, etc.) not yet implemented.
- * This basic implementation searches title only.
+ * Searches chats by title.
+ * 
+ * TODO: Currently unused and underwhelming implementation. Revisit when
+ * supporting search feature.
+ * 
+ * @param userId
+ * @param searchText - search for titles containing the searchText
+ * @param opts
+ * @param txOrDb
+ * 
+ * @returns a list of chats matching the search
  */
 export async function getChatsByUserIdAndSearchText(
     userId: string,
     searchText: string,
-    options: SearchOptions = {},
+    opts: SearchOptions = {},
     txOrDb: DbOrTx = db
 ): Promise<Chat[]> {
     const {
         includeArchived = false,
-        skip = 0,
-        limit = 50,
-    } = options;
+        skip,
+        limit,
+    } = opts;
 
     // Build where conditions
     const conditions = [
@@ -533,28 +318,38 @@ export async function getChatsByUserIdAndSearchText(
         like(chats.title, `%${searchText}%`),
     ];
 
-    if (!includeArchived) {
-        conditions.push(eq(chats.archived, false));
-    }
+    if (!includeArchived) conditions.push(eq(chats.archived, false));
 
     const whereClause = and(...conditions);
 
+    // TODO - typically pagination methods also return total items for followup queries?
     return await txOrDb
         .select()
         .from(chats)
         .where(whereClause)
         .orderBy(desc(chats.updatedAt))
-        .limit(limit)
-        .offset(skip);
+        .limit(limit ?? 999999)
+        .offset(skip ?? 0);
 }
 
-/* -------------------- FILE OPERATIONS -------------------- */
+/* -------------------- CRUD - CHAT FILES -------------------- */
+
+export type ChatFile = typeof chatFiles.$inferSelect;
 
 /**
- * Associates files with a chat/message.
- * Creates chat_file records for each file.
- * Prevents duplicate associations.
- * Filters out null/empty fileIds.
+ * Associate files with a chat (or a message within a chat).
+ * Creates chatFiles records for each association.
+ * @note Users can only associate files with a chat if they own the file.
+ * 
+ * @param chatId
+ * @param messageId
+ * @param fileIds
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns a list of all the files associated with `chatId`
+ * 
+ * @throws if the user does not have ownership a file
  */
 export async function insertChatFiles(
     chatId: string,
@@ -563,48 +358,54 @@ export async function insertChatFiles(
     userId: string,
     txOrDb: DbOrTx = db
 ): Promise<ChatFile[]> {
-    // Filter out null/empty fileIds
-    const validFileIds = fileIds.filter(id => id && id.trim().length > 0);
-    if (validFileIds.length === 0) return [];
-
     const now = currentUnixTimestamp();
 
-    // Check for existing associations to prevent duplicates
+    // Verify the user owns each file
+    const files = await Files.getFilesByIds(fileIds, txOrDb);
+    if (files.some(f => f.userId !== userId)) 
+        throw new ValidationError(`user does not own requested files`);
+
+    // Check if the chat is already associated with any of the provided files
     const existing = await txOrDb
         .select()
         .from(chatFiles)
         .where(and(
             eq(chatFiles.chatId, chatId),
-            inArray(chatFiles.fileId, validFileIds)
+            inArray(chatFiles.fileId, fileIds)
         ));
 
+    // Filter out existing associations
     const existingFileIds = new Set(existing.map((cf: ChatFile) => cf.fileId));
-    const newFileIds = validFileIds.filter(id => !existingFileIds.has(id));
+    const newFileIds = fileIds.filter(id => !existingFileIds.has(id));
 
     if (newFileIds.length === 0) return existing;
 
     // Insert new associations
-    const values = newFileIds.map(fileId => ({
-        id: crypto.randomUUID(),
-        userId: userId,
-        chatId: chatId,
-        messageId: messageId,
-        fileId: fileId,
-        createdAt: now,
-        updatedAt: now,
-    }));
-
     const inserted = await txOrDb
         .insert(chatFiles)
-        .values(values)
+        .values(newFileIds.map(fileId => ({
+            id: crypto.randomUUID(),
+            userId: userId,
+            chatId: chatId,
+            messageId: messageId,
+            fileId: fileId,
+            createdAt: now,
+            updatedAt: now,
+        })))
         .returning();
 
     return [...existing, ...inserted];
 }
 
 /**
- * Retrieves files attached to a specific message in a chat.
- * Returns array sorted by createdAt ascending.
+ * Retrieves files associated with a specific message in a chat.
+ * Results are returned, sorted by createdAt ascending.
+ * 
+ * @param chatId
+ * @param messageId
+ * @param txOrDb
+ * 
+ * @returns the files associated with the chat message, sorted by createdAt ascending.
  */
 export async function getChatFiles(
     chatId: string,
@@ -622,27 +423,12 @@ export async function getChatFiles(
 }
 
 /**
- * Removes a file attachment from a chat.
- * Only removes the chat_file association; file itself remains in files table.
- */
-export async function deleteChatFile(
-    chatId: string,
-    fileId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(chatFiles)
-        .where(and(
-            eq(chatFiles.chatId, chatId),
-            eq(chatFiles.fileId, fileId)
-        ));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Retrieves all shared chats that have a specific file attached.
- * Used for file deletion cleanup (find all shared chats using a file).
+ * Retrieves all shared chats that are associated with a specific file
+ * 
+ * @param fileId
+ * @param txOrDb
+ * 
+ * @returns A list of shared chats that have a given file id attached
  */
 export async function getSharedChatsByFileId(
     fileId: string,
@@ -654,7 +440,7 @@ export async function getSharedChatsByFileId(
         .from(chatFiles)
         .where(eq(chatFiles.fileId, fileId));
 
-    const chatIds = chatFileRecords.map((cf: { chatId: string }) => cf.chatId);
+    const chatIds = chatFileRecords.map(cf => cf.chatId);
     if (chatIds.length === 0) return [];
 
     // Get all chats that are shared (have shareId) from those chatIds
@@ -667,354 +453,193 @@ export async function getSharedChatsByFileId(
         ));
 }
 
-/* -------------------- SHARING OPERATIONS -------------------- */
+/* -------------------- CRUD - SHARING -------------------- */
 
 /**
- * Creates a publicly shared version of a chat.
- *
- * Note: OWUI's approach creates a duplicate "shadow" chat record with userId: `shared-{original_chat_id}`.
- * For simplicity, we just set the shareId on the original chat.
- *
- * This implementation generates a share ID and updates the chat.
+ * Designate a chat as publicly shared, giving chat.shareId a new, unique id.
+ * @note sharing a chat allows anyone to use the shareId to read all prior messages
+ * as well as future messages sent to the chat.
+ * 
+ * @param chatId
+ * @param txOrDb
+ * 
+ * @returns the updated chat record (with shareId set)
+ * 
+ * @throws if the chat record was not found
  */
-export async function insertSharedChat(
+export async function shareChat(
     chatId: string,
     txOrDb: DbOrTx = db
-): Promise<Chat | null> {
+): Promise<Chat> {
     const shareId = crypto.randomUUID();
-    return await updateChatShareIdById(chatId, shareId, txOrDb);
-}
 
-/**
- * Updates shared chat to reflect original's current state.
- *
- * Note: In OWUI, this syncs a shadow chat. We simply update the share timestamp.
- */
-export async function updateSharedChat(
-    chatId: string,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
     const [updated] = await txOrDb
         .update(chats)
         .set({
+            shareId: shareId,
             updatedAt: currentUnixTimestamp(),
         })
         .where(eq(chats.id, chatId))
         .returning();
 
-    return updated || null;
+    if (!updated) throw new RecordNotFoundError(TABLE, chatId);
+    return updated;
 }
 
 /**
- * Removes share link and associated shared chat record.
- * Clears shareId on original chat.
+ * Set a chat's shareId to null, "un-sharing" it.
+ * @note if a user has already cloned the chat, the cloned chats are not deleted.
+ * 
+ * @param chatId
+ * @param txOrDb
+ * 
+ * @throws if the chat record was not found
  */
-export async function deleteSharedChat(
+export async function unshareChat(
     chatId: string,
     txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await updateChatShareIdById(chatId, null, txOrDb);
-    return result !== null;
-}
-
-/* -------------------- MESSAGE OPERATIONS -------------------- */
-
-/**
- * Adds or updates a message in a chat's message history.
- *
- * Behavior:
- * - Upserts message to chat.history.messages[messageId]
- * - Sets history.currentId to this messageId
- * - Sanitizes null bytes from message content
- * - Updates chat's updatedAt
- */
-export async function addMessageToChat(
-    chatId: string,
-    messageId: string,
-    message: Record<string, any>,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const existing = await getChatById(chatId, txOrDb);
-    if (!existing) return null;
-
-    const chatData = existing.chat as any;
-    const history = chatData.history || { messages: {}, currentId: null };
-    const messages = history.messages || {};
-
-    // Add message
-    messages[messageId] = message;
-
-    // Update history
-    history.messages = messages;
-    history.currentId = messageId;
-
-    // Update chat
-    const updatedChatData = {
-        ...chatData,
-        history: history,
-    };
-
-    const [updated] = await txOrDb
+): Promise<void> {
+    const result = await txOrDb
         .update(chats)
         .set({
-            chat: updatedChatData,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.id, chatId))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Appends a status update to a message's statusHistory.
- *
- * Behavior:
- * - Appends to messages[messageId].statusHistory array
- * - Updates chat's updatedAt
- */
-export async function addMessageStatus(
-    chatId: string,
-    messageId: string,
-    status: Record<string, any>,
-    txOrDb: DbOrTx = db
-): Promise<Chat | null> {
-    const existing = await getChatById(chatId, txOrDb);
-    if (!existing) return null;
-
-    const chatData = existing.chat as any;
-    const messages = chatData.history?.messages || {};
-    const message = messages[messageId];
-
-    if (!message) return null;
-
-    // Initialize statusHistory if not exists
-    if (!message.statusHistory) {
-        message.statusHistory = [];
-    }
-
-    // Append status
-    message.statusHistory.push(status);
-
-    // Update chat
-    const [updated] = await txOrDb
-        .update(chats)
-        .set({
-            chat: chatData,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.id, chatId))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Appends files to a message.
- *
- * Behavior:
- * - Appends to messages[messageId].files array
- * - Also creates chat_file records via insertChatFiles()
- * - Updates chat's updatedAt
- */
-export async function addMessageFiles(
-    chatId: string,
-    messageId: string,
-    files: Record<string, any>[],
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<Record<string, any>[]> {
-    const existing = await getChatById(chatId, txOrDb);
-    if (!existing) return [];
-
-    const chatData = existing.chat as any;
-    const messages = chatData.history?.messages || {};
-    const message = messages[messageId];
-
-    if (!message) return [];
-
-    // Initialize files array if not exists
-    if (!message.files) {
-        message.files = [];
-    }
-
-    // Append files
-    message.files.push(...files);
-
-    // Update chat
-    await txOrDb
-        .update(chats)
-        .set({
-            chat: chatData,
+            shareId: null,
             updatedAt: currentUnixTimestamp(),
         })
         .where(eq(chats.id, chatId));
 
-    // Create chat_file records
-    const fileIds = files.map(f => f.id).filter(Boolean);
-    if (fileIds.length > 0) {
-        await insertChatFiles(chatId, messageId, fileIds, userId, txOrDb);
-    }
-
-    return files;
-}
-
-/* -------------------- ARCHIVING & PINNING -------------------- */
-
-/**
- * Archives all chats for a user.
- */
-export async function archiveAllChatsByUserId(
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .update(chats)
-        .set({
-            archived: true,
-            folderId: null,  // Archived chats can't be in folders
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.userId, userId));
-
-    return result.rowsAffected > 0;
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, chatId);
 }
 
 /**
- * Unarchives all chats for a user.
+ * Retrieves chat by its share ID.
+ * @note no user verification - allows public read access to shared chats.
+ * 
+ * @param shareId
+ * @param txOrDb
+ * 
+ * @returns the Chat record (or null if it does not exist)
  */
-export async function unarchiveAllChatsByUserId(
-    userId: string,
+export async function getChatByShareId(
+    shareId: string,
     txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .update(chats)
-        .set({
-            archived: false,
-            updatedAt: currentUnixTimestamp(),
-        })
-        .where(eq(chats.userId, userId));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Retrieves archived chats for a user.
- * Supports pagination, filtering, and sorting.
- */
-export async function getArchivedChats(
-    userId: string,
-    options: ListOptions = {},
-    txOrDb: DbOrTx = db
-): Promise<Chat[]> {
-    const { skip = 0, limit = 50 } = options;
-
-    return await txOrDb
+): Promise<Chat | null> {
+    const [chat] = await txOrDb
         .select()
         .from(chats)
-        .where(and(
-            eq(chats.userId, userId),
-            eq(chats.archived, true)
-        ))
-        .orderBy(desc(chats.updatedAt))
-        .limit(limit)
-        .offset(skip);
-}
+        .where(eq(chats.shareId, shareId))
+        .limit(1);
 
-/**
- * Retrieves pinned chats for a user.
- * Filters: pinned = true, archived = false.
- * Sort by updatedAt DESC.
- */
-export async function getPinnedChats(
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<Chat[]> {
-    return await txOrDb
-        .select()
-        .from(chats)
-        .where(and(
-            eq(chats.userId, userId),
-            eq(chats.pinned, true),
-            eq(chats.archived, false)
-        ))
-        .orderBy(desc(chats.updatedAt));
+    return chat || null;
 }
 
 /* -------------------- FOLDER OPERATIONS -------------------- */
 
 /**
- * Moves all chats from one folder to another.
- * Sets pinned = false for moved chats.
+ * Move a chat into a folder (by setting its folderId), or remove it from a folder by
+ * setting folderId to null.
+ * 
+ * @param chatId
+ * @param userId
+ * @param folderId - if null, chat is removed from all folders
+ * @param txOrDb
+ * 
+ * @returns the updated Chat record
+ * 
+ * @throws if the chat record was not found
  */
-export async function moveChatsToFolder(
+export async function updateChatFolder(
+    chatId: string,
     userId: string,
-    fromFolderId: string,
-    toFolderId: string | null,
+    folderId: string | null,
     txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
+): Promise<Chat> {
+    const [updated] = await txOrDb
         .update(chats)
         .set({
-            folderId: toFolderId,
-            pinned: false,
+            folderId: folderId,
+            pinned: false,  // Can't be pinned in folder
             updatedAt: currentUnixTimestamp(),
         })
         .where(and(
-            eq(chats.userId, userId),
-            eq(chats.folderId, fromFolderId)
-        ));
+            eq(chats.id, chatId),
+            eq(chats.userId, userId)
+        ))
+        .returning();
 
-    return result.rowsAffected > 0;
+    if (!updated) throw new RecordNotFoundError(TABLE, chatId);
+    return updated;
 }
 
 /**
- * Deletes all chats in a folder.
- * Used when folder is deleted and user chooses "delete contents".
+ * Delete all chats in a specified folder.
+ * @note that chats in subfolders are NOT deleted; that is the caller's responsibility.
+ * 
+ * @param userId
+ * @param folderId
+ * @param txOrDb
  */
 export async function deleteChatsInFolder(
     userId: string,
     folderId: string,
     txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
+): Promise<void> {
+    await txOrDb
         .delete(chats)
         .where(and(
             eq(chats.userId, userId),
             eq(chats.folderId, folderId)
         ));
-
-    return result.rowsAffected > 0;
 }
 
 /**
- * Counts chats in a folder.
+ * Options for pagination.
  */
-export async function countChatsInFolder(
+export type PaginationOptions = {
+    skip?: number;
+    limit?: number;
+};
+
+/**
+ * Retrieves all chats belonging to a user in a folder or folders, with
+ * optional pagination
+ * @note does not query subfolders
+ * 
+ * @param folderIds
+ * @param userId
+ * @param opts
+ * 
+ * @returns a list of chats in the provided folders
+ */
+export async function getChatsByFolderIdAndUserId(
+    folderIds: string[],
     userId: string,
-    folderId: string,
+    opts: PaginationOptions = {},
     txOrDb: DbOrTx = db
-): Promise<number> {
-    const result = await txOrDb
-        .select({ count: sql<number>`count(*)` })
+): Promise<Chat[]> {
+    return await txOrDb
+        .select()
         .from(chats)
         .where(and(
+            inArray(chats.folderId, folderIds),
             eq(chats.userId, userId),
-            eq(chats.folderId, folderId)
-        ));
-
-    return result[0]?.count ?? 0;
+            eq(chats.archived, false),
+            eq(chats.pinned, false)
+        ))
+        .orderBy(desc(chats.updatedAt))
+        .limit(opts.limit ?? 999999)
+        .offset(opts.skip ?? 0);
 }
 
 /* -------------------- IMPORT/EXPORT -------------------- */
 
 /**
- * Bulk imports chats for a user (for backup restoration).
- *
- * Behavior:
- * - Each chat gets new UUID if not provided
- * - Timestamps can be preserved or set to current time
- * - All chats assigned to provided userId
+ * Bulk imports chats and creates records owned by the specified user
+ * 
+ * @param userId
+ * @param chatsData
+ * @param txOrDb
+ * 
+ * @returns the newly-created chat records
  */
 export async function importChats(
     userId: string,
@@ -1027,13 +652,12 @@ export async function importChats(
 
     const values = chatsData.map(data => {
         const chat = data.chat;
-        if (!chat.models) throw new Error('Chat must have models');
 
         return {
             id: crypto.randomUUID(),
             userId: userId,
-            title: data.chat.title,
-            chat: { ...chat, models: chat.models },
+            title: chat.title,
+            chat: chat,
             meta: data.meta ?? {},
             pinned: data.pinned ?? false,
             archived: false,

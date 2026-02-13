@@ -1,36 +1,45 @@
-import { eq, and, or, isNull, sql, desc } from 'drizzle-orm';
-import { db, type DbOrTx } from '../client.js';
-import { folders, type Folder, type NewFolder } from '../schema.js';
-import { currentUnixTimestamp } from '../utils.js';
-import type { FolderForm, FolderUpdateForm } from '../../routes/types.js';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+import { db, type DbOrTx } from '../client.js';
+import { folders } from '../schema.js';
+import { currentUnixTimestamp } from '../utils.js';
+import { DatabaseError, RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
+
+const TABLE = 'folder';
+
+/* -------------------- CREATE -------------------- */
+
+export type Folder = typeof folders.$inferSelect;
+export type NewFolder = Omit<
+    typeof folders.$inferInsert,
+    'id' | 'updatedAt' | 'createdAt' | 'isExpanded'
+>;
 
 /**
- * Creates a new folder for a user.
- *
- * Required fields: userId, data.name, parentId (null for root-level)
- * Auto-generated: id (UUID v4), createdAt, updatedAt
- * Defaults: isExpanded=false
+ * Creates a new folder for a user
+ * 
+ * @param params
+ * @param txOrDb
+ * 
+ * @returns the created folder record
+ * 
+ * @throws if folder name is shared by another folder under the same parent
+ * @throws if invalid parent folder provided
  */
 export async function createFolder(
-    userId: string,
-    data: FolderForm,
-    parentId: string | null = null,
+    params: NewFolder,
     txOrDb: DbOrTx = db
 ): Promise<Folder> {
+    const { name, parentId = null, userId } = params;
+
     // Check for duplicate name within same parent
-    const existing = await getFolderByNameAndParentId(data.name, parentId, userId, txOrDb);
-    if (existing) {
-        throw new Error('Folder with this name already exists in this location');
-    }
+    const existing = await getFolderByNameAndParentId(name, parentId, userId, txOrDb);
+    if (existing) throw new ValidationError('Folder with this name already exists in this location');
 
     // If parentId provided, validate it exists and belongs to user
     if (parentId) {
         const parent = await getFolderById(parentId, userId, txOrDb);
-        if (!parent) {
-            throw new Error('Parent folder not found');
-        }
+        if (!parent) throw new ValidationError('Parent folder not found');
     }
 
     const now = currentUnixTimestamp();
@@ -42,22 +51,248 @@ export async function createFolder(
             id: folderId,
             parentId: parentId,
             userId: userId,
-            name: data.name,
-            meta: data.meta,
-            data: data.data,
+            name: name,
+            meta: params.meta,
+            data: params.data,
             isExpanded: false,
             createdAt: now,
             updatedAt: now,
         })
         .returning();
 
-    if (!folder) throw new Error('Error creating folder record');
+    if (!folder) throw new RecordCreationError('Error creating folder record');
     return folder;
 }
 
+/* -------------------- UPDATE -------------------- */
+
+export type UpdateFolder = Omit<Partial<NewFolder>, 'userId' | 'parentId'>;
+
 /**
- * Retrieves a folder by ID with ownership verification.
- * Security: Filters by userId to prevent cross-user access.
+ * Update a folder's properties (name, data, meta)
+ * 
+ * @param id - the folder id
+ * @param userId
+ * @param params - updated name, data, or meta fields. undefined fields are ignored.
+ * @param txOrDb
+ * 
+ * @returns the updated folder record
+ * 
+ * @throws if the specified folder does not exist
+ * @throws if the name is updated to an existing folder's name at the same level
+ * @throws if the update fails
+ */
+export async function updateFolder(
+    id: string,
+    userId: string,
+    params: UpdateFolder,
+    txOrDb: DbOrTx = db
+): Promise<Folder> {
+    const existing = await getFolderById(id, userId, txOrDb);
+    if (!existing) throw new RecordNotFoundError(TABLE, id);
+
+    const { name, data, meta } = params;
+
+    // If name is being updated, check for duplicates
+    if (name && name !== existing.name) {
+        const duplicate = await getFolderByNameAndParentId(
+            name,
+            existing.parentId,
+            userId,
+            txOrDb
+        );
+        if (duplicate && duplicate.id !== id) {
+            throw new ValidationError('Folder with this name already exists in this location');
+        }
+    }
+
+    // Merge fields with existing values
+    const mergedName = name ?? existing.name;
+
+    const mergedMeta = meta === undefined ? existing.meta
+        : { ...(existing.meta || {}), ...meta };
+
+    const mergedData = data === undefined ? existing.data
+        : { ...(existing.data || {}), ...data };
+
+    const [updated] = await txOrDb
+        .update(folders)
+        .set({
+            name: mergedName,
+            meta: mergedMeta,
+            data: mergedData,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(and(
+            eq(folders.id, id),
+            eq(folders.userId, userId)
+        ))
+        .returning();
+
+    if (!updated) throw new DatabaseError(`Error updating folder record`);
+    return updated;
+}
+
+/**
+ * 
+ *
+ * Behavior:
+ * - Validates new parent exists (if not null)
+ * - Checks for duplicate folder names in target parent
+ * - Updates parentId and updatedAt timestamp
+ * - Returns null if folder not found
+ *
+ * Validations:
+ * - Cannot move a folder to itself as parent (circular reference)
+ * - Cannot move a folder to one of its own descendants (circular reference)
+ * - Parent folder must exist and belong to user
+ */
+
+
+/**
+ * Moves a folder to a different parent (or to root if parentId is null).
+ * 
+ * @param id - the folder id
+ * @param userId
+ * @param parentId
+ * @param txOrDb
+ * 
+ * @returns the updated folder record
+ * 
+ * @throws if the folder id does not exist
+ * @throws if the referenced parent folder does not exist
+ * @throws if trying to set parent equal to self
+ * @throws if trying to move folder into one of its own children
+ * @throws if the parent folder has a folder with the same name
+ * 
+ */
+export async function updateFolderParent(
+    id: string,
+    userId: string,
+    parentId: string | null,
+    txOrDb: DbOrTx = db
+): Promise<Folder> {
+    const existing = await getFolderById(id, userId, txOrDb);
+    if (!existing) throw new RecordNotFoundError(TABLE, id);
+
+    if (parentId) {
+        // Cannot set parent to self
+        if (parentId === id) throw new ValidationError('Folder cannot be its own parent');
+
+        // Parent folder should exist
+        const parent = await getFolderById(parentId, userId, txOrDb);
+        if (!parent) throw new ValidationError('Parent folder not found');
+
+        // Cannot move folder to one of its descendants
+        const descendants = await getChildrenFolders(id, userId, txOrDb);
+        if (descendants.some(d => d.id === parentId))
+            throw new ValidationError('Cannot move folder to its own descendant');
+    }
+
+    // Check for duplicate name in target parent
+    const duplicate = await getFolderByNameAndParentId(
+        existing.name,
+        parentId,
+        userId,
+        txOrDb
+    );
+    if (duplicate && duplicate.id !== id) {
+        throw new ValidationError('Folder with this name already exists in target location');
+    }
+
+    const [updated] = await txOrDb
+        .update(folders)
+        .set({
+            parentId: parentId,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(and(
+            eq(folders.id, id),
+            eq(folders.userId, userId)
+        ))
+        .returning();
+
+    if (!updated) throw new DatabaseError('Error updating folder record');
+    return updated;
+}
+
+/**
+ * Updates the UI expansion state of a folder
+ * 
+ * @param id - the folder id
+ * @param userId
+ * @param isExpanded
+ * @param txOrDb
+ * 
+ * @returns the updated folder record
+ * 
+ * @throws if the update fails
+ */
+export async function updateFolderExpanded(
+    id: string,
+    userId: string,
+    isExpanded: boolean,
+    txOrDb: DbOrTx = db
+): Promise<Folder> {
+    const [updated] = await txOrDb
+        .update(folders)
+        .set({
+            isExpanded: isExpanded,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(and(
+            eq(folders.id, id),
+            eq(folders.userId, userId)
+        ))
+        .returning();
+
+    if (!updated) throw new RecordNotFoundError(TABLE, id);
+    return updated;
+}
+
+/* -------------------- DELETE -------------------- */
+
+/**
+ * Delete a folder and all of its descendants.
+ * @note this does NOT delete chats contained in these folders. if desired,
+ * that responsibility falls to the caller. per the db schema, deleting folders
+ * will set any associated chat.folderId to null (e.g. the root folder)
+ * 
+ * @note this method does not explicitly delete descendants; they are handled
+ * by cascade behavior (see folder.parentId)
+ * 
+ * @param id - the folder id
+ * @param userId
+ * @param txOrDb
+ * 
+ * @throws if the referenced folder does not exist
+ */
+export async function deleteFolder(
+    id: string,
+    userId: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    // Delete parent folder - cascade automatically deletes children
+    const result = await txOrDb
+        .delete(folders)
+        .where(and(
+            eq(folders.id, id),
+            eq(folders.userId, userId)
+        ));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/* -------------------- READ -------------------- */
+
+/**
+ * Retrieves a user's folder by its ID
+ * 
+ * @param id - Folder id
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns the folder record (or null, if not found)
  */
 export async function getFolderById(
     id: string,
@@ -77,8 +312,12 @@ export async function getFolderById(
 }
 
 /**
- * Retrieves ALL folders for a user (includes all hierarchy levels).
- * Admin or owner only: No pagination.
+ * Retrieve ALL folders and subfolders for a user
+ * 
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns the user's folders
  */
 export async function getFoldersByUserId(
     userId: string,
@@ -92,36 +331,14 @@ export async function getFoldersByUserId(
 }
 
 /**
- * Retrieves direct children of a folder.
- * Parameters:
- * - parentId: Parent folder ID (or null for root-level folders)
- * - userId: User to filter by
- *
- * Returns: Array of child folders at this level only (not recursive)
- */
-export async function getFoldersByParentId(
-    parentId: string | null,
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<Folder[]> {
-    const parentCondition = parentId === null
-        ? isNull(folders.parentId)
-        : eq(folders.parentId, parentId);
-
-    return await txOrDb
-        .select()
-        .from(folders)
-        .where(and(
-            parentCondition,
-            eq(folders.userId, userId)
-        ))
-        .orderBy(desc(folders.createdAt));
-}
-
-/**
- * Looks up a folder by name within a parent context.
- * Security: Filters by userId.
- * Use case: Checking for duplicate names before creation/update.
+ * Look up a folder by exact name within a parent context.
+ * 
+ * @param name - folder name to search for
+ * @param parentId - parent folder id. may be null to search the 'root' folder
+ * @param userId
+ * @param txOrDb 
+ * 
+ * @returns the folder record (or null, if none found)
  */
 export async function getFolderByNameAndParentId(
     name: string,
@@ -137,9 +354,9 @@ export async function getFolderByNameAndParentId(
         .select()
         .from(folders)
         .where(and(
+            eq(folders.userId, userId),
             eq(folders.name, name),
-            parentCondition,
-            eq(folders.userId, userId)
+            parentCondition
         ))
         .limit(1);
 
@@ -147,13 +364,23 @@ export async function getFolderByNameAndParentId(
 }
 
 /**
- * Recursively retrieves all descendant folders.
- * Parameters:
- * - folderId: Root folder to start from
- * - userId: User filter
- *
- * Returns: Array of all descendant folders (recursive tree flattened)
- * Notes: Used for cascading deletion logic.
+ * Recursively retrieve a folder's descendant folders and subfolders. e.g:
+ * 
+ * Folders:
+ * -cats
+ * -dogs
+ * |-collies
+ * |-greyhounds
+ * |--mini
+ * 
+ * ... getChildrenFolders(dogs) returns:
+ * [collies, greyhounds, mini]
+ * 
+ * @param folderId
+ * @param userId
+ * @param txOrDb
+ * 
+ * @returns a list of all the folder's descendant folders/subfolders
  */
 export async function getChildrenFolders(
     folderId: string,
@@ -182,204 +409,4 @@ export async function getChildrenFolders(
     }
 
     return allDescendants;
-}
-
-/**
- * Updates folder properties (name, data, meta).
- *
- * Auto-updated fields: updatedAt
- * Behavior:
- * - Only updates provided fields (partial update)
- * - Data and meta are merged with existing values
- * - If name is updated, checks for duplicate names within same parent
- * - Returns null if folder not found or update fails
- */
-export async function updateFolder(
-    id: string,
-    userId: string,
-    data: FolderUpdateForm,
-    txOrDb: DbOrTx = db
-): Promise<Folder | null> {
-    const existing = await getFolderById(id, userId, txOrDb);
-    if (!existing) return null;
-
-    // If name is being updated, check for duplicates
-    if (data.name && data.name !== existing.name) {
-        const duplicate = await getFolderByNameAndParentId(
-            data.name,
-            existing.parentId,
-            userId,
-            txOrDb
-        );
-        if (duplicate && duplicate.id !== id) {
-            throw new Error('Folder with this name already exists in this location');
-        }
-    }
-
-    const now = currentUnixTimestamp();
-
-    // Merge data and meta fields with existing values
-    const mergedMeta = data.meta !== undefined
-        ? { ...(existing.meta || {}), ...data.meta }
-        : existing.meta;
-
-    const mergedData = data.data !== undefined
-        ? { ...(existing.data || {}), ...data.data }
-        : existing.data;
-
-    const [updated] = await txOrDb
-        .update(folders)
-        .set({
-            name: data.name ?? existing.name,
-            meta: mergedMeta,
-            data: mergedData,
-            updatedAt: now,
-        })
-        .where(and(
-            eq(folders.id, id),
-            eq(folders.userId, userId)
-        ))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Moves a folder to a different parent (or to root if parentId is null).
- *
- * Behavior:
- * - Validates new parent exists (if not null)
- * - Checks for duplicate folder names in target parent
- * - Updates parentId and updatedAt timestamp
- * - Returns null if folder not found
- *
- * Validations:
- * - Cannot move a folder to itself as parent (circular reference)
- * - Cannot move a folder to one of its own descendants (circular reference)
- * - Parent folder must exist and belong to user
- */
-export async function updateFolderParent(
-    id: string,
-    userId: string,
-    parentId: string | null,
-    txOrDb: DbOrTx = db
-): Promise<Folder | null> {
-    const existing = await getFolderById(id, userId, txOrDb);
-    if (!existing) return null;
-
-    // Validate: Cannot move folder to itself
-    if (parentId === id) {
-        throw new Error('Folder cannot be its own parent');
-    }
-
-    // Validate: Cannot move folder to one of its descendants
-    if (parentId) {
-        const descendants = await getChildrenFolders(id, userId, txOrDb);
-        if (descendants.some(d => d.id === parentId)) {
-            throw new Error('Cannot move folder to its own descendant');
-        }
-
-        // Validate: Parent must exist and belong to user
-        const parent = await getFolderById(parentId, userId, txOrDb);
-        if (!parent) {
-            throw new Error('Parent folder not found');
-        }
-    }
-
-    // Check for duplicate name in target parent
-    const duplicate = await getFolderByNameAndParentId(
-        existing.name,
-        parentId,
-        userId,
-        txOrDb
-    );
-    if (duplicate && duplicate.id !== id) {
-        throw new Error('Folder with this name already exists in target location');
-    }
-
-    const now = currentUnixTimestamp();
-
-    const [updated] = await txOrDb
-        .update(folders)
-        .set({
-            parentId: parentId,
-            updatedAt: now,
-        })
-        .where(and(
-            eq(folders.id, id),
-            eq(folders.userId, userId)
-        ))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Updates the UI expansion state of a folder.
- *
- * Behavior:
- * - Sets isExpanded to boolean value
- * - Updates updatedAt timestamp
- * - Returns null if folder not found
- *
- * Use case: Persisting UI tree view state for user
- */
-export async function updateFolderExpanded(
-    id: string,
-    userId: string,
-    isExpanded: boolean,
-    txOrDb: DbOrTx = db
-): Promise<Folder | null> {
-    const now = currentUnixTimestamp();
-
-    const [updated] = await txOrDb
-        .update(folders)
-        .set({
-            isExpanded: isExpanded,
-            updatedAt: now,
-        })
-        .where(and(
-            eq(folders.id, id),
-            eq(folders.userId, userId)
-        ))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Deletes a folder and all its descendants (recursive deletion).
- *
- * Returns: Array of deleted folder IDs (for cascading to chats)
- *
- * Behavior:
- * - Recursively deletes all child folders
- * - Returns list of all deleted folder IDs
- * - Related chats are handled separately (see folder deletion in routes)
- *
- * Cascade:
- * - All descendant folders are deleted
- * - Chats in deleted folders are moved to root or deleted (based on deleteContents parameter in API)
- */
-export async function deleteFolder(
-    id: string,
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<string[]> {
-    const folder = await getFolderById(id, userId, txOrDb);
-    if (!folder) return [];
-
-    // Get all descendants before deletion (to return their IDs)
-    const descendants = await getChildrenFolders(id, userId, txOrDb);
-    const allFolderIds = [id, ...descendants.map(d => d.id)];
-
-    // Delete parent folder - cascade automatically deletes children
-    await txOrDb
-        .delete(folders)
-        .where(and(
-            eq(folders.id, id),
-            eq(folders.userId, userId)
-        ));
-
-    return allFolderIds;
 }

@@ -3,17 +3,15 @@ import assert from 'node:assert';
 import request from 'supertest';
 import express, { type Express } from 'express';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as Models from '../../src/db/operations/models.js';
-import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole } from '../../src/routes/types.js';
+import { type Model } from '../../src/db/operations/models.js';
 import { MockLlama } from '../mockLlama.js';
 import modelsRouter from '../../src/routes/models.js';
+import type { ModelForm, SyncModelsForm } from '../../src/routes/types.js';
 
 /* -------------------- TEST SETUP -------------------- */
 
@@ -44,19 +42,6 @@ app.use('/api/v1/models', modelsRouter);
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
 /**
- * Create a test user and return JWT token
- */
-async function createUserWithToken(role: UserRole = 'user'): Promise<{ userId: string; token: string }> {
-    const userParams = newUserParams(role);
-    const user = await Users.createUser(userParams, db);
-    await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-    const token = JWT.createToken(userParams.id);
-
-    assert.strictEqual(user.role, role);
-    return { userId: userParams.id, token };
-}
-
-/**
  * Create a custom model for testing
  */
 async function createCustomModel(
@@ -73,21 +58,27 @@ async function createCustomModel(
     const model = await Models.insertNewModel(
         {
             id: modelId,
+            userId,
             name: overrides?.name || 'Test Custom Model',
-            base_model_id: overrides?.baseModelId || 'qwen3-vl-30b',
+            baseModelId: overrides?.baseModelId || 'qwen3-vl-30b',
             params: { temperature: 0.7 },
             meta: {
                 profile_image_url: '/static/favicon.png',
                 description: 'Test model',
                 capabilities: null,
             },
-            access_control: overrides?.accessControl || null,
-            is_active: overrides?.isActive ?? true,
+            accessControl: overrides?.accessControl || null,
+            isActive: overrides?.isActive ?? true,
         },
-        userId,
         db
     );
     return model!;
+}
+
+async function getAllModels(_db: typeof db): Promise<Model[]> {
+    return await _db
+        .select()
+        .from(schema.models);
 }
 
 /* -------------------- TESTS -------------------- */
@@ -97,8 +88,23 @@ describe('GET /api/v1/models/', () => {
         await clearDatabase();
     });
 
-    test('should return base models and accessible custom models', async () => {
+    test('should accessible custom models for non-admin', async () => {
         const { userId, token } = await createUserWithToken('user');
+        await createCustomModel(userId);
+
+        const response = await request(app)
+            .get('/api/v1/models/')
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+
+        assert.ok(response.body.data);
+        assert.ok(Array.isArray(response.body.data));
+        assert.strictEqual(response.body.data.length, 1);
+        assert.strictEqual(response.body.data[0].base_model_id, 'qwen3-vl-30b');
+    });
+
+    test('should accessible custom models and base models for admin', async () => {
+        const { userId, token } = await createUserWithToken('admin');
         await createCustomModel(userId);
 
         const response = await request(app)
@@ -137,7 +143,7 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token1}`)
             .expect(200);
 
-        assert.strictEqual(response.body.data.length, 3); // 2 base + 1 accessible custom
+        assert.strictEqual(response.body.data.length, 1); // 1 accessible custom
     });
 
     test('should include public custom models for all users', async () => {
@@ -153,7 +159,7 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token2}`)
             .expect(200);
 
-        assert.strictEqual(response.body.data.length, 3); // 2 base + 1 public custom
+        assert.strictEqual(response.body.data.length, 1); // 1 public custom
     });
 
     test('should fail without authentication token', async () => {
@@ -356,7 +362,7 @@ describe('POST /api/v1/models/create', () => {
     test('should create custom model with valid data', async () => {
         const { userId, token } = await createUserWithToken('user');
 
-        const modelData = {
+        const modelData: ModelForm = {
             id: 'test-custom-model',
             name: 'Test Custom Model',
             base_model_id: 'qwen3-vl-30b',
@@ -366,7 +372,6 @@ describe('POST /api/v1/models/create', () => {
                 description: 'Test description',
                 capabilities: null,
             },
-            access_control: null,
             is_active: true,
         };
 
@@ -386,26 +391,6 @@ describe('POST /api/v1/models/create', () => {
         const model = await Models.getModelById('test-custom-model', db);
         assert.ok(model);
         assert.strictEqual(model.userId, userId);
-    });
-
-    test('should fail when base_model_id is missing', async () => {
-        const { token } = await createUserWithToken('user');
-
-        const modelData = {
-            id: 'test-custom-model',
-            name: 'Test Custom Model',
-            params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-        };
-
-        const response = await request(app)
-            .post('/api/v1/models/create')
-            .set('Authorization', `Bearer ${token}`)
-            .send(modelData)
-            .expect(400);
-
-        assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('must specify base model id'));
     });
 
     test('should fail when base_model_id does not exist in LlamaManager', async () => {
@@ -500,21 +485,6 @@ describe('POST /api/v1/models/create', () => {
 describe('GET /api/v1/models/model', () => {
     beforeEach(async () => {
         await clearDatabase();
-    });
-
-    test('should return base model by ID', async () => {
-        const { token } = await createUserWithToken('user');
-
-        const response = await request(app)
-            .get('/api/v1/models/model')
-            .query({ id: 'qwen3-vl-30b' })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(response.body.id, 'qwen3-vl-30b');
-        assert.strictEqual(response.body.base_model_id, null);
-        assert.strictEqual(response.body.write_access, false); // Base models not writable
-        assert.ok(response.body.user);
     });
 
     test('should return custom model by ID', async () => {
@@ -651,10 +621,9 @@ describe('POST /api/v1/models/model/toggle', () => {
             .post('/api/v1/models/model/toggle')
             .query({ id: 'qwen3-vl-30b' })
             .set('Authorization', `Bearer ${token}`)
-            .expect(400);
+            .expect(404);
 
         assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('Cannot toggle base models'));
     });
 
     test('should fail without write access', async () => {
@@ -752,10 +721,9 @@ describe('POST /api/v1/models/model/update', () => {
             .post('/api/v1/models/model/update')
             .set('Authorization', `Bearer ${token}`)
             .send(updateData)
-            .expect(400);
+            .expect(404);
 
         assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('Cannot update base models'));
     });
 
     test('should fail when new base_model_id does not exist', async () => {
@@ -884,10 +852,9 @@ describe('POST /api/v1/models/model/delete', () => {
             .post('/api/v1/models/model/delete')
             .set('Authorization', `Bearer ${token}`)
             .send({ id: 'qwen3-vl-30b' })
-            .expect(400);
+            .expect(404);
 
         assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('Cannot delete base models'));
     });
 
     test('should fail without write access', async () => {
@@ -963,7 +930,7 @@ describe('DELETE /api/v1/models/delete/all', () => {
         assert.strictEqual(response.body, true);
 
         // Verify all models deleted
-        const models = await Models.getAllModels(db);
+        const models = await getAllModels(db);
         assert.strictEqual(models.length, 0);
     });
 
@@ -1000,217 +967,5 @@ describe('DELETE /api/v1/models/delete/all', () => {
         await request(app)
             .delete('/api/v1/models/delete/all')
             .expect(401);
-    });
-});
-
-describe('POST /api/v1/models/sync', () => {
-    beforeEach(async () => {
-        await clearDatabase();
-    });
-
-    test('should sync custom models successfully', async () => {
-        const { userId, token } = await createUserWithToken('admin');
-
-        // Create initial model
-        await createCustomModel(userId, { id: 'existing-model' });
-
-        const syncData = {
-            models: [
-                {
-                    id: 'existing-model',
-                    user_id: userId,
-                    base_model_id: 'llama3-70b', // Changed
-                    name: 'Updated Existing Model',
-                    params: { temperature: 0.8 },
-                    meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
-                    is_active: true,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-                {
-                    id: 'new-model',
-                    user_id: userId,
-                    base_model_id: 'qwen3-vl-30b',
-                    name: 'New Model',
-                    params: {},
-                    meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
-                    is_active: true,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-            ],
-        };
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(200);
-
-        assert.ok(Array.isArray(response.body));
-        assert.strictEqual(response.body.length, 2);
-
-        // Verify updated model
-        const updated = await Models.getModelById('existing-model', db);
-        assert.strictEqual(updated?.baseModelId, 'llama3-70b');
-        assert.strictEqual(updated?.name, 'Updated Existing Model');
-
-        // Verify new model
-        const created = await Models.getModelById('new-model', db);
-        assert.ok(created);
-    });
-
-    test('should delete models not in sync list', async () => {
-        const { userId, token } = await createUserWithToken('admin');
-
-        await createCustomModel(userId, { id: 'to-be-deleted' });
-        await createCustomModel(userId, { id: 'to-be-kept' });
-
-        const syncData = {
-            models: [
-                {
-                    id: 'to-be-kept',
-                    user_id: userId,
-                    base_model_id: 'qwen3-vl-30b',
-                    name: 'Kept Model',
-                    params: {},
-                    meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
-                    is_active: true,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-            ],
-        };
-
-        await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(200);
-
-        // Verify deletion
-        const deleted = await Models.getModelById('to-be-deleted', db);
-        assert.strictEqual(deleted, null);
-
-        // Verify kept
-        const kept = await Models.getModelById('to-be-kept', db);
-        assert.ok(kept);
-    });
-
-    test('should fail when base_model_id is missing', async () => {
-        const { userId, token } = await createUserWithToken('admin');
-
-        const syncData = {
-            models: [
-                {
-                    id: 'invalid-model',
-                    user_id: userId,
-                    base_model_id: null, // Invalid
-                    name: 'Invalid Model',
-                    params: {},
-                    meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
-                    is_active: true,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-            ],
-        };
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(500);
-
-        assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('missing a base model id'));
-    });
-
-    test('should fail when base_model_id does not exist in LlamaManager', async () => {
-        const { userId, token } = await createUserWithToken('admin');
-
-        const syncData = {
-            models: [
-                {
-                    id: 'invalid-model',
-                    user_id: userId,
-                    base_model_id: 'nonexistent-base',
-                    name: 'Invalid Model',
-                    params: {},
-                    meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
-                    access_control: null,
-                    is_active: true,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-            ],
-        };
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(500);
-
-        assert.ok(response.body.detail);
-        assert.ok(response.body.detail.includes('nonexistent base model'));
-    });
-
-    test('should sync empty array (delete all models)', async () => {
-        const { userId, token } = await createUserWithToken('admin');
-        await createCustomModel(userId);
-
-        const syncData = { models: [] };
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(200);
-
-        assert.ok(Array.isArray(response.body));
-        assert.strictEqual(response.body.length, 0);
-
-        // Verify all deleted
-        const models = await Models.getAllModels(db);
-        assert.strictEqual(models.length, 0);
-    });
-
-    test('should fail with 403 for non-admin users', async () => {
-        const { token } = await createUserWithToken('user');
-
-        const syncData = { models: [] };
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send(syncData)
-            .expect(403);
-
-        assert.ok(response.body.detail);
-    });
-
-    test('should fail without authentication token', async () => {
-        await request(app)
-            .post('/api/v1/models/sync')
-            .send({ models: [] })
-            .expect(401);
-    });
-
-    test('should validate request body schema', async () => {
-        const { token } = await createUserWithToken('admin');
-
-        const response = await request(app)
-            .post('/api/v1/models/sync')
-            .set('Authorization', `Bearer ${token}`)
-            .send({ models: 'not_an_array' })
-            .expect(400);
-
-        assert.ok(response.body.detail);
-        assert.ok(response.body.errors);
     });
 });

@@ -1,9 +1,12 @@
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
-import { createTestDatabase, newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../../helpers.js';
+
+import { newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../../helpers.js';
+import { validateUsername } from '../../../src/db/schema.js';
 import * as Auths from '../../../src/db/operations/auths.js';
+import { type Auth } from '../../../src/db/operations/auths.js';
 import * as Users from '../../../src/db/operations/users.js';
-import { validateUsername, type Auth } from '../../../src/db/schema.js';
+
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 
@@ -17,12 +20,11 @@ describe('createAuth', () => {
     test('creates auth record with hashed password', async () => {
         const user = await Users.createUser(newUserParams(), db);
 
-        const auth = await Auths.createAuth(
-            user.id,
-            user.username,
-            TEST_PASSWORD,
-            db
-        );
+        const auth = await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
 
         assert.strictEqual(auth.id, user.id);
         assert.strictEqual(auth.username, user.username);
@@ -32,7 +34,11 @@ describe('createAuth', () => {
 
     test('normalizes username to lowercase', async () => {
         const user = await Users.createUser({ ...newUserParams(), username: 'UpperCase' }, db);
-        const auth = await Auths.createAuth(user.id, 'UpperCase', TEST_PASSWORD, db);
+        const auth = await Auths.createAuth({
+            id: user.id,
+            username: 'UpperCase',
+            password: TEST_PASSWORD
+        }, db);
 
         assert.strictEqual(auth.username, 'uppercase');
     });
@@ -41,7 +47,11 @@ describe('createAuth', () => {
         const user = await Users.createUser(newUserParams(), db);
 
         await assert.rejects(
-            async () => await Auths.createAuth(user.id, 'ab', TEST_PASSWORD, db),
+            async () => await Auths.createAuth({
+                id: user.id,
+                username: 'ab',
+                password: TEST_PASSWORD
+            }, db),
             { message: 'Username must be 3-50 characters' }
         );
     });
@@ -50,7 +60,11 @@ describe('createAuth', () => {
         const user = await Users.createUser(newUserParams(), db);
 
         await assert.rejects(
-            async () => await Auths.createAuth(user.id, user.username, 'short', db),
+            async () => await Auths.createAuth({
+                id: user.id,
+                username: user.username,
+                password: 'short'
+            }, db),
             { message: 'Password too short (min 8 characters)' }
         );
     });
@@ -63,7 +77,11 @@ describe('getAuthById', () => {
     before(async () => {
         db = await newDBWithAdmin();
         const user = await Users.createUser(newUserParams(), db);
-        testAuth = await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
+        testAuth = await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
     });
 
     test('retrieves existing auth', async () => {
@@ -88,7 +106,11 @@ describe('getAuthByUsername', () => {
     before(async () => {
         db = await newDBWithAdmin();
         const user = await Users.createUser(newUserParams(), db);
-        testAuth = await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
+        testAuth = await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
     });
 
     test('retrieves existing auth', async () => {
@@ -122,12 +144,14 @@ describe('updatePassword', () => {
 
     test('updates password successfully', async () => {
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
 
         const newPassword = 'newpassword123';
-        const success = await Auths.updatePassword(user.id, newPassword, db);
-
-        assert.strictEqual(success, true);
+        await Auths.updatePassword(user.id, newPassword, db);
 
         // Verify old password doesn't work
         const auth = await Auths.getAuthById(user.id, db);
@@ -142,7 +166,11 @@ describe('updatePassword', () => {
 
     test('validates password format', async () => {
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
 
         await assert.rejects(
             async () => await Auths.updatePassword(user.id, 'short', db),
@@ -150,10 +178,11 @@ describe('updatePassword', () => {
         );
     });
 
-    test('returns false for non-existent user', async () => {
-        const success = await Auths.updatePassword('non-existent', 'newpassword123', db);
-
-        assert.strictEqual(success, false);
+    test('throws for non-existent user', async () => {
+        await assert.rejects(
+            async () => await Auths.updatePassword('non-existent', 'newpassword123', db),
+            { message: `auth record with id 'non-existent' not found` }
+        );
     });
 });
 
@@ -166,11 +195,13 @@ describe('updateUsername', () => {
 
     test('updates username successfully', async () => {
         const user = await Users.createUser({ ...newUserParams(), username: 'oldname' }, db);
-        await Auths.createAuth(user.id, 'oldname', TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: 'oldname',
+            password: TEST_PASSWORD
+        }, db);
 
-        const success = await Auths.updateUsername(user.id, 'newname', db);
-
-        assert.strictEqual(success, true);
+        await Auths.updateUsername(user.id, 'newname', db);
 
         const auth = await Auths.getAuthById(user.id, db);
         assert.ok(auth);
@@ -179,7 +210,11 @@ describe('updateUsername', () => {
 
     test('normalizes username to lowercase', async () => {
         const user = await Users.createUser({ ...newUserParams(), username: 'original' }, db);
-        await Auths.createAuth(user.id, 'original', TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: 'original',
+            password: TEST_PASSWORD
+        }, db);
 
         await Auths.updateUsername(user.id, 'NewUsername', db);
 
@@ -190,38 +225,16 @@ describe('updateUsername', () => {
 
     test('validates username format', async () => {
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: TEST_PASSWORD
+        }, db);
 
         await assert.rejects(
             async () => await Auths.updateUsername(user.id, 'ab', db),
             { message: 'Username must be 3-50 characters' }
         );
-    });
-});
-
-describe('deleteAuth', () => {
-    let db: TestDatabase;
-
-    before(async () => {
-        db = await newDBWithAdmin();
-    });
-
-    test('deletes auth successfully', async () => {
-        const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, TEST_PASSWORD, db);
-
-        const success = await Auths.deleteAuth(user.id, db);
-
-        assert.strictEqual(success, true);
-
-        const auth = await Auths.getAuthById(user.id, db);
-        assert.strictEqual(auth, null);
-    });
-
-    test('returns false for non-existent auth', async () => {
-        const success = await Auths.deleteAuth('non-existent', db);
-
-        assert.strictEqual(success, false);
     });
 });
 
@@ -237,7 +250,11 @@ describe('authenticateUser', () => {
     test('authenticates with valid credentials', async () => {
         const password = 'authpassword';
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, password, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: password
+        }, db);
 
         const result = await Auths.authenticateUser(user.username, password, db);
 
@@ -251,7 +268,11 @@ describe('authenticateUser', () => {
     test('is case-insensitive for username', async () => {
         const password = 'testpassword';
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, password, db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: password
+        }, db);
 
         const result = await Auths.authenticateUser(user.username.toUpperCase(), password, db);
 
@@ -267,7 +288,11 @@ describe('authenticateUser', () => {
 
     test('returns null for incorrect password', async () => {
         const user = await Users.createUser(newUserParams(), db);
-        await Auths.createAuth(user.id, user.username, 'correctpassword', db);
+        await Auths.createAuth({
+            id: user.id,
+            username: user.username,
+            password: 'correctpassword'
+        }, db);
 
         const result = await Auths.authenticateUser(user.username, 'wrongpassword', db);
 

@@ -1,37 +1,21 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { createTestDatabase, newUserParams, type TestDatabase } from '../../helpers.js';
+import { createTestDatabase, newUserParams, type TestDatabase, createTestFolderForm } from '../../helpers.js';
 import * as Folders from '../../../src/db/operations/folders.js';
+import type { Folder, NewFolder } from '../../../src/db/operations/folders.js';
 import * as Users from '../../../src/db/operations/users.js';
 import * as Chats from '../../../src/db/operations/chats.js';
-import { folders, type Folder } from '../../../src/db/schema.js';
-import type { FolderForm, FolderUpdateForm, FolderMeta, FolderData } from '../../../src/routes/types.js';
+import { folders } from '../../../src/db/schema.js';
+import type { FolderData } from '../../../src/routes/types.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 
 /**
- * Creates a minimal FolderForm for testing.
- */
-function createTestFolderForm(
-    name: string = 'Test Folder',
-    meta?: FolderMeta,
-    data?: FolderData
-): FolderForm {
-    return {
-        name: name,
-        meta: meta,
-        data: data,
-    };
-}
-
-/**
  * Create a folder with 'createdAt' and 'updatedAt' set to specific values
  */
 async function _createOldFolder(
-    userId: string,
-    data: FolderForm,
-    parentId: string | null = null,
+    params: NewFolder,
     txOrDb: TestDatabase,
     createdAt?: number,
     updatedAt?: number,
@@ -43,11 +27,11 @@ async function _createOldFolder(
         .insert(folders)
         .values({
             id: folderId,
-            parentId: parentId,
-            userId: userId,
-            name: data.name,
-            meta: data.meta,
-            data: data.data,
+            parentId: params.parentId || null,
+            userId: params.userId,
+            name: params.name,
+            meta: params.meta,
+            data: params.data,
             isExpanded: false,
             createdAt: createdAt ?? now - 1000,
             updatedAt: updatedAt ?? createdAt ?? now - 1000,
@@ -78,8 +62,7 @@ describe('Folder Operations', () => {
 
     describe('createFolder', () => {
         test('should create root-level folder', async () => {
-            const folderData = createTestFolderForm('My Folder');
-            const folder = await Folders.createFolder(userId, folderData, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'My Folder'), db);
 
             assert.ok(folder.id);
             assert.strictEqual(folder.userId, userId);
@@ -93,16 +76,12 @@ describe('Folder Operations', () => {
 
         test('should create subfolder with valid parent', async () => {
             const parentFolder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
             const childFolder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child Folder'),
-                parentFolder.id,
+                createTestFolderForm(userId, 'Child Folder', parentFolder.id),
                 db
             );
 
@@ -113,39 +92,31 @@ describe('Folder Operations', () => {
         });
 
         test('should reject duplicate name in same parent', async () => {
-            const folderData = createTestFolderForm('Duplicate Folder');
-            await Folders.createFolder(userId, folderData, null, db);
+            const folderData = createTestFolderForm(userId, 'Duplicate Folder');
+            await Folders.createFolder(folderData, db);
 
             await assert.rejects(
-                async () => await Folders.createFolder(userId, folderData, null, db),
+                async () => await Folders.createFolder(folderData, db),
                 { message: 'Folder with this name already exists in this location' }
             );
         });
 
         test('should allow same name in different parents', async () => {
             const parent1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 1'),
-                null,
+                createTestFolderForm(userId, 'Parent 1'),
                 db
             );
             const parent2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 2'),
-                null,
+                createTestFolderForm(userId, 'Parent 2'),
                 db
             );
 
             const child1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Same Name'),
-                parent1.id,
+                createTestFolderForm(userId, 'Same Name', parent1.id),
                 db
             );
             const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Same Name'),
-                parent2.id,
+                createTestFolderForm(userId, 'Same Name', parent2.id),
                 db
             );
 
@@ -157,13 +128,9 @@ describe('Folder Operations', () => {
         });
 
         test('should reject invalid parent_id', async () => {
-            const folderData = createTestFolderForm('Test Folder');
-
             await assert.rejects(
                 async () => await Folders.createFolder(
-                    userId,
-                    folderData,
-                    'non-existent-id',
+                    createTestFolderForm(userId, 'Test Folder', 'non-existent-id'),
                     db
                 ),
                 { message: 'Parent folder not found' }
@@ -172,10 +139,12 @@ describe('Folder Operations', () => {
 
         test('should create folder with meta', async () => {
             const folderData = createTestFolderForm(
+                userId,
                 'Folder with Icon',
+                undefined,
                 { icon: ':star:' }
             );
-            const folder = await Folders.createFolder(userId, folderData, null, db);
+            const folder = await Folders.createFolder(folderData, db);
 
             assert.ok(folder.meta);
             assert.strictEqual(folder.meta.icon, ':star:');
@@ -183,11 +152,13 @@ describe('Folder Operations', () => {
 
         test('should create folder with data', async () => {
             const folderData = createTestFolderForm(
+                userId,
                 'Folder with Data',
+                undefined,
                 undefined,
                 { system_prompt: 'You are a helpful assistant' }
             );
-            const folder = await Folders.createFolder(userId, folderData, null, db);
+            const folder = await Folders.createFolder(folderData, db);
 
             assert.ok(folder.data);
             assert.strictEqual(folder.data.system_prompt, 'You are a helpful assistant');
@@ -196,9 +167,7 @@ describe('Folder Operations', () => {
         test('should verify timestamps are set correctly', async () => {
             const now = currentUnixTimestamp();
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -209,9 +178,7 @@ describe('Folder Operations', () => {
 
         test('should verify default isExpanded is false', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -222,9 +189,7 @@ describe('Folder Operations', () => {
     describe('getFolderById', () => {
         test('should retrieve existing folder', async () => {
             const created = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
             const retrieved = await Folders.getFolderById(created.id, userId, db);
@@ -244,9 +209,7 @@ describe('Folder Operations', () => {
         test('should enforce user ownership', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('My Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -258,28 +221,24 @@ describe('Folder Operations', () => {
 
     describe('getFoldersByUserId', () => {
         test('should retrieve all folders for user', async () => {
-            await Folders.createFolder(userId, createTestFolderForm('Folder 1'), null, db);
-            await Folders.createFolder(userId, createTestFolderForm('Folder 2'), null, db);
-            await Folders.createFolder(userId, createTestFolderForm('Folder 3'), null, db);
+            await Folders.createFolder(createTestFolderForm(userId, 'Test Folder1'), db);
+            await Folders.createFolder(createTestFolderForm(userId, 'Test Folder2'), db);
+            await Folders.createFolder(createTestFolderForm(userId, 'Test Folder3'), db);
 
             const folders = await Folders.getFoldersByUserId(userId, db);
 
-            assert.ok(folders.length >= 3);
+            assert.ok(folders.length == 3);
             assert.ok(folders.every(f => f.userId === userId));
         });
 
         test('should return folders ordered by createdAt desc', async () => {
             const folder1 = await _createOldFolder(
-                userId,
-                createTestFolderForm('First'),
-                null,
+                createTestFolderForm(userId, 'Test Folder1'),
                 db,
             );
 
             const folder2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Second'),
-                null,
+                createTestFolderForm(userId, 'Test Folder2'),
                 db
             );
 
@@ -299,155 +258,32 @@ describe('Folder Operations', () => {
         test('should not return other users folders', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
 
-            await Folders.createFolder(userId, createTestFolderForm('User 1 Folder'), null, db);
-            await Folders.createFolder(otherUser.id, createTestFolderForm('User 2 Folder'), null, db);
+            await Folders.createFolder(createTestFolderForm(userId, 'User1 Folder'), db);
+            await Folders.createFolder(createTestFolderForm(otherUser.id, 'User2 Folder'), db);
 
             const user1Folders = await Folders.getFoldersByUserId(userId, db);
             const user2Folders = await Folders.getFoldersByUserId(otherUser.id, db);
 
             assert.strictEqual(user1Folders.length, 1);
             assert.strictEqual(user2Folders.length, 1);
-            assert.strictEqual(user1Folders[0]!.name, 'User 1 Folder');
-            assert.strictEqual(user2Folders[0]!.name, 'User 2 Folder');
-        });
-    });
-
-    describe('getFoldersByParentId', () => {
-        test('should retrieve direct children of folder', async () => {
-            const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
-                db
-            );
-            const child1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 1'),
-                parent.id,
-                db
-            );
-            const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 2'),
-                parent.id,
-                db
-            );
-
-            const children = await Folders.getFoldersByParentId(parent.id, userId, db);
-
-            assert.strictEqual(children.length, 2);
-            assert.ok(children.some(c => c.id === child1.id));
-            assert.ok(children.some(c => c.id === child2.id));
-        });
-
-        test('should retrieve root-level folders with null parentId', async () => {
-            const root1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root 1'),
-                null,
-                db
-            );
-            const root2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root 2'),
-                null,
-                db
-            );
-
-            const rootFolders = await Folders.getFoldersByParentId(null, userId, db);
-
-            assert.ok(rootFolders.length >= 2);
-            assert.ok(rootFolders.some(f => f.id === root1.id));
-            assert.ok(rootFolders.some(f => f.id === root2.id));
-            assert.ok(rootFolders.every(f => f.parentId === null));
-        });
-
-        test('should not return nested descendants', async () => {
-            const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
-                db
-            );
-            const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                parent.id,
-                db
-            );
-            await Folders.createFolder(
-                userId,
-                createTestFolderForm('Grandchild'),
-                child.id,
-                db
-            );
-
-            const children = await Folders.getFoldersByParentId(parent.id, userId, db);
-
-            assert.strictEqual(children.length, 1);
-            assert.strictEqual(children[0]!.id, child.id);
-        });
-
-        test('should return empty array if parent has no children', async () => {
-            const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Empty Parent'),
-                null,
-                db
-            );
-
-            const children = await Folders.getFoldersByParentId(parent.id, userId, db);
-
-            assert.strictEqual(children.length, 0);
-        });
-
-        test('should return folders ordered by createdAt desc', async () => {
-            const parent = await _createOldFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
-                db
-            );
-
-            const child1 = await _createOldFolder(
-                userId,
-                createTestFolderForm('First Child'),
-                parent.id,
-                db
-            );
-
-            const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Second Child'),
-                parent.id,
-                db
-            );
-
-            const children = await Folders.getFoldersByParentId(parent.id, userId, db);
-
-            // Most recent first
-            assert.strictEqual(children[0]!.id, child2.id);
-            assert.strictEqual(children[1]!.id, child1.id);
+            assert.strictEqual(user1Folders[0]!.name, 'User1 Folder');
+            assert.strictEqual(user2Folders[0]!.name, 'User2 Folder');
         });
     });
 
     describe('getFolderByNameAndParentId', () => {
         test('should lookup folder by name within parent', async () => {
             const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
             const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                parent.id,
+                createTestFolderForm(userId, 'Child Folder', parent.id),
                 db
             );
 
             const found = await Folders.getFolderByNameAndParentId(
-                'Child',
+                'Child Folder',
                 parent.id,
                 userId,
                 db
@@ -455,14 +291,12 @@ describe('Folder Operations', () => {
 
             assert.ok(found);
             assert.strictEqual(found.id, child.id);
-            assert.strictEqual(found.name, 'Child');
+            assert.strictEqual(found.name, 'Child Folder');
         });
 
         test('should lookup root-level folder with null parentId', async () => {
             const root = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root Folder'),
-                null,
+                createTestFolderForm(userId, 'Root Folder'),
                 db
             );
 
@@ -479,9 +313,7 @@ describe('Folder Operations', () => {
 
         test('should return null if name not found in parent', async () => {
             const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -497,28 +329,20 @@ describe('Folder Operations', () => {
 
         test('should distinguish between same names in different parents', async () => {
             const parent1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 1'),
-                null,
+                createTestFolderForm(userId, 'Parent1 Folder'),
                 db
             );
             const parent2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 2'),
-                null,
+                createTestFolderForm(userId, 'Parent2 Folder'),
                 db
             );
 
             const child1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Same Name'),
-                parent1.id,
+                createTestFolderForm(userId, 'Same Name', parent1.id),
                 db
             );
             const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Same Name'),
-                parent2.id,
+                createTestFolderForm(userId, 'Same Name', parent2.id),
                 db
             );
 
@@ -546,33 +370,23 @@ describe('Folder Operations', () => {
     describe('getChildrenFolders', () => {
         test('should retrieve all descendant folders recursively', async () => {
             const root = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root'),
-                null,
+                createTestFolderForm(userId, 'Root'),
                 db
             );
             const child1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 1'),
-                root.id,
+                createTestFolderForm(userId, 'Child1', root.id),
                 db
             );
             const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 2'),
-                root.id,
+                createTestFolderForm(userId, 'Child2', root.id),
                 db
             );
             const grandchild1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Grandchild 1'),
-                child1.id,
+                createTestFolderForm(userId, 'GrandChild1', child1.id),
                 db
             );
             const grandchild2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Grandchild 2'),
-                child2.id,
+                createTestFolderForm(userId, 'GrandChild2', child2.id),
                 db
             );
 
@@ -587,9 +401,7 @@ describe('Folder Operations', () => {
 
         test('should return empty array for folder with no children', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Leaf Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -600,17 +412,13 @@ describe('Folder Operations', () => {
 
         test('should handle deep nesting', async () => {
             let currentParent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Level 0'),
-                null,
+                createTestFolderForm(userId, 'Level 0'),
                 db
             );
 
             for (let i = 1; i <= 5; i++) {
                 currentParent = await Folders.createFolder(
-                    userId,
-                    createTestFolderForm(`Level ${i}`),
-                    currentParent.id,
+                    createTestFolderForm(userId, `Level ${i}`, currentParent.id),
                     db
                 );
             }
@@ -627,9 +435,7 @@ describe('Folder Operations', () => {
     describe('updateFolder', () => {
         test('should update folder name', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Original Name'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -645,14 +451,14 @@ describe('Folder Operations', () => {
         });
 
         test('should check duplicate name in same parent', async () => {
-            await Folders.createFolder(userId, createTestFolderForm('Existing Folder'), null, db);
-            const folder = await Folders.createFolder(userId, createTestFolderForm('My Folder'), null, db);
+            await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder2'), db);
 
             await assert.rejects(
                 async () => await Folders.updateFolder(
                     folder.id,
                     userId,
-                    { name: 'Existing Folder' },
+                    { name: 'Test Folder' },
                     db
                 ),
                 { message: 'Folder with this name already exists in this location' }
@@ -661,28 +467,25 @@ describe('Folder Operations', () => {
 
         test('should allow updating to same name', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('My Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
             const updated = await Folders.updateFolder(
                 folder.id,
                 userId,
-                { name: 'My Folder' },
+                { name: 'Test Folder' },
                 db
             );
 
             assert.ok(updated);
-            assert.strictEqual(updated.name, 'My Folder');
+            assert.strictEqual(updated.name, 'Test Folder');
+            assert.deepStrictEqual(updated, folder);
         });
 
         test('should update meta with merge semantics', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder', { icon: ':folder:' }),
-                null,
+                createTestFolderForm(userId, 'Test Folder', undefined, { icon: ':folder:' }),
                 db
             );
 
@@ -700,12 +503,10 @@ describe('Folder Operations', () => {
 
         test('should update data with merge semantics', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder', undefined, {
+                createTestFolderForm(userId, 'Test Folder', undefined, undefined, {
                     system_prompt: 'Original prompt',
                     model_ids: ['model1']
                 }),
-                null,
                 db
             );
 
@@ -724,9 +525,7 @@ describe('Folder Operations', () => {
 
         test('should perform partial update', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Original Name', { icon: ':folder:' }),
-                null,
+                createTestFolderForm(userId, 'Test Folder', undefined, { icon: ':folder:' }),
                 db
             );
 
@@ -738,16 +537,14 @@ describe('Folder Operations', () => {
             );
 
             assert.ok(updated);
-            assert.strictEqual(updated.name, 'Original Name');
+            assert.strictEqual(updated.name, 'Test Folder');
             assert.ok(updated.meta);
             assert.strictEqual(updated.meta.icon, ':star:');
         });
 
         test('should update timestamps on modification', async () => {
             const folder = await _createOldFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
             const originalCreatedAt = folder.createdAt;
@@ -768,52 +565,46 @@ describe('Folder Operations', () => {
         test('should reject cross-user updates', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('My Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
-            const updated = await Folders.updateFolder(
-                folder.id,
-                otherUser.id,
-                { name: 'Hacked Folder' },
-                db
+            await assert.rejects(
+                async () => await Folders.updateFolder(
+                    folder.id,
+                    otherUser.id,
+                    { name: 'Hacked Folder' },
+                    db
+                ),
+                { message: `folder record with id '${folder.id}' not found` }
             );
-
-            assert.strictEqual(updated, null);
         });
 
-        test('should return null for non-existent folder', async () => {
-            const updated = await Folders.updateFolder(
-                'non-existent-id',
-                userId,
-                { name: 'Updated Name' },
-                db
+        test('should throw for non-existent folder', async () => {
+            await assert.rejects(
+                async () => await Folders.updateFolder(
+                    'non-existent-id',
+                    userId,
+                    { name: 'Updated Name' },
+                    db
+                ),
+                { message: `folder record with id 'non-existent-id' not found` }
             );
-
-            assert.strictEqual(updated, null);
         });
     });
 
     describe('updateFolderParent', () => {
         test('should move folder to different parent', async () => {
             const parent1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 1'),
-                null,
+                createTestFolderForm(userId, 'Parent1'),
                 db
             );
             const parent2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent 2'),
-                null,
+                createTestFolderForm(userId, 'Parent2'),
                 db
             );
             const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                parent1.id,
+                createTestFolderForm(userId, 'Child', parent1.id),
                 db
             );
 
@@ -830,15 +621,11 @@ describe('Folder Operations', () => {
 
         test('should move folder to root', async () => {
             const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Parent1'),
                 db
             );
             const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                parent.id,
+                createTestFolderForm(userId, 'Child', parent.id),
                 db
             );
 
@@ -855,9 +642,7 @@ describe('Folder Operations', () => {
 
         test('should reject moving folder to itself', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Self-referential'),
-                null,
+                createTestFolderForm(userId, 'Parent1'),
                 db
             );
 
@@ -874,21 +659,15 @@ describe('Folder Operations', () => {
 
         test('should reject moving folder to its own descendant', async () => {
             const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Parent'),
                 db
             );
             const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                parent.id,
+                createTestFolderForm(userId, 'Child', parent.id),
                 db
             );
             const grandchild = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Grandchild'),
-                child.id,
+                createTestFolderForm(userId, 'GrandChild', child.id),
                 db
             );
 
@@ -905,21 +684,15 @@ describe('Folder Operations', () => {
 
         test('should check duplicate name in target parent', async () => {
             const parent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Parent'),
                 db
             );
             await Folders.createFolder(
-                userId,
-                createTestFolderForm('Existing Child'),
-                parent.id,
+                createTestFolderForm(userId, 'Child', parent.id),
                 db
             );
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Existing Child'),
-                null,
+                createTestFolderForm(userId, 'Child'),
                 db
             );
 
@@ -936,9 +709,7 @@ describe('Folder Operations', () => {
 
         test('should verify parent exists', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -955,15 +726,11 @@ describe('Folder Operations', () => {
 
         test('should update timestamps', async () => {
             const parent = await _createOldFolder(
-                userId,
-                createTestFolderForm('Parent'),
-                null,
+                createTestFolderForm(userId, 'Parent'),
                 db
             );
             const folder = await _createOldFolder(
-                userId,
-                createTestFolderForm('Child'),
-                null,
+                createTestFolderForm(userId, 'Child'),
                 db
             );
             const originalUpdatedAt = folder.updatedAt;
@@ -980,23 +747,22 @@ describe('Folder Operations', () => {
         });
 
         test('should return null for non-existent folder', async () => {
-            const updated = await Folders.updateFolderParent(
-                'non-existent-id',
-                userId,
-                null,
-                db
+            await assert.rejects(
+                async () => await Folders.updateFolderParent(
+                    'non-existent-id',
+                    userId,
+                    null,
+                    db
+                ),
+                { message: `folder record with id 'non-existent-id' not found` }
             );
-
-            assert.strictEqual(updated, null);
         });
     });
 
     describe('updateFolderExpanded', () => {
         test('should update isExpanded to true', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -1013,9 +779,7 @@ describe('Folder Operations', () => {
 
         test('should update isExpanded to false', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -1036,9 +800,7 @@ describe('Folder Operations', () => {
 
         test('should update timestamps', async () => {
             const folder = await _createOldFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
             const originalUpdatedAt = folder.updatedAt;
@@ -1055,41 +817,38 @@ describe('Folder Operations', () => {
         });
 
         test('should return null for non-existent folder', async () => {
-            const updated = await Folders.updateFolderExpanded(
-                'non-existent-id',
-                userId,
-                true,
-                db
+            await assert.rejects(
+                async () => await Folders.updateFolderExpanded(
+                    'non-existent-id',
+                    userId,
+                    true,
+                    db
+                ),
+                { message: `folder record with id 'non-existent-id' not found` }
             );
-
-            assert.strictEqual(updated, null);
         });
     });
 
     describe('deleteFolder', () => {
-        test('should delete folder and return its ID', async () => {
+        test('should delete folder', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
-            const deletedIds = await Folders.deleteFolder(folder.id, userId, db);
+            let retrieved = await Folders.getFolderById(folder.id, userId, db);
+            assert.strictEqual(retrieved!.id, folder.id);
 
-            assert.strictEqual(deletedIds.length, 1);
-            assert.strictEqual(deletedIds[0], folder.id);
+            await Folders.deleteFolder(folder.id, userId, db);
 
-            const retrieved = await Folders.getFolderById(folder.id, userId, db);
+            retrieved = await Folders.getFolderById(folder.id, userId, db);
             assert.strictEqual(retrieved, null);
         });
 
         test('should set chat folderId to null when folder is deleted', async () => {
             // Create folder
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -1129,37 +888,23 @@ describe('Folder Operations', () => {
 
         test('should recursively delete all descendants', async () => {
             const root = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
             const child1 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 1'),
-                root.id,
+                createTestFolderForm(userId, 'Child1', root.id),
                 db
             );
             const child2 = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child 2'),
-                root.id,
+                createTestFolderForm(userId, 'Child2', root.id),
                 db
             );
             const grandchild = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Grandchild'),
-                child1.id,
+                createTestFolderForm(userId, 'GrandChild', child1.id),
                 db
             );
 
-            const deletedIds = await Folders.deleteFolder(root.id, userId, db);
-
-            assert.strictEqual(deletedIds.length, 4);
-            assert.ok(deletedIds.includes(root.id));
-            assert.ok(deletedIds.includes(child1.id));
-            assert.ok(deletedIds.includes(child2.id));
-            assert.ok(deletedIds.includes(grandchild.id));
+            await Folders.deleteFolder(root.id, userId, db);
 
             // Verify all are deleted
             assert.strictEqual(await Folders.getFolderById(root.id, userId, db), null);
@@ -1168,78 +913,54 @@ describe('Folder Operations', () => {
             assert.strictEqual(await Folders.getFolderById(grandchild.id, userId, db), null);
         });
 
-        test('should return array of deleted IDs in reverse order', async () => {
-            const root = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Root'),
-                null,
-                db
-            );
-            const child = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Child'),
-                root.id,
-                db
-            );
-
-            const deletedIds = await Folders.deleteFolder(root.id, userId, db);
-
-            assert.strictEqual(deletedIds.length, 2);
-            assert.strictEqual(deletedIds[0], root.id);
-            assert.strictEqual(deletedIds[1], child.id);
-        });
-
         test('should delete folder with no children', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Leaf Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
-            const deletedIds = await Folders.deleteFolder(folder.id, userId, db);
+            let retrieved = await Folders.getFolderById(folder.id, userId, db);
+            assert.deepStrictEqual(folder, retrieved!);
 
-            assert.strictEqual(deletedIds.length, 1);
-            assert.strictEqual(deletedIds[0], folder.id);
+            await Folders.deleteFolder(folder.id, userId, db);
+
+            retrieved = await Folders.getFolderById(folder.id, userId, db);
+            assert.strictEqual(null, retrieved!);
         });
 
         test('should verify user ownership', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('My Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
-            const deletedIds = await Folders.deleteFolder(folder.id, otherUser.id, db);
-
-            assert.strictEqual(deletedIds.length, 0);
+            await assert.rejects(
+                async () => await Folders.deleteFolder(folder.id, otherUser.id, db),
+                { message: `folder record with id '${folder.id}' not found` }
+            );
 
             // Verify folder still exists
             const retrieved = await Folders.getFolderById(folder.id, userId, db);
             assert.ok(retrieved);
         });
 
-        test('should return empty array for non-existent folder', async () => {
-            const deletedIds = await Folders.deleteFolder('non-existent-id', userId, db);
-
-            assert.strictEqual(deletedIds.length, 0);
+        test('should throw for non-existent folder', async () => {
+            await assert.rejects(
+                async () => await Folders.deleteFolder('non-existent-id', userId, db),
+                { message: `folder record with id 'non-existent-id' not found` }
+            );
         });
 
         test('should handle deletion of folder with nested hierarchy', async () => {
             let currentParent = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Level 0'),
-                null,
+                createTestFolderForm(userId, 'Level 0'),
                 db
             );
 
-            for (let i = 1; i <= 3; i++) {
+            for (let i = 1; i < 4; i++) {
                 currentParent = await Folders.createFolder(
-                    userId,
-                    createTestFolderForm(`Level ${i}`),
-                    currentParent.id,
+                    createTestFolderForm(userId, `Level ${i}`, currentParent.id),
                     db
                 );
             }
@@ -1247,9 +968,13 @@ describe('Folder Operations', () => {
             const rootFolder = await Folders.getFolderByNameAndParentId('Level 0', null, userId, db);
             assert.ok(rootFolder);
 
-            const deletedIds = await Folders.deleteFolder(rootFolder.id, userId, db);
+            let userFolders = await Folders.getFoldersByUserId(userId, db);
+            assert.strictEqual(userFolders.length, 4);
 
-            assert.strictEqual(deletedIds.length, 4);
+            await Folders.deleteFolder(rootFolder.id, userId, db);
+
+            userFolders = await Folders.getFoldersByUserId(userId, db);
+            assert.strictEqual(userFolders.length, 0);
         });
     });
 
@@ -1259,17 +984,13 @@ describe('Folder Operations', () => {
         test('should isolate users folders', async () => {
             const user1 = await Users.createUser(newUserParams(), db);
             const user2 = await Users.createUser(newUserParams(), db);
-
+            
             const user1Folder = await Folders.createFolder(
-                user1.id,
-                createTestFolderForm('User 1 Folder'),
-                null,
+                createTestFolderForm(user1.id, 'Test Folder'),
                 db
             );
             const user2Folder = await Folders.createFolder(
-                user2.id,
-                createTestFolderForm('User 2 Folder'),
-                null,
+                createTestFolderForm(user2.id, 'Test Folder'),
                 db
             );
 
@@ -1288,9 +1009,7 @@ describe('Folder Operations', () => {
 
         test('should verify timestamps are unix seconds not milliseconds', async () => {
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder'),
-                null,
+                createTestFolderForm(userId, 'Test Folder'),
                 db
             );
 
@@ -1301,14 +1020,10 @@ describe('Folder Operations', () => {
         });
 
         test('should handle null optional fields', async () => {
-            const folderData: FolderForm = {
-                name: 'Minimal Folder',
-            };
-
-            const folder = await Folders.createFolder(userId, folderData, null, db);
+            const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
             assert.ok(folder.id);
-            assert.strictEqual(folder.name, 'Minimal Folder');
+            assert.strictEqual(folder.name, 'Test Folder');
             // Optional fields can be undefined or null based on schema
             assert.ok(folder.meta === undefined || folder.meta === null);
             assert.ok(folder.data === undefined || folder.data === null);
@@ -1330,9 +1045,7 @@ describe('Folder Operations', () => {
 
             for (const name of specialNames) {
                 const folder = await Folders.createFolder(
-                    userId,
-                    createTestFolderForm(name),
-                    null,
+                    createTestFolderForm(userId, name),
                     db
                 );
 
@@ -1347,9 +1060,7 @@ describe('Folder Operations', () => {
         test('should handle folders with long names', async () => {
             const longName = 'A'.repeat(255);
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm(longName),
-                null,
+                createTestFolderForm(userId, longName),
                 db
             );
 
@@ -1367,9 +1078,7 @@ describe('Folder Operations', () => {
 
             for (const name of unicodeNames) {
                 const folder = await Folders.createFolder(
-                    userId,
-                    createTestFolderForm(name),
-                    null,
+                    createTestFolderForm(userId, name),
                     db
                 );
 
@@ -1399,9 +1108,7 @@ describe('Folder Operations', () => {
             };
 
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Complex Folder', undefined, complexData),
-                null,
+                createTestFolderForm(userId, 'Test Folder', undefined, undefined, complexData),
                 db
             );
 
@@ -1424,9 +1131,7 @@ describe('Folder Operations', () => {
             };
 
             const folder = await Folders.createFolder(
-                userId,
-                createTestFolderForm('Test Folder', undefined, initialData),
-                null,
+                createTestFolderForm(userId, 'Test Folder', undefined, undefined, initialData),
                 db
             );
 

@@ -1,54 +1,171 @@
-import { eq, ne, desc, asc, or, and, like, sql, inArray, isNull, isNotNull } from 'drizzle-orm';
-import { db, type DbOrTx } from '../client.js';
-import { models, users, type Model, type NewModel } from '../schema.js';
-import { currentUnixTimestamp } from '../utils.js';
-import type { ModelForm, ModelParams, ModelMeta, AccessControl, UserRole } from '../../routes/types.js';
+import { eq, ne, desc, asc, or, and, like, sql, inArray, isNull, isNotNull, SQL, count } from 'drizzle-orm';
 
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+import { db, type DbOrTx } from '../client.js';
+import { models, users } from '../schema.js';
+import { currentUnixTimestamp } from '../utils.js';
+import type { ModelForm, UserRole } from '../../routes/types.js';
+import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
+
+const TABLE = 'model';
+
+/* -------------------- CREATE -------------------- */
+
+export type Model = typeof models.$inferSelect;
+export type NewModel = Omit<
+    typeof models.$inferInsert,
+    'updatedAt' | 'createdAt'
+>;
 
 /**
- * Creates a new model entry in the registry.
- *
- * Required fields: data.id, data.name, data.params, data.meta
- * Optional fields: data.base_model_id, data.access_control, data.is_active
- * Auto-generated: createdAt, updatedAt
+ * Creates a new custom model
+ * 
+ * @param params
+ * @param txOrDb
+ * 
+ * @returns the new model record
+ * 
+ * @throws if creation failed
  */
 export async function insertNewModel(
-    data: ModelForm,
-    userId: string,
+    params: NewModel,
     txOrDb: DbOrTx = db
-): Promise<Model | null> {
+): Promise<Model> {
     const now = currentUnixTimestamp();
 
     const [model] = await txOrDb
         .insert(models)
         .values({
-            id: data.id,
-            userId: userId,
-            baseModelId: data.base_model_id,
-            name: data.name,
-            params: data.params,
-            meta: data.meta,
-            accessControl: data.access_control,
-            isActive: data.is_active,
+            ...params,
             createdAt: now,
             updatedAt: now,
         })
         .returning();
 
-    return model || null;
+    if (!model) throw new RecordCreationError('Error creating model record');
+    return model;
+}
+
+/* -------------------- UPDATE -------------------- */
+
+export type UpdateModel = Omit<
+    Partial<NewModel>,
+    'id' | 'userId' | 'createdAt' | 'updatedAt'
+>;
+
+/**
+ * Update a custom model configuration
+ * 
+ * @param id - model id
+ * @param data - updated fields (name, baseModelId, accessControl, etc)
+ * @param txOrDb
+ * 
+ * @returns the updated model record
+ * 
+ * @throws if the update fails
+ */
+export async function updateModelById(
+    id: string,
+    data: UpdateModel,
+    txOrDb: DbOrTx = db
+): Promise<Model> {
+    const [updated] = await txOrDb
+        .update(models)
+        .set({
+            ...data,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(models.id, id))
+        .returning();
+
+    if (!updated) throw new RecordNotFoundError(TABLE, id);
+    return updated;
 }
 
 /**
- * Admin only: Retrieves ALL models from the database (no filtering).
- * Returns both base and custom models with no access control filtering.
+ * Toggle a model's active status
+ * 
+ * @param id - the model id
+ * @param txOrDb
+ * 
+ * @returns the updated model record
+ * 
+ * @throws if the update fails
  */
-export async function getAllModels(
+export async function toggleModelById(
+    id: string,
     txOrDb: DbOrTx = db
-): Promise<Model[]> {
-    return await txOrDb
+): Promise<Model> {
+    const existing = await getModelById(id, txOrDb);
+    if (!existing) throw new RecordNotFoundError(TABLE, id);
+
+    const [toggled] = await txOrDb
+        .update(models)
+        .set({
+            isActive: !existing.isActive,
+            updatedAt: currentUnixTimestamp(),
+        })
+        .where(eq(models.id, id))
+        .returning();
+
+    if (!toggled) throw new DatabaseError(`error toggling model with id '${id}'`);
+    return toggled;
+}
+
+/* -------------------- DELETE -------------------- */
+
+/**
+ * Permanently deletes a model from the database.
+ * Returns true if deleted, false if not found.
+ * 
+ * @param id - model id
+ * @param txOrDb
+ * 
+ * @throws if deletion failed
+ */
+export async function deleteModelById(
+    id: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    const result = await txOrDb
+        .delete(models)
+        .where(eq(models.id, id));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/**
+ * Admin only: Deletes ALL models from the database.
+ * WARNING: Destructive operation - no undo.
+ * 
+ * @param txOrDb
+ */
+export async function deleteAllModels(
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    await txOrDb.delete(models);
+}
+
+/* -------------------- READ -------------------- */
+
+/**
+ * Retrieves a specific model by ID.
+ * 
+ * @param id - the model id
+ * @param txOrDb
+ * 
+ * @returns the model record (or null, if not found)
+ */
+export async function getModelById(
+    id: string,
+    txOrDb: DbOrTx = db
+): Promise<Model | null> {
+    const [model] = await txOrDb
         .select()
-        .from(models);
+        .from(models)
+        .where(eq(models.id, id))
+        .limit(1);
+
+    return model || null;
 }
 
 /**
@@ -60,12 +177,15 @@ export type ModelUserResponse = Model & {
         username: string;
         role: UserRole;
         profileImageUrl: string;
-    };
+    } | null;
 };
 
 /**
- * Retrieves all custom models (models with base_model_id != null) with user information.
- * Joins with User table for owner details.
+ * Fetch all custom models in the db along with their owner info
+ * 
+ * @param txOrDb
+ * 
+ * @returns a list of all custom models and the owner's info
  */
 export async function getCustomModels(
     txOrDb: DbOrTx = db
@@ -86,133 +206,8 @@ export async function getCustomModels(
 
     return result.map(row => ({
         ...row.model,
-        user: row.user!,
+        user: row.user,
     }));
-}
-
-/**
- * Admin only: Retrieves all base models (models with base_model_id = null).
- */
-export async function getBaseModels(
-    txOrDb: DbOrTx = db
-): Promise<Model[]> {
-    return await txOrDb
-        .select()
-        .from(models)
-        .where(isNull(models.baseModelId));
-}
-
-/**
- * Retrieves a specific model by ID.
- */
-export async function getModelById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<Model | null> {
-    const [model] = await txOrDb
-        .select()
-        .from(models)
-        .where(eq(models.id, id))
-        .limit(1);
-
-    return model || null;
-}
-
-/**
- * Retrieves multiple models by their IDs.
- */
-export async function getModelsByIds(
-    ids: string[],
-    txOrDb: DbOrTx = db
-): Promise<Model[]> {
-    if (ids.length === 0) return [];
-
-    return await txOrDb
-        .select()
-        .from(models)
-        .where(inArray(models.id, ids));
-}
-
-/**
- * Updates a model's configuration.
- *
- * Updatable fields: name, base_model_id, params, meta, access_control, is_active
- * Auto-updated: updatedAt
- * Protected: id, user_id, created_at
- */
-export async function updateModelById(
-    id: string,
-    data: ModelForm,
-    txOrDb: DbOrTx = db
-): Promise<Model | null> {
-    const now = currentUnixTimestamp();
-
-    const [updated] = await txOrDb
-        .update(models)
-        .set({
-            name: data.name,
-            baseModelId: data.base_model_id,
-            params: data.params,
-            meta: data.meta,
-            accessControl: data.access_control,
-            isActive: data.is_active,
-            updatedAt: now,
-        })
-        .where(eq(models.id, id))
-        .returning();
-
-    return updated || null;
-}
-
-/**
- * Toggles a model's active status (enabled/disabled).
- * Updates updatedAt timestamp.
- */
-export async function toggleModelById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<Model | null> {
-    const existing = await getModelById(id, txOrDb);
-    if (!existing) return null;
-
-    const now = currentUnixTimestamp();
-
-    const [toggled] = await txOrDb
-        .update(models)
-        .set({
-            isActive: !existing.isActive,
-            updatedAt: now,
-        })
-        .where(eq(models.id, id))
-        .returning();
-
-    return toggled || null;
-}
-
-/**
- * Permanently deletes a model from the database.
- * Returns true if deleted, false if not found.
- */
-export async function deleteModelById(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(models)
-        .where(eq(models.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Admin only: Deletes ALL models from the database.
- * WARNING: Destructive operation - no undo.
- */
-export async function deleteAllModels(
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    await txOrDb.delete(models);
-    return true;
 }
 
 /* -------------------- SEARCH & FILTERING -------------------- */
@@ -237,11 +232,15 @@ export type ModelListResponse = {
 };
 
 /**
- * Searches and filters custom models with pagination.
- *
- * Default pagination: 30 items per page
- * Filter options: query, viewOption, orderBy, direction
- * Access control: Automatically filters based on public models and user permissions
+ * Search and filter custom models with pagination
+ * 
+ * @param userId
+ * @param filter
+ * @param skip
+ * @param limit
+ * @param txOrDb
+ * 
+ * @returns a list of models matching the search criteria, along with owner info
  */
 export async function searchModels(
     userId: string,
@@ -258,7 +257,7 @@ export async function searchModels(
     } = filter;
 
     // Build where conditions
-    const conditions = [isNotNull(models.baseModelId)];
+    const conditions: (SQL<unknown> | undefined)[] = [isNotNull(models.baseModelId)];
 
     // Search by name or base_model_id
     if (query) {
@@ -266,7 +265,7 @@ export async function searchModels(
             or(
                 like(models.name, `%${query}%`),
                 like(models.baseModelId, `%${query}%`)
-            )!
+            )
         );
     }
 
@@ -278,16 +277,12 @@ export async function searchModels(
     }
 
     // Access control filtering
-    // Include: public models (access_control = null), owned models, or models with user in read permissions
-    const accessConditions = or(
+    // TODO - this mirrors logic in hasAccess, but it's super messy to have it redefined here.
+    conditions.push(or(
         isNull(models.accessControl),
         eq(models.userId, userId),
         sql`json_extract(${models.accessControl}, '$.read.user_ids') LIKE '%' || ${userId} || '%'`
-    );
-
-    if (accessConditions) {
-        conditions.push(accessConditions);
-    }
+    ));
 
     const whereClause = and(...conditions);
 
@@ -318,12 +313,12 @@ export async function searchModels(
         .offset(skip);
 
     // Get total count
-    const countResult = await txOrDb
-        .select({ count: sql<number>`count(*)` })
+    const [countResult] = await txOrDb
+        .select({ value: count() })
         .from(models)
         .where(whereClause);
 
-    const total = countResult[0]?.count ?? 0;
+    const total = countResult?.value || 0;
 
     const items = result.map(row => ({
         ...row.model,
@@ -333,192 +328,16 @@ export async function searchModels(
     return { items, total };
 }
 
-/**
- * Retrieves all custom models accessible to a user with specified permission level.
- *
- * Access logic:
- * - Models owned by user
- * - Models where user has permission (via access_control)
- */
-export async function getModelsByUserId(
-    userId: string,
-    permission: 'read' | 'write',
-    txOrDb: DbOrTx = db
-): Promise<ModelUserResponse[]> {
-    // Build access condition based on permission type:
-    // - Public 'read' access is enabled when accessControl is null
-    // - 'write' access requires explicit permission
-    const accessCondition = or(
-        permission === 'read' ? isNull(models.accessControl) : undefined,
-        eq(models.userId, userId),
-        sql`json_extract(${models.accessControl}, '$.${sql.raw(permission)}.user_ids') LIKE '%' || ${userId} || '%'`
-    );
-
-    const conditions = [
-        isNotNull(models.baseModelId),
-        accessCondition!,
-    ];
-
-    const whereClause = and(...conditions);
-
-    const result = await txOrDb
-        .select({
-            model: models,
-            user: {
-                id: users.id,
-                username: users.username,
-                role: users.role,
-                profileImageUrl: users.profileImageUrl,
-            },
-        })
-        .from(models)
-        .leftJoin(users, eq(users.id, models.userId))
-        .where(whereClause)
-        .orderBy(desc(models.updatedAt));
-
-    return result.map(row => ({
-        ...row.model,
-        user: row.user!,
-    }));
-}
-
-/* -------------------- SYNC & IMPORT OPERATIONS -------------------- */
+/* -------------------- ACCESS CONTROL -------------------- */
 
 /**
- * Admin only: Synchronizes database with incoming models list.
- *
- * Behavior:
- * 1. Update existing models (matches by ID)
- * 2. Insert new models (not in database)
- * 3. Delete removed models (in database but not in incoming list)
- *
- * Returns: Complete synced model list from database
- * Transaction: Yes (all changes in single transaction)
- */
-export async function syncModels(
-    userId: string,
-    incomingModels: Model[],
-    txOrDb: DbOrTx = db
-): Promise<Model[]> {
-    const now = currentUnixTimestamp();
-
-    // Get existing model IDs
-    const existing = await getAllModels(txOrDb);
-    const existingIds = new Set(existing.map(m => m.id));
-    const incomingIds = new Set(incomingModels.map(m => m.id));
-
-    // 1. Update existing models
-    for (const model of incomingModels) {
-        if (existingIds.has(model.id)) {
-            await txOrDb
-                .update(models)
-                .set({
-                    userId: userId,
-                    baseModelId: model.baseModelId,
-                    name: model.name,
-                    params: model.params,
-                    meta: model.meta,
-                    accessControl: model.accessControl,
-                    isActive: model.isActive,
-                    updatedAt: now,
-                })
-                .where(eq(models.id, model.id));
-        }
-    }
-
-    // 2. Insert new models
-    const newModels = incomingModels.filter(m => !existingIds.has(m.id));
-    if (newModels.length > 0) {
-        const values = newModels.map(m => ({
-            id: m.id,
-            userId: userId,
-            baseModelId: m.baseModelId,
-            name: m.name,
-            params: m.params,
-            meta: m.meta,
-            accessControl: m.accessControl,
-            isActive: m.isActive,
-            createdAt: now,
-            updatedAt: now,
-        }));
-
-        await txOrDb.insert(models).values(values);
-    }
-
-    // 3. Delete removed models
-    const toDelete = existing.filter(m => !incomingIds.has(m.id));
-    for (const model of toDelete) {
-        await txOrDb.delete(models).where(eq(models.id, model.id));
-    }
-
-    // Return complete synced list
-    return await getAllModels(txOrDb);
-}
-
-/**
- * Bulk imports or updates models (non-destructive).
- *
- * Behavior:
- * - If model ID exists: updates the model
- * - If model ID doesn't exist: creates new model
- * - Does NOT delete existing models (unlike sync)
- */
-export async function importModels(
-    modelsData: ModelForm[],
-    userId: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const now = currentUnixTimestamp();
-
-    for (const data of modelsData) {
-        // Check if model exists
-        const existing = await getModelById(data.id, txOrDb);
-
-        if (existing) {
-            // Update existing model
-            await txOrDb
-                .update(models)
-                .set({
-                    baseModelId: data.base_model_id,
-                    name: data.name,
-                    params: data.params,
-                    meta: data.meta,
-                    accessControl: data.access_control,
-                    isActive: data.is_active,
-                    updatedAt: now,
-                })
-                .where(eq(models.id, data.id));
-        } else {
-            // Insert new model
-            await txOrDb
-                .insert(models)
-                .values({
-                    id: data.id,
-                    userId: userId,
-                    baseModelId: data.base_model_id,
-                    name: data.name,
-                    params: data.params,
-                    meta: data.meta,
-                    accessControl: data.access_control,
-                    isActive: data.is_active,
-                    createdAt: now,
-                    updatedAt: now,
-                });
-        }
-    }
-
-    return true;
-}
-
-/* -------------------- ACCESS CONTROL OPERATIONS -------------------- */
-
-/**
- * Checks if a user has access to a model.
- *
- * Access logic:
- * - Public read access: access_control = null and type = 'read'
- * - Owner access: Always has both read and write
- * - User IDs check: User ID must be in access_control[type].user_ids array
+ * Check if a user has the specified access to a given model.
+ * 
+ * @param model
+ * @param userId
+ * @param type - access level (read or write)
+ * 
+ * @returns true if the user has the specified access type
  */
 export function hasAccess(
     model: Model,

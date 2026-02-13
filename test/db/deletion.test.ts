@@ -1,13 +1,14 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+
 import { createTestDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
 import * as Users from '../../src/db/operations/users.js';
+import type { User } from '../../src/db/operations/users.js';
 import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Files from '../../src/db/operations/files.js';
 import type { ChatObject, NewChatForm } from '../../src/routes/types.js';
-import type { User } from '../../src/db/schema.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
@@ -61,7 +62,11 @@ describe('Database Cascade Deletion', () => {
             // Create user + auth
             const userParams = newUserParams('admin');
             const user = await Users.createUser(userParams, db);
-            await Auths.createAuth(user.id, userParams.username, TEST_PASSWORD, db);
+            await Auths.createAuth({
+                id: user.id,
+                username: userParams.username,
+                password: TEST_PASSWORD
+            }, db);
 
             // Verify auth exists
             const authBefore = await Auths.getAuthById(user.id, db);
@@ -69,8 +74,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(authBefore.id, user.id);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify auth is gone
             const authAfter = await Auths.getAuthById(user.id, db);
@@ -100,12 +104,11 @@ describe('Database Cascade Deletion', () => {
             );
 
             // Verify chats exist
-            const chatsBefore = await Chats.getChatsByUserId(user.id, {}, db);
-            assert.strictEqual(chatsBefore.total, 3);
+            const chatsBefore = await Chats.getChatsByUserId(user.id, db);
+            assert.strictEqual(chatsBefore.length, 3);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all chats are gone
             const chat1After = await Chats.getChatById(chat1.id, db);
@@ -125,27 +128,34 @@ describe('Database Cascade Deletion', () => {
 
             // Create folder hierarchy
             const rootFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Root Folder' },
-                null,
+                {
+                    userId: user.id,
+                    name: 'Root Folder',
+                },
                 db
             );
             const childFolder1 = await Folders.createFolder(
-                user.id,
-                { name: 'Child Folder 1' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Child Folder 1',
+                    parentId: rootFolder.id,
+                },
                 db
             );
             const childFolder2 = await Folders.createFolder(
-                user.id,
-                { name: 'Child Folder 2' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Child Folder 2',
+                    parentId: rootFolder.id,
+                },
                 db
             );
             const grandchildFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Grandchild Folder' },
-                childFolder1.id,
+                {
+                    userId: user.id,
+                    name: 'Grandchild Folder',
+                    parentId: childFolder1.id,
+                },
                 db
             );
 
@@ -154,8 +164,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(foldersBefore.length, 4);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all folders are gone (including nested)
             const rootAfter = await Folders.getFolderById(rootFolder.id, user.id, db);
@@ -178,20 +187,34 @@ describe('Database Cascade Deletion', () => {
 
             // Create multiple files
             const file1 = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document1.pdf',
                     path: '/path/to/doc1.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document1.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
             const file2 = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
-                    filename: 'document2.pdf',
-                    path: '/path/to/doc2.pdf',
+                    userId: user.id,
+                    filename: 'document2.jpeg',
+                    path: '/path/to/doc2.jpeg',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document2.jpeg',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -201,8 +224,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(filesBefore.total, 2);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify all files are gone
             const file1After = await Files.getFileById(file1.id, db);
@@ -216,19 +238,26 @@ describe('Database Cascade Deletion', () => {
             // Create user with comprehensive data
             const userParams = newUserParams('admin');
             const user = await Users.createUser(userParams, db);
-            await Auths.createAuth(user.id, userParams.username, TEST_PASSWORD, db);
+            await Auths.createAuth({
+                id: user.id,
+                username: userParams.username,
+                password: TEST_PASSWORD
+            }, db);
 
             // Create folders (root level + nested hierarchy)
             const rootFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Work' },
-                null,
+                {
+                    userId: user.id,
+                    name: 'Work',
+                },
                 db
             );
             const subFolder = await Folders.createFolder(
-                user.id,
-                { name: 'Projects' },
-                rootFolder.id,
+                {
+                    userId: user.id,
+                    name: 'Projects',
+                    parentId: rootFolder.id,
+                },
                 db
             );
 
@@ -246,11 +275,18 @@ describe('Database Cascade Deletion', () => {
 
             // Create files
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'important.pdf',
                     path: '/path/to/important.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'important.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -265,15 +301,14 @@ describe('Database Cascade Deletion', () => {
             const foldersBefore = await Folders.getFoldersByUserId(user.id, db);
             assert.strictEqual(foldersBefore.length, 2);
 
-            const chatsBefore = await Chats.getChatsByUserId(user.id, {}, db);
-            assert.strictEqual(chatsBefore.total, 2);
+            const chatsBefore = await Chats.getChatsByUserId(user.id, db);
+            assert.strictEqual(chatsBefore.length, 2);
 
             const filesBefore = await Files.getFilesByUserId(user.id, {}, db);
             assert.strictEqual(filesBefore.total, 1);
 
             // Delete user
-            const deleted = await Users.deleteUser(user.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user.id, db);
 
             // Verify everything is gone (comprehensive check)
             const userAfter = await Users.getUserById(user.id, db);
@@ -308,15 +343,17 @@ describe('Database Cascade Deletion', () => {
 
             // Create data for both users
             const user1Folder = await Folders.createFolder(
-                user1.id,
-                { name: 'User 1 Folder' },
-                null,
+                {
+                    userId: user1.id,
+                    name: 'User 1 Folder',
+                },
                 db
             );
             const user2Folder = await Folders.createFolder(
-                user2.id,
-                { name: 'User 2 Folder' },
-                null,
+                {
+                    userId: user2.id,
+                    name: 'User 2 Folder',
+                },
                 db
             );
 
@@ -332,8 +369,7 @@ describe('Database Cascade Deletion', () => {
             );
 
             // Delete user 1
-            const deleted = await Users.deleteUser(user1.id, db);
-            assert.strictEqual(deleted, true);
+            await Users.deleteUser(user1.id, db);
 
             // Verify user 1 data is gone
             const user1After = await Users.getUserById(user1.id, db);
@@ -367,11 +403,18 @@ describe('Database Cascade Deletion', () => {
             const user = await Users.createUser(userParams, db);
 
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -381,7 +424,7 @@ describe('Database Cascade Deletion', () => {
                 _createNewChatForm('Test Chat'),
                 db
             );
-
+            
             // Associate file with chat
             const chatFileRecords = await Chats.insertChatFiles(
                 chat.id,
@@ -397,8 +440,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(chatFilesBefore.length, 1);
 
             // Delete chat
-            const deleted = await Chats.deleteChat(chat.id, db);
-            assert.strictEqual(deleted, true);
+            await Chats.deleteChat(chat.id, user.id, db);
 
             // Verify chat is gone
             const chatAfter = await Chats.getChatById(chat.id, db);
@@ -422,11 +464,18 @@ describe('Database Cascade Deletion', () => {
             const user = await Users.createUser(userParams, db);
 
             const file = await Files.createFile(
-                user.id,
                 {
-                    id: crypto.randomUUID(),
+                    userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
+                    hash: '',
+                    data: {},
+                    meta: {
+                        name: 'document.pdf',
+                        contentType: '',
+                        size: 0,
+                        data: {},
+                    },
                 },
                 db
             );
@@ -452,8 +501,7 @@ describe('Database Cascade Deletion', () => {
             assert.strictEqual(chatFilesBefore.length, 1);
 
             // Delete file
-            const deleted = await Files.deleteFile(file.id, db);
-            assert.strictEqual(deleted, true);
+            await Files.deleteFile(file.id, db);
 
             // Verify file is gone
             const fileAfter = await Files.getFileById(file.id, db);

@@ -1,46 +1,117 @@
 import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
-import { db, type DbOrTx } from '../client.js';
-import { auths, users, validateUsername, type Auth, type User } from '../schema.js';
 
-/* -------------------- CORE CRUD OPERATIONS -------------------- */
+import { db, type DbOrTx } from '../client.js';
+import { auths, users, validateUsername } from '../schema.js';
+import { type User } from './users.js';
+import { RecordCreationError, RecordNotFoundError, ValidationError } from '../errors.js';
+
+const TABLE = 'auth';
+
+/* -------------------- CREATE -------------------- */
+
+export type Auth = typeof auths.$inferSelect;
+export type NewAuth = typeof auths.$inferInsert;
 
 /**
- * Creates a new auth record.
- * Used during signup and admin user creation.
+ * Creates a new auth record. Used during signup and admin user creation.
+ * @note Caller should combine with user creation in a transaction
  *
- * @param id - User ID (must match corresponding user.id)
- * @param username - Username (will be normalized to lowercase)
- * @param plainPassword - Plain text password (will be validated and hashed)
- * @param txOrDb - Database or transaction instance
+ * @param {NewAuth} params - User id, username, and plaintext password
+ * @param txOrDb
+ * 
+ * @returns the created Auth record
+ * 
+ * @throws if username format validation fails
+ * @throws if password format validation fails
+ * @throws if record creation fails
  */
 export async function createAuth(
-    id: string,
-    username: string,
-    plainPassword: string,
+    params: NewAuth,
     txOrDb: DbOrTx = db
 ): Promise<Auth> {
-    const normalizedUsername = validateUsername(username);
-    validatePasswordFormat(plainPassword);
+    const normalizedUsername = validateUsername(params.username);
 
-    const hashedPassword = await hashPassword(plainPassword);
+    validatePasswordFormat(params.password);
+    const hashedPassword = await hashPassword(params.password);
 
     const [auth] = await txOrDb
         .insert(auths)
         .values({
-            id,
+            id: params.id,
             username: normalizedUsername,
             password: hashedPassword,
         })
         .returning();
 
-    if (!auth) throw new Error('Error creating auth record');
-
+    if (!auth) throw new RecordCreationError(TABLE);
     return auth;
 }
 
+/* -------------------- UPDATE -------------------- */
+
 /**
- * Retrieves auth record by user ID.
+ * Updates a user's password.
+ *
+ * @param id - User id
+ * @param newPlainPassword - New plaintext password
+ * @param txOrDb
+ * 
+ * @throws if password format validation fails
+ * @throws if record update fails
+ */
+export async function updatePassword(
+    id: string,
+    newPlainPassword: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    validatePasswordFormat(newPlainPassword);
+    const hashedPassword = await hashPassword(newPlainPassword);
+
+    const result = await txOrDb
+        .update(auths)
+        .set({ password: hashedPassword })
+        .where(eq(auths.id, id));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/**
+ * Updates user's username.
+ * 
+ * @note Caller is responsible for also updating corresponding user.username field
+ * 
+ * @param id - User id
+ * @param newUsername
+ * @param txOrDb
+ * 
+ * @throws if username format validation fails
+ * @throws if record update fails
+ */
+export async function updateUsername(
+    id: string,
+    newUsername: string,
+    txOrDb: DbOrTx = db
+): Promise<void> {
+    const normalizedUsername = validateUsername(newUsername);
+
+    const result = await txOrDb
+        .update(auths)
+        .set({ username: normalizedUsername })
+        .where(eq(auths.id, id));
+
+    if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
+}
+
+/* -------------------- READ -------------------- */
+
+/**
+ * Retrieve auth record by user id.
+ * 
+ * @param id - User id
+ * @param txOrDb
+ * 
+ * @returns the auth record (or null, if not found)
  */
 export async function getAuthById(
     id: string,
@@ -56,8 +127,13 @@ export async function getAuthById(
 }
 
 /**
- * Retrieves auth record by username.
- * Username should be normalized to lowercase before querying.
+ * Retrieve auth record by username.
+ * @note Username will be automatically normalized to lowercase before querying.
+ * 
+ * @param username
+ * @param txOrDb
+ * 
+ * @returns the auth record (or null, if not found)
  */
 export async function getAuthByUsername(
     username: string,
@@ -74,65 +150,6 @@ export async function getAuthByUsername(
     return auth || null;
 }
 
-/**
- * Updates user's password.
- * Password will be validated and hashed before storing.
- *
- * @param id - User ID
- * @param newPlainPassword - New plain text password (will be validated and hashed)
- * @param txOrDb - Database or transaction instance
- */
-export async function updatePassword(
-    id: string,
-    newPlainPassword: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    validatePasswordFormat(newPlainPassword);
-
-    const hashedPassword = await hashPassword(newPlainPassword);
-
-    const result = await txOrDb
-        .update(auths)
-        .set({ password: hashedPassword })
-        .where(eq(auths.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Updates user's username.
- * Must also update corresponding user.username field in transaction.
- */
-export async function updateUsername(
-    id: string,
-    newUsername: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const normalizedUsername = validateUsername(newUsername);
-
-    const result = await txOrDb
-        .update(auths)
-        .set({ username: normalizedUsername })
-        .where(eq(auths.id, id));
-
-    return result.rowsAffected > 0;
-}
-
-/**
- * Deletes auth record.
- * Should cascade delete corresponding user record via FK constraint.
- */
-export async function deleteAuth(
-    id: string,
-    txOrDb: DbOrTx = db
-): Promise<boolean> {
-    const result = await txOrDb
-        .delete(auths)
-        .where(eq(auths.id, id));
-
-    return result.rowsAffected > 0;
-}
-
 /* -------------------- AUTHENTICATION OPERATIONS -------------------- */
 
 /**
@@ -144,8 +161,9 @@ export async function deleteAuth(
  * 3. Fetch user record
  * 4. Return user + auth if valid, null otherwise
  *
- * @param username - Username (will be normalized)
- * @param plainPassword - Plain text password
+ * @param username
+ * @param plainPassword - Plaintext password
+ * 
  * @returns User and auth records if valid, null if invalid
  */
 export async function authenticateUser(
@@ -155,15 +173,11 @@ export async function authenticateUser(
 ): Promise<{ user: User; auth: Auth } | null> {
     // Lookup auth by username
     const auth = await getAuthByUsername(username, txOrDb);
-    if (!auth) {
-        return null;
-    }
+    if (!auth) return null;
 
     // Verify password
     const isValid = await verifyPassword(plainPassword, auth.password);
-    if (!isValid) {
-        return null;
-    }
+    if (!isValid) return null;
 
     // Fetch corresponding user
     const [user] = await txOrDb
@@ -172,38 +186,31 @@ export async function authenticateUser(
         .where(eq(users.id, auth.id))
         .limit(1);
 
-    if (!user) {
-        return null;
-    }
-
+    if (!user) return null;
     return { user, auth };
 }
 
-/* -------------------- VALIDATION UTILITIES -------------------- */
+/* -------------------- PASSWORD UTILS -------------------- */
 
 /**
  * Validates password meets security requirements.
  *
  * Rules:
  * - Min length: 8 characters
- * - Max length: 72 characters (bcrypt limitation)
+ * - Max length: 72 bytes (bcrypt limitation)
  *
  * @throws Error if validation fails
  */
 export function validatePasswordFormat(password: string): void {
-    // Min length: 8 characters
     if (password.length < 8) {
-        throw new Error('Password too short (min 8 characters)');
+        throw new ValidationError('Password too short (min 8 characters)');
     }
 
-    // Max length: 72 characters (bcrypt limitation)
     const encoded = Buffer.from(password, 'utf-8');
     if (encoded.length > 72) {
-        throw new Error('Password too long (max 72 bytes)');
+        throw new ValidationError('Password too long (max 72 bytes)');
     }
 }
-
-/* -------------------- PASSWORD HANDLING -------------------- */
 
 /**
  * Hashes a plain text password using bcrypt with 10 salt rounds.

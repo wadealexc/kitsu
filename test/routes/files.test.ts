@@ -4,15 +4,11 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD } from '../helpers.js';
+import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
 import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as Files from '../../src/db/operations/files.js';
-import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole } from '../../src/routes/types.js';
 import filesRouter from '../../src/routes/files.js';
 import { StorageProvider } from '../../src/storage/provider.js';
 
@@ -74,38 +70,26 @@ app.use('/api/v1/files', filesRouter);
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
 /**
- * Create a test user and return JWT token
- */
-async function createUserWithToken(role: UserRole = 'user'): Promise<{ userId: string; token: string }> {
-    const userParams = newUserParams(role);
-    const user = await Users.createUser(userParams, db);
-    await Auths.createAuth(userParams.id, userParams.username, TEST_PASSWORD, db);
-    const token = JWT.createToken(userParams.id);
-
-    assert.strictEqual(user.role, role);
-    return { userId: userParams.id, token };
-}
-
-/**
  * Create a test file with mock storage
  */
-async function createTestFile(userId: string, filename: string = 'test.txt', content: string = 'test content'): Promise<schema.File> {
+async function createTestFile(userId: string, filename: string = 'test.txt', content: string = 'test content'): Promise<Files.File> {
     const fileId = crypto.randomUUID();
     const buffer = Buffer.from(content);
 
     // Mock storage upload
     const uploadPath = `uploads/${fileId}`;
 
-    const file = await Files.createFile(userId, {
-        id: fileId,
+    const file = await Files.createFile({
+        userId: userId,
         filename: filename,
         path: uploadPath,
         hash: 'test hash',
         data: { status: 'completed', content: content },
         meta: {
             name: filename,
-            content_type: 'text/plain',
+            contentType: 'text/plain',
             size: buffer.length,
+            data: {}
         },
     }, db);
 
@@ -115,8 +99,8 @@ async function createTestFile(userId: string, filename: string = 'test.txt', con
 /**
  * Create multiple test files
  */
-async function createMultipleFiles(userId: string, count: number): Promise<schema.File[]> {
-    const files: schema.File[] = [];
+async function createMultipleFiles(userId: string, count: number): Promise<Files.File[]> {
+    const files: Files.File[] = [];
     for (let i = 0; i < count; i++) {
         const file = await createTestFile(userId, `file-${i + 1}.txt`, `content ${i + 1}`);
         files.push(file);
@@ -208,22 +192,6 @@ describe('File Routes', () => {
 
             assert.strictEqual(response.body.length, 1);
             assert.strictEqual(response.body[0].filename, 'user1-file.txt');
-        });
-
-        test('should return all files for admin user', async () => {
-            const { userId: user1Id } = await createUserWithToken('user');
-            const { userId: user2Id } = await createUserWithToken('user');
-            const { token: adminToken } = await createUserWithToken('admin');
-
-            await createTestFile(user1Id, 'user1-file.txt');
-            await createTestFile(user2Id, 'user2-file.txt');
-
-            const response = await request(app)
-                .get('/api/v1/files/')
-                .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
-
-            assert.strictEqual(response.body.length, 2);
         });
 
         test('should return empty array when user has no files', async () => {
@@ -355,23 +323,6 @@ describe('File Routes', () => {
 
             assert.strictEqual(response.body.length, 1);
             assert.strictEqual(response.body[0].user_id, user1Id);
-        });
-
-        test('should search all files for admin user', async () => {
-            const { userId: user1Id } = await createUserWithToken('user');
-            const { userId: user2Id } = await createUserWithToken('user');
-            const { token: adminToken } = await createUserWithToken('admin');
-
-            await createTestFile(user1Id, 'shared-name.txt');
-            await createTestFile(user2Id, 'shared-name.txt');
-
-            const response = await request(app)
-                .get('/api/v1/files/search')
-                .query({ filename: 'shared-name.txt' })
-                .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
-
-            assert.strictEqual(response.body.length, 2);
         });
 
         test('should return 404 when no files match pattern', async () => {
@@ -606,7 +557,7 @@ describe('File Routes', () => {
             assert.ok(typeof response.body.updated_at === 'number');
         });
 
-        test('should return file metadata when user is admin', async () => {
+        test('should return 401 when user is admin but not authorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt');
@@ -614,9 +565,9 @@ describe('File Routes', () => {
             const response = await request(app)
                 .get(`/api/v1/files/${file.id}`)
                 .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
+                .expect(401);
 
-            assert.strictEqual(response.body.id, file.id);
+            assert.ok(response.body.detail);
         });
 
         test('should return 404 when file not found', async () => {
@@ -682,7 +633,7 @@ describe('File Routes', () => {
             assert.strictEqual(deletedFile, null);
         });
 
-        test('should delete file when user is admin', async () => {
+        test('should return 401 when user is admin but unauthorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt');
@@ -690,10 +641,11 @@ describe('File Routes', () => {
             await request(app)
                 .delete(`/api/v1/files/${file.id}`)
                 .set('Authorization', `Bearer ${adminToken}`)
-                .expect(200);
+                .expect(401);
 
-            const deletedFile = await Files.getFileById(file.id, db);
-            assert.strictEqual(deletedFile, null);
+            // Verify file not deleted
+            const existingFile = await Files.getFileById(file.id, db);
+            assert.ok(existingFile);
         });
 
         test('should return 404 when file not found', async () => {
@@ -768,16 +720,17 @@ describe('File Routes', () => {
 
         test('should set inline disposition for PDFs without attachment flag', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'document.pdf',
                 path: 'uploads/test.pdf',
                 hash: 'hash123',
                 data: { status: 'completed' },
                 meta: {
                     name: 'document.pdf',
-                    content_type: 'application/pdf',
+                    contentType: 'application/pdf',
                     size: 1024,
+                    data: {}
                 },
             }, db);
 
@@ -793,16 +746,17 @@ describe('File Routes', () => {
 
         test('should set attachment disposition when attachment=true', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'document.pdf',
                 path: 'uploads/test.pdf',
                 hash: 'hash123',
                 data: { status: 'completed' },
                 meta: {
                     name: 'document.pdf',
-                    content_type: 'application/pdf',
+                    contentType: 'application/pdf',
                     size: 1024,
+                    data: {}
                 },
             }, db);
 
@@ -903,13 +857,13 @@ describe('File Routes', () => {
 
         test('should return 404 when file has no physical file or extracted content', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
-                path: null,
+                path: '',
                 hash: 'hash123',
                 data: { status: 'pending' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 0 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 0, data: {} },
             }, db);
 
             const response = await request(app)
@@ -1022,13 +976,13 @@ describe('File Routes', () => {
 
         test('should return empty string when no content extracted', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
                 path: 'uploads/test.txt',
                 hash: 'hash123',
                 data: { status: 'pending' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 0 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 0, data: {} },
             }, db);
 
             const response = await request(app)
@@ -1087,14 +1041,14 @@ describe('File Routes', () => {
                 .expect(200);
 
             assert.strictEqual(response.body.data.content, 'new content');
-            assert.strictEqual(response.body.data.status, 'pending');
+            assert.strictEqual(response.body.data.status, 'completed');
 
             // Verify in database
             const updatedFile = await Files.getFileById(file.id, db);
             assert.strictEqual(updatedFile?.data?.content, 'new content');
         });
 
-        test('should update content when user is admin', async () => {
+        test('should return 401 when user is admin but not authorized', async () => {
             const { userId } = await createUserWithToken('user');
             const { token: adminToken } = await createUserWithToken('admin');
             const file = await createTestFile(userId, 'test.txt', 'old content');
@@ -1103,20 +1057,20 @@ describe('File Routes', () => {
                 .post(`/api/v1/files/${file.id}/data/content/update`)
                 .set('Authorization', `Bearer ${adminToken}`)
                 .send({ content: 'new content' })
-                .expect(200);
+                .expect(401);
 
-            assert.strictEqual(response.body.data.content, 'new content');
+            assert.ok(response.body.detail);
         });
 
-        test('should set status to pending after update', async () => {
+        test('should set status to completed after update', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
                 path: 'uploads/test.txt',
                 hash: 'hash123',
                 data: { status: 'completed', content: 'old content' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 11 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 11, data: {} },
             }, db);
 
             const response = await request(app)
@@ -1125,7 +1079,7 @@ describe('File Routes', () => {
                 .send({ content: 'updated content' })
                 .expect(200);
 
-            assert.strictEqual(response.body.data.status, 'pending');
+            assert.strictEqual(response.body.data.status, 'completed');
         });
 
         test('should return 404 when file not found', async () => {
@@ -1184,13 +1138,13 @@ describe('File Routes', () => {
     describe('GET /api/v1/files/:file_id/process/status', () => {
         test('should return processing status in non-streaming mode', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
                 path: 'uploads/test.txt',
                 hash: 'hash123',
                 data: { status: 'completed' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 0 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 0, data: {} },
             }, db);
 
             const response = await request(app)
@@ -1203,13 +1157,13 @@ describe('File Routes', () => {
 
         test('should return pending status for newly uploaded files', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
                 path: 'uploads/test.txt',
                 hash: 'hash123',
                 data: { status: 'pending' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 0 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 0, data: {} },
             }, db);
 
             const response = await request(app)
@@ -1222,13 +1176,13 @@ describe('File Routes', () => {
 
         test('should return failed status with error info', async () => {
             const { userId, token } = await createUserWithToken('user');
-            const file = await Files.createFile(userId, {
-                id: crypto.randomUUID(),
+            const file = await Files.createFile({
+                userId: userId,
                 filename: 'test.txt',
                 path: 'uploads/test.txt',
                 hash: 'hash123',
                 data: { status: 'failed', error: 'Processing error' },
-                meta: { name: 'test.txt', content_type: 'text/plain', size: 0 },
+                meta: { name: 'test.txt', contentType: 'text/plain', size: 0, data: {} },
             }, db);
 
             const response = await request(app)
