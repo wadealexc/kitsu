@@ -617,7 +617,7 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
-        assert.strictEqual(response.headers.location, '/user.png');
+        assert.strictEqual(response.headers.location, '/static/user.png');
     });
 
     test('should decode and return data URI images with correct content type', async () => {
@@ -656,7 +656,7 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
-        assert.strictEqual(response.headers.location, '/user.png');
+        assert.strictEqual(response.headers.location, '/static/user.png');
     });
 
     test('should fallback to default image for malformed data URIs', async () => {
@@ -669,7 +669,7 @@ describe('GET /api/v1/users/:user_id/profile/image', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(302);
 
-        assert.strictEqual(response.headers.location, '/user.png');
+        assert.strictEqual(response.headers.location, '/static/user.png');
     });
 
     test('should return 400 when user not found', async () => {

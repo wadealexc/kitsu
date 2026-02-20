@@ -56,6 +56,7 @@ const app = express();
 app.use(middleware.logging);
 app.use(cookieParser());
 app.use(express.json({ type: 'application/json', limit: '50mb' }));
+app.use('/static', express.static(path.resolve('static')));
 
 /* -------------------- LLAMA, BROWSER, TOOL SERVER -------------------- */
 
@@ -136,8 +137,7 @@ app.get('/api/v1/chats/pinned', (_req, res) => {
 });
 
 app.get('/api/v1/models/model/profile/image', (_req, res) => {
-    res.setHeader('Content-Type', 'image/png');
-    return res.status(200).send(Buffer.from('mock-default-user-image'));
+    return res.redirect(302, '/static/favicon.png');
 });
 
 app.get('/api/changelog', (req, res) => {

@@ -17,7 +17,7 @@ import type {
 /* -------------------- USER TABLE -------------------- */
 
 export const DEFAULT_USER_ROLE: UserRole = 'user';
-export const DEFAULT_USER_IMAGE = '/user.png';
+export const DEFAULT_USER_IMAGE = '/static/user.png';
 
 /**
  * The user table stores user profile information, settings, permissions, and metadata. 

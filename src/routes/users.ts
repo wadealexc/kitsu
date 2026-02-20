@@ -8,6 +8,7 @@ import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
 import type { UserRole } from './types.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
+import { DEFAULT_USER_IMAGE } from '../db/schema.js';
 
 const router = Router();
 
@@ -619,10 +620,8 @@ router.get('/:user_id/profile/image', validateUserId, requireAuth, async (
             }
         }
 
-        // Fallback: return default user.png
-        // TODO: In production, serve actual static file from STATIC_DIR
-        // For now, redirect to default image path
-        return res.redirect(302, '/user.png');
+        // Fallback: return default image
+        return res.redirect(302, DEFAULT_USER_IMAGE);
     } catch (error) {
         console.error('Get profile image error:', error);
         return res.status(500).json({ detail: 'Internal server error' });

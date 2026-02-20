@@ -19,7 +19,7 @@ describe('createUser', () => {
         const user = await Users.createUser(newUserParams(), db);
 
         assert.strictEqual(user.role, 'user');
-        assert.strictEqual(user.profileImageUrl, '/user.png');
+        assert.strictEqual(user.profileImageUrl, '/static/user.png');
         assert.ok(user.createdAt);
         assert.ok(user.updatedAt);
         assert.ok(user.lastActiveAt);
