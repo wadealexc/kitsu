@@ -64,6 +64,8 @@ const upload = multer({
  *
  * @query {Types.FileListQuery} - optional query parameters
  * @returns {Types.FileModelResponse[]} - array of file responses
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.FileListQuery>,
@@ -296,6 +298,8 @@ router.post('/', requireAuth, upload.single('file'), async (
  * Delete all files from the system.
  *
  * @returns {Types.FileDeleteResponse} - success message
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.delete('/all', requireAdmin, async (
     req: Types.TypedRequest,
@@ -387,6 +391,8 @@ router.get('/:file_id', validateFileId, requireAuth, async (
  *
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns {Types.FileDeleteResponse} - success message
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.delete('/:file_id', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
@@ -519,6 +525,8 @@ router.get('/:file_id/content', validateFileId, requireAuth, async (
  *
  * @param {Types.NamedFileParams} - path parameters with file ID and filename
  * @returns File content or extracted text with specified filename
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.get('/:file_id/content/:file_name', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.NamedFileParams>,
@@ -643,6 +651,8 @@ router.get('/:file_id/data/content', validateFileId, requireAuth, async (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @body {Types.ContentForm} - new content
  * @returns {Types.FileModelResponse} - updated file
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.post('/:file_id/data/content/update', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, Types.ContentForm>,
@@ -723,6 +733,8 @@ router.post('/:file_id/data/content/update', validateFileId, requireAuth, async 
  * @query {Types.FileProcessStatusQuery} - stream parameter
  * @returns {Types.FileProcessStatusResponse} - processing status (non-streaming)
  * @returns text/event-stream - SSE stream (streaming mode)
+ * 
+ * TODO: UNUSED BY FRONTEND
  */
 router.get('/:file_id/process/status', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, any, Types.FileProcessStatusQuery>,

@@ -77,14 +77,14 @@ const tools = new ToolServer(app, { browser: browser });
 tools.serve();
 
 // Start llama-server
-const llama = new MockLlama() as unknown as LlamaManager;
-// const llama = new LlamaManager({
-//     ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-//     logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-//     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-//     models: cfg.models,
-// });
-// await llama.startDefault();
+// const llama = new MockLlama() as unknown as LlamaManager;
+const llama = new LlamaManager({
+    ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+    models: cfg.models,
+});
+await llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */
 

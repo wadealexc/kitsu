@@ -111,7 +111,7 @@ router.post('/completions', requireAuth, async (
             response.headers.forEach((v, k) => res.setHeader(k, v));
             res.status(response.status);
 
-            stream.pipe(res);
+            stream.pipe(res, { end: false });
         });
 
         // This listener is triggered when llama-server is done streaming, or when the
@@ -126,65 +126,38 @@ router.post('/completions', requireAuth, async (
 
             console.log(`stream stopped. result: ${result.ok}`);
 
-            // On success, end response and track stats for logs
+            // On success, inject a chat-event frame then end the response
             if (result.ok) {
-                const tps = result.value.timings?.predicted_per_second;
-                const tokensOut = result.value.timings?.predicted_n;
-                const cacheIn = result.value.timings?.cache_n ?? 0;
-                const promptIn = result.value.timings?.prompt_n ?? 0;
-                const tokensIn = cacheIn + promptIn;
+                const tokensOut = result.value.timings?.predicted_n ?? 0;
+                const cacheIn   = result.value.timings?.cache_n ?? 0;
+                const promptIn  = result.value.timings?.prompt_n ?? 0;
+                const tokensIn  = cacheIn + promptIn;
 
                 console.log(` - result: ${JSON.stringify(result.value, null, 2)}`);
 
-                // (res.locals.llama as middleware.LlamaStatus).usage = {
-                //     tps: tps ?? 0,
-                //     inputTokens: tokensIn ?? 0,
-                //     outputTokens: tokensOut ?? 0,
-                // }
+                // Build payload in the shape chatEventHandler() expects on the frontend.
+                // This triggers chatCompletedHandler() via the SSE path, giving it full
+                // parity with the socket path.
+                const chatEventPayload = {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    data: {
+                        type: 'chat:completion',
+                        data: {
+                            done: true,
+                            usage: {
+                                prompt_tokens:     tokensIn,
+                                completion_tokens: tokensOut,
+                                total_tokens:      tokensIn + tokensOut,
+                            },
+                        },
+                    },
+                };
 
-                // TODO: don't worry about metadata for now
-                // // Update message metadata after successful completion
-                // // Skip for temporary chats (local: prefix)
-                // if (chatId && messageId && !chatId.startsWith('local:')) {
-                //     try {
-                //         await Chats.addMessageToChat(
-                //             chatId,
-                //             messageId,
-                //             {
-                //                 parentId: parsed.data.parent_id || null,
-                //                 model: model,
-                //             },
-                //             db
-                //         );
-                //     } catch (error) {
-                //         console.error('Error updating message metadata:', error);
-                //         // Don't fail response - metadata is non-critical
-                //     }
-                // }
-
+                res.write(`event: chat-event\ndata: ${JSON.stringify(chatEventPayload)}\n\n`);
                 res.end();
             } else {
                 console.log(` - error: ${JSON.stringify(result.value, null, 2)}`);
-
-                // TODO: don't worry about metadata for now
-                // // Save error to message for debugging/retry
-                // // Skip for temporary chats (local: prefix)
-                // if (chatId && messageId && !chatId.startsWith('local:')) {
-                //     try {
-                //         await Chats.addMessageToChat(
-                //             chatId,
-                //             messageId,
-                //             {
-                //                 parentId: parsed.data.parent_id || null,
-                //                 error: { content: result.value.message || String(result.value) },
-                //             },
-                //             db
-                //         );
-                //     } catch (err) {
-                //         console.error('Error saving error to message:', err);
-                //         // Don't fail error response
-                //     }
-                // }
 
                 next(result.value);
             }

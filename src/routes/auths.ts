@@ -27,7 +27,7 @@ let adminConfig: Types.AdminConfig = {
     DEFAULT_USER_ROLE: DEFAULT_USER_ROLE,
     DEFAULT_GROUP_ID: '',
     JWT_EXPIRES_IN: '7d',
-    ENABLE_COMMUNITY_SHARING: false,
+    ENABLE_COMMUNITY_SHARING: true,
     ENABLE_MESSAGE_RATING: false,
     ENABLE_FOLDERS: true,
     FOLDER_MAX_FILE_COUNT: null,

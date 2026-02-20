@@ -594,8 +594,19 @@ export type ChatMessageSource = z.infer<typeof ChatMessageSourceSchema>;
 
 // Chat message status history entry
 export const ChatMessageStatusSchema = z.object({
-    timestamp: z.number(),
-    status: z.string(),
+    description: z.string().optional(),
+    done: z.stringbool().optional(),
+    hidden: z.stringbool().optional(),
+    action: z.string().optional(),
+    // many
+    query: z.string().optional(),
+    // web search
+    urls: z.array(z.string()).optional(),
+    items: z.array(z.any()).optional(),
+    // queries generated
+    queries: z.array(z.string()).optional(),
+    // sources retrieved
+    count: z.number().optional(),
 }).passthrough();
 export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
 
@@ -658,6 +669,7 @@ export interface ChatObject {
     params?: ModelParams;
     history: ChatHistory;
     messages: FlattenedMessage[];
+    files: ChatMessageFile[];
     timestamp: number;
 }
 
@@ -668,6 +680,7 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     params: ModelParamsSchema.default({}),
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
+    files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
 }).passthrough();
 
@@ -695,7 +708,7 @@ export type ChatForm = z.infer<typeof ChatFormSchema>;
 // New Chat Form (for creating chats)
 export const NewChatFormSchema = z.object({
     chat: ChatObjectSchema,
-    folder_id: FolderIdSchema.nullable().optional(),
+    folder_id: FolderIdSchema.nullable(),
 });
 export type NewChatForm = z.infer<typeof NewChatFormSchema>;
 

@@ -143,6 +143,8 @@ router.get('/', requireAdmin, async (
  * Get all users without pagination. Returns basic user info for each user.
  *
  * @returns {Types.UserInfoListResponse} - list of all users
+ * 
+ * TODO: UNUSED ON FRONTEND
  */
 router.get('/all', requireAdmin, async (
     req: Types.TypedRequest,
@@ -314,6 +316,8 @@ router.delete('/:user_id', validateUserId, requireAdmin, async (
  * Get the default permissions template for new users.
  *
  * @returns {Types.UserPermissions} - default permissions
+ * 
+ * TODO: UNUSED ON FRONTEND
  */
 router.get('/default/permissions', requireAdmin, (
     req: Types.TypedRequest,
@@ -330,6 +334,8 @@ router.get('/default/permissions', requireAdmin, (
  *
  * @param {Types.UserPermissions} - new default permissions
  * @returns {object} - empty response
+ * 
+ * TODO: UNUSED ON FRONTEND
  */
 router.post('/default/permissions', requireAdmin, (
     req: Types.TypedRequest<{}, Types.UserPermissions>,
@@ -411,6 +417,8 @@ router.get('/:user_id', validateUserId, requireAuth, async (
  *
  * @query {Types.UserListQuery} - query parameters for filtering and pagination
  * @returns {Types.UserInfoListResponse} - paginated list of users
+ * 
+ * TODO: UNUSED ON FRONTEND
  */
 router.get('/search', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
@@ -536,6 +544,8 @@ router.post('/user/settings/update', requireAuth, async (
  * Get the current authenticated user's custom info object (arbitrary JSON data).
  *
  * @returns {object | null} - user info object
+ * 
+ * TODO: UNUSED ON FRONTEND
  */
 router.get('/user/info', requireAuth, (
     req: Types.TypedRequest,
@@ -552,6 +562,8 @@ router.get('/user/info', requireAuth, (
  *
  * @param {object} - updated info object
  * @returns {object | null} - updated info object
+ * 
+ * TODO: Used on frontend, but seems to be pointless. Info isn't queried.
  */
 router.post('/user/info/update', requireAuth, async (
     req: Types.TypedRequest<{}, Record<string, any>>,
