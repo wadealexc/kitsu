@@ -78,8 +78,7 @@ describe('GET /api/v1/users/search', () => {
         // Verify response structure
         const user = response.body.users[0];
         assert.ok(user.id);
-        assert.ok(user.email);
-        assert.ok(user.name);
+        assert.ok(user.username);
         assert.ok(user.role);
     });
 
@@ -110,7 +109,7 @@ describe('GET /api/v1/users/search', () => {
 
         assert.ok(response.body.users.length >= 1);
         response.body.users.forEach((user: any) => {
-            assert.ok(user.email.includes(searchQuery) || user.name.includes(searchQuery));
+            assert.ok(user.username.includes(searchQuery));
         });
     });
 
@@ -150,22 +149,8 @@ describe('GET /api/v1/users/search', () => {
         assert.ok(response.body.users.length > 0);
         // Verify ascending order
         for (let i = 1; i < response.body.users.length; i++) {
-            assert.ok(response.body.users[i].email >= response.body.users[i - 1].email);
+            assert.ok(response.body.users[i].username >= response.body.users[i - 1].username);
         }
-    });
-
-    test('should translate username to email and name fields', async () => {
-        const { token } = await createUserWithToken('user');
-        const users = await createMultipleUsers(1, 'user');
-
-        const response = await request(app)
-            .get('/api/v1/users/search')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        const user = response.body.users.find((u: any) => u.id === users[0]!.userId);
-        assert.strictEqual(user.email, users[0]!.username);
-        assert.strictEqual(user.name, users[0]!.username);
     });
 
     test('should fail without authentication token', async () => {
@@ -221,10 +206,8 @@ describe('GET /api/v1/users/:user_id', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
-        assert.ok(response.body.name);
-        assert.strictEqual(response.body.name, users[0]!.username);
+        assert.strictEqual(response.body.username, users[0]!.username);
         assert.ok(response.body.profile_image_url !== undefined);
-        assert.ok(Array.isArray(response.body.groups));
         assert.strictEqual(response.body.is_active, true);
     });
 
@@ -251,18 +234,6 @@ describe('GET /api/v1/users/:user_id', () => {
         // Should match /api/v1/users/user/info or similar route, not 400 from validateUserId
         // If it returns 404, that's expected (route not matched)
         assert.ok(response.status === 200 || response.status === 404);
-    });
-
-    test('should return groups as empty array (groups not implemented)', async () => {
-        const { token, userId } = await createUserWithToken('user');
-
-        const response = await request(app)
-            .get(`/api/v1/users/${userId}`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.ok(Array.isArray(response.body.groups));
-        assert.strictEqual(response.body.groups.length, 0);
     });
 
     test('should return is_active as true (activity tracking not implemented)', async () => {
@@ -753,11 +724,8 @@ describe('GET /api/v1/users/', () => {
         // Verify response structure includes group_ids (placeholder to make frontend happy)
         const user = response.body.users[0];
         assert.ok(user.id);
-        assert.ok(user.email);
-        assert.ok(user.name);
+        assert.ok(user.username);
         assert.ok(user.role);
-        assert.ok(Array.isArray(user.group_ids));
-        assert.strictEqual(user.group_ids.length, 0);
     });
 
     test('should support pagination with page parameter', async () => {
@@ -798,7 +766,7 @@ describe('GET /api/v1/users/', () => {
 
         assert.ok(response.body.users.length >= 1);
         response.body.users.forEach((user: any) => {
-            assert.ok(user.email.includes(searchQuery) || user.name.includes(searchQuery));
+            assert.ok(user.username.includes(searchQuery));
         });
     });
 
@@ -815,37 +783,8 @@ describe('GET /api/v1/users/', () => {
         assert.ok(response.body.users.length > 0);
         // Verify ascending order
         for (let i = 1; i < response.body.users.length; i++) {
-            assert.ok(response.body.users[i].email >= response.body.users[i - 1].email);
+            assert.ok(response.body.users[i].username >= response.body.users[i - 1].username);
         }
-    });
-
-    test('should return group_ids as empty arrays', async () => {
-        const { token } = await createUserWithToken('admin');
-        await createMultipleUsers(2, 'user');
-
-        const response = await request(app)
-            .get('/api/v1/users/')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        response.body.users.forEach((user: any) => {
-            assert.ok(Array.isArray(user.group_ids));
-            assert.strictEqual(user.group_ids.length, 0);
-        });
-    });
-
-    test('should translate username to email and name fields', async () => {
-        const { token } = await createUserWithToken('admin');
-        const users = await createMultipleUsers(1, 'user');
-
-        const response = await request(app)
-            .get('/api/v1/users/')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        const user = response.body.users.find((u: any) => u.id === users[0]!.userId);
-        assert.strictEqual(user.email, users[0]!.username);
-        assert.strictEqual(user.name, users[0]!.username);
     });
 
     test('should fail with 403 when non-admin user tries to access', async () => {
@@ -906,20 +845,6 @@ describe('GET /api/v1/users/all', () => {
         assert.strictEqual(response.body.total, 41);
     });
 
-    test('should translate username to email and name fields', async () => {
-        const { token } = await createUserWithToken('admin');
-        const users = await createMultipleUsers(2, 'user');
-
-        const response = await request(app)
-            .get('/api/v1/users/all')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        const user = response.body.users.find((u: any) => u.id === users[0]!.userId);
-        assert.strictEqual(user.email, users[0]!.username);
-        assert.strictEqual(user.name, users[0]!.username);
-    });
-
     test('should return basic user info structure', async () => {
         const { token } = await createUserWithToken('admin');
         await createMultipleUsers(1, 'user');
@@ -931,13 +856,8 @@ describe('GET /api/v1/users/all', () => {
 
         const user = response.body.users[0];
         assert.ok(user.id);
-        assert.ok(user.name);
-        assert.ok(user.email);
+        assert.ok(user.username);
         assert.ok(user.role);
-        // Optional status fields
-        assert.ok('status_emoji' in user || user.status_emoji === undefined);
-        assert.ok('status_message' in user || user.status_message === undefined);
-        assert.ok('status_expires_at' in user || user.status_expires_at === undefined);
     });
 
     test('should fail with 403 when non-admin user tries to access', async () => {
@@ -970,14 +890,13 @@ describe('POST /api/v1/users/:user_id/update', () => {
         await clearDatabase();
     });
 
-    test('should update user role, email, and profile_image_url with admin token', async () => {
+    test('should update user role, username, and profile_image_url with admin token', async () => {
         const { token } = await createUserWithToken('admin');
         const targetUser = await createMultipleUsers(1, 'user');
 
         const updateData = {
             role: 'admin',
-            name: 'Updated Name',
-            email: 'newemail@example.com',
+            username: 'updated name',
             profile_image_url: 'https://example.com/newimage.png',
         };
 
@@ -989,14 +908,13 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         assert.strictEqual(response.body.id, targetUser[0]!.userId);
         assert.strictEqual(response.body.role, 'admin');
-        assert.strictEqual(response.body.email, 'newemail@example.com');
-        assert.strictEqual(response.body.name, 'newemail@example.com'); // name matches email
+        assert.strictEqual(response.body.username, 'updated name');
         assert.strictEqual(response.body.profile_image_url, 'https://example.com/newimage.png');
 
         // Verify database was updated
         const user = await Users.getUserById(targetUser[0]!.userId, db);
         assert.strictEqual(user!.role, 'admin');
-        assert.strictEqual(user!.username, 'newemail@example.com');
+        assert.strictEqual(user!.username, 'updated name');
     });
 
     test('should update user password when password provided', async () => {
@@ -1005,8 +923,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         const updateData = {
             role: 'user',
-            name: targetUser[0]!.username,
-            email: targetUser[0]!.username,
+            username: targetUser[0]!.username,
             profile_image_url: '/user.png',
             password: 'newpassword123',
         };
@@ -1023,14 +940,13 @@ describe('POST /api/v1/users/:user_id/update', () => {
         assert.strictEqual(auth!.user.id, targetUser[0]!.userId);
     });
 
-    test('should return 400 when email is already taken by another user', async () => {
+    test('should return 400 when username is already taken by another user', async () => {
         const { token } = await createUserWithToken('admin');
         const users = await createMultipleUsers(2, 'user');
 
         const updateData = {
             role: 'user',
-            name: users[1]!.username,
-            email: users[1]!.username, // Try to use second user's email
+            username: users[1]!.username, // Try to use second user's username
             profile_image_url: '/user.png',
         };
 
@@ -1040,7 +956,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
             .send(updateData)
             .expect(400);
 
-        assert.strictEqual(response.body.detail, 'Email already taken');
+        assert.strictEqual(response.body.detail, 'Username already taken');
     });
 
     test('should return 403 when trying to modify primary admin', async () => {
@@ -1058,8 +974,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         const updateData = {
             role: 'admin',
-            name: primaryAdmin.username,
-            email: 'newemail@example.com',
+            username: primaryAdmin.username,
             profile_image_url: '/user.png',
         };
 
@@ -1085,8 +1000,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         const updateData = {
             role: 'user', // Try to demote primary admin
-            name: primaryAdmin.username,
-            email: primaryAdmin.username,
+            username: primaryAdmin.username,
             profile_image_url: '/user.png',
         };
 
@@ -1105,8 +1019,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         const updateData = {
             role: 'user',
-            name: 'Test User',
-            email: 'test@example.com',
+            username: 'user',
             profile_image_url: '/user.png',
         };
 
@@ -1119,36 +1032,13 @@ describe('POST /api/v1/users/:user_id/update', () => {
         assert.strictEqual(response.body.detail, 'User not found');
     });
 
-    test('should translate fields in response', async () => {
-        const { token } = await createUserWithToken('admin');
-        const targetUser = await createMultipleUsers(1, 'user');
-
-        const updateData = {
-            role: 'user',
-            name: 'Some Name',
-            email: 'newemail@example.com',
-            profile_image_url: '/user.png',
-        };
-
-        const response = await request(app)
-            .post(`/api/v1/users/${targetUser[0]!.userId}/update`)
-            .set('Authorization', `Bearer ${token}`)
-            .send(updateData)
-            .expect(200);
-
-        // Verify field translation
-        assert.strictEqual(response.body.email, 'newemail@example.com');
-        assert.strictEqual(response.body.name, 'newemail@example.com');
-    });
-
     test('should fail with 403 when non-admin user tries to update', async () => {
         const { token } = await createUserWithToken('user');
         const targetUser = await createMultipleUsers(1, 'user');
 
         const updateData = {
             role: 'admin',
-            name: targetUser[0]!.username,
-            email: targetUser[0]!.username,
+            username: targetUser[0]!.username,
             profile_image_url: '/user.png',
         };
 
@@ -1166,7 +1056,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         await request(app)
             .post(`/api/v1/users/${users[0]!.userId}/update`)
-            .send({ role: 'user', name: 'Test', email: 'test@example.com', profile_image_url: '/user.png' })
+            .send({ role: 'user', username: 'user', profile_image_url: '/user.png' })
             .expect(401);
     });
 
@@ -1176,7 +1066,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
         await request(app)
             .post(`/api/v1/users/${users[0]!.userId}/update`)
             .set('Authorization', 'Bearer invalid_token')
-            .send({ role: 'user', name: 'Test', email: 'test@example.com', profile_image_url: '/user.png' })
+            .send({ role: 'user', username: 'user', profile_image_url: '/user.png' })
             .expect(401);
     });
 
@@ -1186,8 +1076,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         const invalidData = {
             role: 'invalid_role',
-            name: 'Test',
-            email: 'not_an_email',
+            username: 'user@email.com',
             profile_image_url: '/user.png',
         };
 

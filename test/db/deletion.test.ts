@@ -21,6 +21,7 @@ function _createChatObject(title: string = 'Chat'): ChatObject {
         history: {
             messages: {},
         },
+        files: [],
         timestamp: currentUnixTimestamp()
     }
 }

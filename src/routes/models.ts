@@ -535,8 +535,7 @@ function toModelAccessResponse(
         created_at: modelUser.createdAt,
         user: modelUser.user ? {
             id: modelUser.user.id,
-            name: modelUser.user.username,
-            email: modelUser.user.username,
+            username: modelUser.user.username,
             role: modelUser.user.role,
             profile_image_url: modelUser.user.profileImageUrl,
         } : null,

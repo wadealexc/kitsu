@@ -46,7 +46,7 @@ const TEST_ADMIN = newUserParams('admin');
 
 export function newUserParams(role: UserRole = 'user'): Users.NewUser {
     return {
-        username: `${role}-${crypto.randomUUID()}@gg.com`,
+        username: `${role}-${crypto.randomUUID()}`,
         role: role,
     }
 }
@@ -131,6 +131,7 @@ export function createTestChatObject(
             messages: {},
             currentId: null,
         },
+        files: [],
         messages: [],
         timestamp: currentUnixTimestamp(),
     };

@@ -81,15 +81,14 @@ let defaultPermissions: Types.UserPermissions = {
  * GET /api/v1/users/
  * Access Control: Requires HTTPBearer authentication and admin role
  *
- * List users with pagination, filtering, and sorting. Returns users with their group IDs.
- * (Group IDs to satisfy frontend; they do nothing.)
+ * List users with pagination, filtering, and sorting
  *
  * @query {Types.UserListQuery} - query parameters for filtering and pagination
- * @returns {Types.UserGroupIdsListResponse} - paginated list of users with group IDs
+ * @returns {Types.UserModelListResponse} - paginated list of users
  */
 router.get('/', requireAdmin, async (
     req: Types.TypedRequest<{}, any, Types.UserListQuery>,
-    res: Response<Types.UserGroupIdsListResponse | Types.ErrorResponse>
+    res: Response<Types.UserModelListResponse | Types.ErrorResponse>
 ) => {
     const query = Types.UserListQuerySchema.safeParse(req.query);
     if (!query.success) {
@@ -112,22 +111,20 @@ router.get('/', requireAdmin, async (
             limit: pageSize,
         }, db);
 
-        // Convert to UserGroupIdsModel format
-        const usersWithGroups: Types.UserGroupIdsModel[] = users.map(user => ({
+        // Convert to UserModel format
+        const userList: Types.UserModel[] = users.map(user => ({
             id: user.id,
-            email: user.username,
-            name: user.username,
+            username: user.username,
             role: user.role,
             profile_image_url: user.profileImageUrl,
             profile_banner_image_url: user.profileBannerImageUrl || undefined,
             last_active_at: user.lastActiveAt,
             updated_at: user.updatedAt,
             created_at: user.createdAt,
-            group_ids: [],
         }));
 
         return res.json({
-            users: usersWithGroups,
+            users: userList,
             total,
         });
     } catch (error) {
@@ -155,8 +152,7 @@ router.get('/all', requireAdmin, async (
 
         const userInfos: Types.UserInfoResponse[] = users.map(user => ({
             id: user.id,
-            name: user.username,
-            email: user.username,
+            username: user.username,
             role: user.role,
             status_emoji: undefined,
             status_message: undefined,
@@ -177,15 +173,15 @@ router.get('/all', requireAdmin, async (
  * POST /api/v1/users/{user_id}/update
  * Access Control: Requires HTTPBearer authentication and admin role
  *
- * Update a user's profile, role, email, and optionally password.
+ * Update a user's profile, role, username, and optionally password.
  *
  * @param {Types.UserIdParams} - User ID to update
  * @param {Types.UserUpdateForm} - Updated user data
- * @returns {Types.UserModel | null} - updated user or null
+ * @returns {Types.UserModel} - updated user
  */
 router.post('/:user_id/update', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
-    res: Response<Types.UserModel | null | Types.ErrorResponse>
+    res: Response<Types.UserModel | Types.ErrorResponse>
 ) => {
     const body = Types.UserUpdateFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -196,7 +192,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
     }
 
     const userId = req.params.user_id;
-    const { role, email, profile_image_url: profileImageUrl, password } = body.data;
+    const { role, username, profile_image_url: profileImageUrl, password } = body.data;
 
     try {
         const updatedUser = await db.transaction(async (tx) => {
@@ -217,23 +213,23 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
                 throw ForbiddenError('User cannot modify primary admin');
             }
 
-            // Check if email is already taken by another user
-            if (email !== user.username) {
-                const existingUser = await Users.getUserByUsername(email, tx);
+            // Check if username is already taken by another user
+            if (username !== user.username) {
+                const existingUser = await Users.getUserByUsername(username, tx);
                 if (existingUser && existingUser.id !== userId) {
-                    throw BadRequestError('Email already taken');
+                    throw BadRequestError('Username already taken');
                 }
             }
 
             // Update user table
             const updated = await Users.updateUser(userId, {
                 role: role,
-                username: email,
+                username,
                 profileImageUrl: profileImageUrl,
             }, tx);
 
             // Update auth table (username and optionally password)
-            await Auths.updateUsername(userId, email, tx);
+            await Auths.updateUsername(userId, username, tx);
             if (password) {
                 await Auths.updatePassword(userId, password, tx);
             }
@@ -244,8 +240,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
         // Convert to response format
         return res.json({
             id: updatedUser.id,
-            email: updatedUser.username,
-            name: updatedUser.username,
+            username: updatedUser.username,
             role: updatedUser.role,
             profile_image_url: updatedUser.profileImageUrl,
             profile_banner_image_url: updatedUser.profileBannerImageUrl || undefined,
@@ -386,20 +381,13 @@ router.get('/:user_id', validateUserId, requireAuth, async (
             return res.status(400).json({ detail: 'User not found' });
         }
 
-        // TODO: Fetch user's groups when groups implemented
-        // const groups = await Groups.getGroupsByMemberId(userId, db);
-
         // TODO: Check if user is active when activity tracking implemented
         // const isActive = await Users.isUserActive(userId, db);
 
         const response: Types.UserActiveResponse = {
-            name: user.username,
+            username: user.username,
             profile_image_url: user.profileImageUrl,
-            groups: [],  // TODO: Replace with actual groups
             is_active: true,  // TODO: Replace with actual activity check
-            status_emoji: undefined,
-            status_message: undefined,
-            status_expires_at: undefined,
         };
 
         return res.json(response);
@@ -447,12 +435,8 @@ router.get('/search', requireAuth, async (
 
         const userInfos: Types.UserInfoResponse[] = users.map(user => ({
             id: user.id,
-            name: user.username,
-            email: user.username,
+            username: user.username,
             role: user.role,
-            status_emoji: undefined,
-            status_message: undefined,
-            status_expires_at: undefined,
         }));
 
         return res.json({
@@ -646,41 +630,6 @@ router.get('/:user_id/profile/image', validateUserId, requireAuth, async (
 });
 
 /* -------------------- HELPER FUNCTIONS -------------------- */
-
-/**
- * Convert User to UserResponse format
- * Handles field translation from DB schema to API schema
- */
-function toUserResponse(user: User): Types.UserResponse {
-    return {
-        id: user.id,
-        name: user.username,
-        email: user.username,
-        role: user.role,
-        profile_image_url: user.profileImageUrl,
-    };
-}
-
-/**
- * Convert User to UserModel format (complete user object)
- * Handles field translation from DB schema to API schema
- */
-function toUserModel(user: User): Types.UserModel {
-    return {
-        id: user.id,
-        email: user.username,
-        username: user.username,
-        role: user.role,
-        name: user.username,
-        profile_image_url: user.profileImageUrl,
-        profile_banner_image_url: user.profileBannerImageUrl || undefined,
-        info: user.info || undefined,
-        settings: user.settings || undefined,
-        last_active_at: user.lastActiveAt,
-        updated_at: user.updatedAt,
-        created_at: user.createdAt,
-    };
-}
 
 /**
  * Get computed permissions for a user based on their role

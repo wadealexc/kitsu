@@ -18,7 +18,7 @@ const router = Router();
 
 let adminConfig: Types.AdminConfig = {
     SHOW_ADMIN_DETAILS: true,
-    ADMIN_EMAIL: null,
+    ADMIN_USERNAME: null,
     WEBUI_URL: 'http://192.168.87.30:5050',
     ENABLE_SIGNUP: true,
     ENABLE_API_KEYS: false,
@@ -47,9 +47,9 @@ let adminConfig: Types.AdminConfig = {
  * POST /api/v1/auths/signin
  * Access Control: Public
  *
- * Authenticate a user with email and password, returning a session token.
+ * Authenticate a user with username and password, returning a session token.
  *
- * @param {Types.SigninForm} - email and password
+ * @param {Types.SigninForm} - username and password
  * @returns {Types.SessionUserResponse} - user info with JWT token
  */
 router.post('/signin', async (
@@ -64,11 +64,11 @@ router.post('/signin', async (
         });
     }
 
-    const { email, password } = body.data;
+    const { username, password } = body.data;
 
     try {
-        // Authenticate user (email is used as username)
-        const result = await Auths.authenticateUser(email, password, db);
+        // Authenticate user
+        const result = await Auths.authenticateUser(username, password, db);
         if (!result) {
             throw BadRequestError('Invalid credentials');
         }
@@ -101,7 +101,7 @@ router.post('/signin', async (
  *
  * Register a new user account. First user becomes admin, subsequent users get default role.
  *
- * @param {Types.SignupForm} - name, email, password, and optional profile image URL
+ * @param {Types.SignupForm} - username, password, and profile image URL
  * @returns {Types.SessionUserResponse} - user info with JWT token
  */
 router.post('/signup', async (
@@ -116,16 +116,16 @@ router.post('/signup', async (
         });
     }
 
-    const { email, password, profile_image_url: profileImageUrl } = body.data;
+    const { username, password, profile_image_url: profileImageUrl } = body.data;
 
     try {
         const user = await db.transaction(async (tx) => {
             // Determine role (first user is admin)
             const role = await Users.determineRole(tx);
 
-            // Create user (email used as username)
+            // Create user
             const newUser = await Users.createUser({
-                username: email,
+                username,
                 role,
                 profileImageUrl: profileImageUrl,
             }, tx);
@@ -133,7 +133,7 @@ router.post('/signup', async (
             // Create auth credentials
             await Auths.createAuth({
                 id: newUser.id,
-                username: email,
+                username,
                 password,
             }, tx);
 
@@ -190,31 +190,28 @@ router.get('/signout', (
  * Returns the currently authenticated user's session information including their profile,
  * permissions, and token expiration.
  *
- * @returns {Types.SessionUserInfoResponse} - extended user info with profile fields and status
+ * @returns {Types.SessionUserResponse} - extended user info with profile fields and status
  */
 router.get('/', requireAuth, (
     req: Request,
-    res: Response<Types.SessionUserInfoResponse | Types.ErrorResponse>
+    res: Response<Types.SessionUserResponse | Types.ErrorResponse>
 ) => {
     const user = req.user!;
 
     // Extract token and refresh cookie
-    const token = JWT.extractToken(req);
-    if (token) {
-        const expiresAt = JWT.getTokenExpiration(token);
-        JWT.setTokenCookie(res, token, expiresAt ?? undefined);
-    }
+    // requireAuth ensures token exists
+    const token = JWT.extractToken(req)!;
+    const expiresAt = JWT.getTokenExpiration(token);
+    JWT.setTokenCookie(res, token, expiresAt ?? undefined);
 
     return res.json({
         id: user.id,
-        name: user.username,
+        username: user.username,
         role: user.role,
-        email: user.username,
         profile_image_url: user.profileImageUrl,
-        token: token || '',
+        token: token,
         token_type: 'Bearer',
-        expires_at: token ? JWT.getTokenExpiration(token) : null,
-        permissions: getDefaultPermissions(user.role),
+        expires_at: JWT.getTokenExpiration(token),
     });
 });
 
@@ -222,9 +219,9 @@ router.get('/', requireAuth, (
  * POST /api/v1/auths/update/profile
  * Access Control: Requires HTTPBearer authentication (JWT token)
  *
- * Update the current user's profile information (name, bio, gender, date of birth, profile image).
+ * Update the current user's profile information (username and profile image)
  *
- * @param {Types.UpdateProfileForm} - profile image URL, name, bio, gender, and date of birth
+ * @param {Types.UpdateProfileForm} - username and profile image
  * @returns {Types.UserProfileImageResponse} - updated user profile
  */
 router.post('/update/profile', requireAuth, async (
@@ -239,24 +236,19 @@ router.post('/update/profile', requireAuth, async (
         });
     }
 
-    const profileImageUrl = body.data.profile_image_url;
+    const { profile_image_url: profileImageUrl, username } = body.data;
     const userId = req.user!.id;
 
     try {
-        // Only update profile image (other fields ignored)
         const updatedUser = await Users.updateProfile(userId, {
-            profileImageUrl: profileImageUrl,
+            username,
+            profileImageUrl,
         }, db);
-
-        if (!updatedUser) {
-            throw NotFoundError('User not found');
-        }
 
         return res.json({
             id: updatedUser.id,
-            name: updatedUser.username,
+            username: updatedUser.username,
             role: updatedUser.role,
-            email: updatedUser.username,
             profile_image_url: updatedUser.profileImageUrl,
         });
     } catch (error: unknown) {
@@ -341,9 +333,9 @@ router.post('/update/timezone', requireAuth, (
  * GET /api/v1/auths/admin/details
  * Access Control: Requires HTTPBearer authentication (JWT token)
  *
- * Get the admin's name and email for display purposes (e.g., support contact info).
+ * Get the admin's username for display purposes
  *
- * @returns {Types.AdminDetailsResponse} - admin name and email
+ * @returns {Types.AdminDetailsResponse} - admin username
  */
 router.get('/admin/details', requireAuth, async (
     req: Request,
@@ -355,10 +347,7 @@ router.get('/admin/details', requireAuth, async (
             throw NotFoundError('No users found');
         }
 
-        return res.json({
-            name: firstUser.username,
-            email: firstUser.username,
-        });
+        return res.json({ username: firstUser.username });
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -370,69 +359,6 @@ router.get('/admin/details', requireAuth, async (
 });
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */
-
-/**
- * POST /api/v1/auths/add
- * Access Control: Requires HTTPBearer authentication and admin role
- *
- * Admin Only: Create a new user account without going through the signup flow.
- *
- * @param {Types.AddUserForm} - name, email, password, optional profile image URL and role
- * @returns {Types.SigninResponse} - created user info with token
- */
-router.post('/add', requireAdmin, async (
-    req: Types.TypedRequest<{}, Types.AddUserForm>,
-    res: Response<Types.SigninResponse | Types.ErrorResponse>
-) => {
-    const body = Types.AddUserFormSchema.safeParse(req.body);
-    if (!body.success) {
-        return res.status(400).json({
-            detail: 'Invalid request body',
-            errors: body.error.issues
-        });
-    }
-
-    const { email, password, role, profile_image_url: profileImageUrl } = body.data;
-
-    try {
-        const user = await db.transaction(async (tx) => {
-            // Create user with specified role
-            const newUser = await Users.createUser({
-                username: email,
-                role: role,
-                profileImageUrl: profileImageUrl,
-            }, tx);
-
-            // Create auth credentials
-            await Auths.createAuth({
-                id: newUser.id,
-                username: email,
-                password,
-            }, tx);
-
-            return newUser;
-        });
-
-        // Generate token (but don't set cookie for admin-created users)
-        const expiresIn = getJWTExpiration();
-        const token = JWT.createToken(user.id, expiresIn);
-        const expiresAt = JWT.getTokenExpiration(token);
-
-        return res.json(toSigninResponse(user, token, expiresAt));
-    } catch (error: unknown) {
-        if (error instanceof HttpError) {
-            return res.status(error.statusCode).json({ detail: error.message });
-        }
-
-        // Handle validation errors from operations
-        if (error instanceof Error) {
-            return res.status(400).json({ detail: error.message });
-        }
-
-        console.error('Add user error:', error);
-        return res.status(500).json({ detail: 'Internal server error' });
-    }
-});
 
 /**
  * GET /api/v1/auths/admin/config
@@ -488,48 +414,12 @@ function toSessionUserResponse(
 ): Types.SessionUserResponse {
     return {
         id: user.id,
-        name: user.username,  // Use username as name
+        username: user.username,  // Use username as name
         role: user.role,
-        email: user.username,  // Use username as email
         profile_image_url: user.profileImageUrl,
         token,
         token_type: 'Bearer',
         expires_at: expiresAt,
-        permissions: getDefaultPermissions(user.role),
-    };
-}
-
-/**
- * Convert user to SigninResponse format (for admin-created users)
- */
-function toSigninResponse(
-    user: User,
-    token: string,
-    expiresAt: number | null
-): Types.SigninResponse {
-    return {
-        id: user.id,
-        name: user.username,
-        role: user.role,
-        email: user.username,
-        profile_image_url: user.profileImageUrl,
-        token,
-        token_type: 'Bearer',
-    };
-}
-
-/**
- * Get default permissions based on user role
- * TODO: Move to database once permissions table exists
- */
-function getDefaultPermissions(role: UserRole): Record<string, any> {
-    const isAdmin = role === 'admin';
-    return {
-        workspace: {
-            models: isAdmin,
-            knowledge: isAdmin,
-            prompts: isAdmin,
-        },
     };
 }
 

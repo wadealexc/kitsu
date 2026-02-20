@@ -75,8 +75,7 @@ export type StatusResponse = z.infer<typeof StatusResponseSchema>;
 
 // Admin details response
 export const AdminDetailsResponseSchema = z.object({
-    name: z.string(),
-    email: z.email(),
+    username: z.string(),
 });
 export type AdminDetailsResponse = z.infer<typeof AdminDetailsResponseSchema>;
 
@@ -88,15 +87,14 @@ export type UserRole = z.infer<typeof UserRoleSchema>;
 
 // Signin
 export const SigninFormSchema = z.object({
-    email: z.email(),
+    username: z.string(),
     password: z.string(),
 });
 export type SigninForm = z.infer<typeof SigninFormSchema>;
 
 // Signup
 export const SignupFormSchema = z.object({
-    name: z.string(),
-    email: z.email(),
+    username: z.string(),
     password: z.string(),
     profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
 });
@@ -112,42 +110,26 @@ export type SignoutResponse = z.infer<typeof SignoutResponseSchema>;
 // Session responses
 export const SessionUserResponseSchema = z.object({
     id: UserIdSchema,
-    name: z.string(),
+    username: z.string(),
     role: UserRoleSchema,
-    email: z.email(),
     profile_image_url: z.string(),
     token: z.string(),
     token_type: z.string(),
     expires_at: z.number().nullable().optional(),
-    permissions: z.record(z.string(), z.any()).nullable().optional(),
 });
 export type SessionUserResponse = z.infer<typeof SessionUserResponseSchema>;
 
-export const SessionUserInfoResponseSchema = SessionUserResponseSchema.extend({
-    bio: z.string().nullable().optional(),
-    gender: z.string().nullable().optional(),
-    date_of_birth: z.string().nullable().optional(), // ISO date string
-    status_emoji: z.string().nullable().optional(),
-    status_message: z.string().nullable().optional(),
-    status_expires_at: z.number().nullable().optional(),
-});
-export type SessionUserInfoResponse = z.infer<typeof SessionUserInfoResponseSchema>;
-
 // Profile update
 export const UpdateProfileFormSchema = z.object({
+    username: z.string(),
     profile_image_url: z.string(),
-    name: z.string(),
-    bio: z.string().nullable().optional(),
-    gender: z.string().nullable().optional(),
-    date_of_birth: z.string().nullable().optional(), // ISO date string
 });
 export type UpdateProfileForm = z.infer<typeof UpdateProfileFormSchema>;
 
 export const UserProfileImageResponseSchema = z.object({
     id: UserIdSchema,
-    name: z.string(),
+    username: z.string(),
     role: UserRoleSchema,
-    email: z.email(),
     profile_image_url: z.string(),
 });
 export type UserProfileImageResponse = z.infer<typeof UserProfileImageResponseSchema>;
@@ -165,21 +147,10 @@ export const UpdateTimezoneFormSchema = z.object({
 });
 export type UpdateTimezoneForm = z.infer<typeof UpdateTimezoneFormSchema>;
 
-// Admin add user
-export const AddUserFormSchema = z.object({
-    name: z.string(),
-    email: z.email(),
-    password: z.string(),
-    profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
-    role: UserRoleSchema.default(DEFAULT_USER_ROLE),
-});
-export type AddUserForm = z.infer<typeof AddUserFormSchema>;
-
 export const SigninResponseSchema = z.object({
     id: UserIdSchema,
-    name: z.string(),
+    username: z.string(),
     role: UserRoleSchema,
-    email: z.email(),
     profile_image_url: z.string(),
     token: z.string(),
     token_type: z.string(),
@@ -202,7 +173,7 @@ const MsStringValueSchema = z.custom<StringValue>((v) => {
 
 export const AdminConfigSchema = z.object({
     SHOW_ADMIN_DETAILS: z.boolean(),
-    ADMIN_EMAIL: z.string().nullable().optional(),
+    ADMIN_USERNAME: z.string().nullable().optional(),
     WEBUI_URL: z.string(),
     ENABLE_SIGNUP: z.boolean(),
     ENABLE_API_KEYS: z.boolean(),
@@ -342,20 +313,12 @@ export type UserPermissions = z.infer<typeof UserPermissionsSchema>;
 // User model (complete user object)
 export const UserModelSchema = z.object({
     id: UserIdSchema,
-    email: z.email(),
-    username: z.string().optional(),
+    username: z.string(),
     role: UserRoleSchema.default(DEFAULT_USER_ROLE),
-    name: z.string(),
     profile_image_url: z.string(),
     profile_banner_image_url: z.string().optional(),
-    bio: z.string().optional(),
-    gender: z.string().optional(),
-    date_of_birth: z.string().optional(),
     timezone: z.string().optional(),
     presence_state: z.string().optional(),
-    status_emoji: z.string().optional(),
-    status_message: z.string().optional(),
-    status_expires_at: z.number().optional(),
     info: z.record(z.string(), z.any()).optional(),
     settings: UserSettingsSchema.optional(),
     oauth: z.record(z.string(), z.any()).optional(),
@@ -368,12 +331,8 @@ export type UserModel = z.infer<typeof UserModelSchema>;
 // User info response (basic subset)
 export const UserInfoResponseSchema = z.object({
     id: UserIdSchema,
-    name: z.string(),
-    email: z.email(),
+    username: z.string(),
     role: UserRoleSchema,
-    status_emoji: z.string().optional(),
-    status_message: z.string().optional(),
-    status_expires_at: z.number().optional(),
 });
 export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
 
@@ -384,36 +343,25 @@ export const UserInfoListResponseSchema = z.object({
 });
 export type UserInfoListResponse = z.infer<typeof UserInfoListResponseSchema>;
 
-// User with group IDs
-export const UserGroupIdsModelSchema = UserModelSchema.extend({
-    group_ids: z.array(z.string()).default([]),
-});
-export type UserGroupIdsModel = z.infer<typeof UserGroupIdsModelSchema>;
-
 // User group IDs list response
-export const UserGroupIdsListResponseSchema = z.object({
-    users: z.array(UserGroupIdsModelSchema),
+export const UserModelListResponseSchema = z.object({
+    users: z.array(UserModelSchema),
     total: z.number(),
 });
-export type UserGroupIdsListResponse = z.infer<typeof UserGroupIdsListResponseSchema>;
+export type UserModelListResponse = z.infer<typeof UserModelListResponseSchema>;
 
 // User active response
 export const UserActiveResponseSchema = z.object({
-    name: z.string(),
+    username: z.string(),
     profile_image_url: z.string().optional(),
-    groups: z.array(z.record(z.string(), z.any())).optional().default([]),
     is_active: z.boolean(),
-    status_emoji: z.string().optional(),
-    status_message: z.string().optional(),
-    status_expires_at: z.number().optional(),
-}).passthrough();  // Allow additional properties
+});
 export type UserActiveResponse = z.infer<typeof UserActiveResponseSchema>;
 
 // User update form (admin operation)
 export const UserUpdateFormSchema = z.object({
     role: UserRoleSchema,
-    name: z.string(),
-    email: z.email(),
+    username: z.string(),
     profile_image_url: z.string(),
     password: z.string().optional(),
 });
@@ -462,8 +410,7 @@ export type ModelMeta = z.infer<typeof ModelMetaSchema>;
 // User response (for model owner info)
 export const UserResponseSchema = z.object({
     id: UserIdSchema,
-    name: z.string(),
-    email: z.email(),
+    username: z.string(),
     role: UserRoleSchema,
     profile_image_url: z.string(),
 });

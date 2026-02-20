@@ -34,22 +34,6 @@ app.use(express.json());
 app.use(cookieParser());
 app.use('/api/v1/auths', authRouter);
 
-/* -------------------- HELPER FUNCTIONS -------------------- */
-
-/**
- * Get default permissions based on user role
- */
-function getDefaultPermissions(role: string): Record<string, any> {
-    const isAdmin = role === 'admin';
-    return {
-        workspace: {
-            models: isAdmin,
-            knowledge: isAdmin,
-            prompts: isAdmin,
-        },
-    };
-}
-
 /* -------------------- SIGNUP ROUTE TESTS -------------------- */
 
 describe('POST /api/v1/auths/signup', () => {
@@ -61,27 +45,19 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Admin User',
-                email: 'admin@example.com',
+                username: 'admin',
                 password: 'adminpass123',
                 profile_image_url: '/images/admin.png',
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
-        assert.strictEqual(res.body.email, 'admin@example.com');
-        assert.strictEqual(res.body.name, 'admin@example.com'); // username used as name
+        assert.strictEqual(res.body.username, 'admin');
         assert.strictEqual(res.body.role, 'admin'); // First user is admin
         assert.strictEqual(res.body.profile_image_url, '/images/admin.png');
         assert.strictEqual(res.body.token_type, 'Bearer');
         assert.ok(res.body.token);
         assert.ok(res.body.expires_at);
-
-        // Verify permissions
-        assert.ok(res.body.permissions);
-        assert.strictEqual(res.body.permissions.workspace.models, true);
-        assert.strictEqual(res.body.permissions.workspace.knowledge, true);
-        assert.strictEqual(res.body.permissions.workspace.prompts, true);
     });
 
     test('creates subsequent users with default role', async () => {
@@ -89,8 +65,7 @@ describe('POST /api/v1/auths/signup', () => {
         await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Admin',
-                email: 'admin@test.com',
+                username: 'admin',
                 password: 'password123',
             });
 
@@ -98,28 +73,21 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Regular User',
-                email: 'user@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.email, 'user@test.com');
+        assert.strictEqual(res.body.username, 'user');
         assert.strictEqual(res.body.role, 'user'); // Not admin
         assert.ok(res.body.token);
-
-        // Verify permissions (no admin access)
-        assert.strictEqual(res.body.permissions.workspace.models, false);
-        assert.strictEqual(res.body.permissions.workspace.knowledge, false);
-        assert.strictEqual(res.body.permissions.workspace.prompts, false);
     });
 
     test('generates valid JWT token', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Token Test',
-                email: 'token@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -137,8 +105,7 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Cookie Test',
-                email: 'cookie@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -154,27 +121,23 @@ describe('POST /api/v1/auths/signup', () => {
         assert.ok(setCookie[0].includes('Path=/'));
     });
 
-    test('normalizes email to lowercase (username)', async () => {
+    test('normalizes username to lowercase', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Case Test',
-                email: 'UPPER@EXAMPLE.COM',
+                username: 'USER',
                 password: 'password123',
             });
 
         assert.strictEqual(res.status, 200);
-        // Email should be normalized to lowercase in username
-        assert.strictEqual(res.body.email, 'upper@example.com');
-        assert.strictEqual(res.body.name, 'upper@example.com');
+        assert.strictEqual(res.body.username, 'user');
     });
 
     test('uses default profile image when not provided', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Default Image',
-                email: 'default@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -183,22 +146,20 @@ describe('POST /api/v1/auths/signup', () => {
         // Should have default value from schema
     });
 
-    test('rejects duplicate email/username', async () => {
+    test('rejects duplicate username', async () => {
         // Create first user
         await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'First',
-                email: 'duplicate@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
-        // Try to create second user with same email
+        // Try to create second user with same username
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Second',
-                email: 'duplicate@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -206,26 +167,24 @@ describe('POST /api/v1/auths/signup', () => {
         assert.ok(res.body.detail);
     });
 
-    test('rejects invalid email format', async () => {
+    test('rejects invalid username format', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Invalid Email',
-                email: 'not-an-email',
+                username: 'user@email.com',
                 password: 'password123',
             });
 
         assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-        assert.ok(res.body.errors);
+        assert.strictEqual(res.body.detail, 'Username can only contain letters, numbers, underscore, dash, and space');
     });
 
     test('rejects missing required fields', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                email: 'test@test.com',
-                // Missing name and password
+                username: 'user',
+                // Missing password
             });
 
         assert.strictEqual(res.status, 400);
@@ -237,8 +196,7 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Short Pass',
-                email: 'short@test.com',
+                username: 'user',
                 password: 'short',
             });
 
@@ -250,8 +208,7 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Tiny',
-                email: 'ab', // Only 2 characters, need 3
+                username: 'us',
                 password: 'password123',
             });
 
@@ -264,8 +221,7 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Custom Avatar',
-                email: 'avatar@test.com',
+                username: 'user',
                 password: 'password123',
                 profile_image_url: imageUrl,
             });
@@ -278,8 +234,7 @@ describe('POST /api/v1/auths/signup', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Expiry Test',
-                email: 'expiry@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -298,7 +253,7 @@ describe('POST /api/v1/auths/signup', () => {
 /* -------------------- SIGNIN ROUTE TESTS -------------------- */
 
 describe('POST /api/v1/auths/signin', () => {
-    const testEmail = 'signin-test@example.com';
+    const testUsername = 'user';
     const testPassword = 'testpass123';
 
     afterEach(async () => {
@@ -310,8 +265,7 @@ describe('POST /api/v1/auths/signin', () => {
         await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Signin Test User',
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
     });
@@ -320,14 +274,13 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
-        assert.strictEqual(res.body.email, testEmail);
-        assert.strictEqual(res.body.name, testEmail);
+        assert.strictEqual(res.body.username, testUsername);
         assert.ok(res.body.token);
         assert.strictEqual(res.body.token_type, 'Bearer');
         assert.ok(res.body.expires_at);
@@ -337,7 +290,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
 
@@ -355,7 +308,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
 
@@ -373,57 +326,43 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body.id);
-        assert.strictEqual(res.body.email, testEmail);
-        assert.strictEqual(res.body.name, testEmail);
+        assert.strictEqual(res.body.username, testUsername);
         assert.ok(res.body.role);
         assert.ok(res.body.profile_image_url !== undefined);
     });
 
-    test('returns user permissions', async () => {
+    test('is case-insensitive for username', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
-                password: testPassword,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.permissions);
-        assert.ok(res.body.permissions.workspace);
-    });
-
-    test('is case-insensitive for email', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/signin')
-            .send({
-                email: testEmail.toUpperCase(),
+                username: testUsername.toUpperCase(),
                 password: testPassword,
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
-        assert.strictEqual(res.body.email, testEmail);
+        assert.strictEqual(res.body.username, testUsername);
     });
 
-    test('rejects invalid email format', async () => {
+    test('rejects invalid username format', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: 'not-an-email',
+                username: 'user@email.com',
                 password: testPassword,
             });
 
         assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
+        assert.strictEqual(res.body.detail, 'Invalid credentials');
     });
 
-    test('rejects missing email', async () => {
+    test('rejects missing username', async () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
@@ -438,7 +377,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
             });
 
         assert.strictEqual(res.status, 400);
@@ -449,7 +388,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: 'nonexistent@test.com',
+                username: 'nonuser',
                 password: 'password123',
             });
 
@@ -461,7 +400,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: 'wrongpassword',
             });
 
@@ -473,7 +412,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: '',
             });
 
@@ -484,7 +423,7 @@ describe('POST /api/v1/auths/signin', () => {
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
 
@@ -509,8 +448,7 @@ describe('GET /api/v1/auths/', () => {
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Session Test',
-                email: 'session@test.com',
+                username: 'user',
                 password: 'password123',
             });
         testToken = signupRes.body.token;
@@ -525,21 +463,10 @@ describe('GET /api/v1/auths/', () => {
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
         assert.strictEqual(res.body.id, testUserId);
-        assert.strictEqual(res.body.email, 'session@test.com');
-        assert.strictEqual(res.body.name, 'session@test.com');
+        assert.strictEqual(res.body.username, 'user');
         assert.ok(res.body.role);
         assert.ok(res.body.token);
         assert.strictEqual(res.body.token_type, 'Bearer');
-    });
-
-    test('returns permissions in response', async () => {
-        const res = await request(app)
-            .get('/api/v1/auths/')
-            .set('Authorization', `Bearer ${testToken}`);
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.permissions);
-        assert.ok(res.body.permissions.workspace);
     });
 
     test('refreshes cookie on session check', async () => {
@@ -736,15 +663,14 @@ describe('integration: complete auth flow', () => {
     });
 
     test('signup -> signin -> session check -> signout', async () => {
-        const email = 'flow@test.com';
+        const username = 'user';
         const password = 'flowpass123';
 
         // 1. Signup
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Flow Test',
-                email: email,
+                username: username,
                 password: password,
             });
         assert.strictEqual(signupRes.status, 200);
@@ -756,7 +682,7 @@ describe('integration: complete auth flow', () => {
         const signinRes = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: email,
+                username: username,
                 password: password,
             });
         assert.strictEqual(signinRes.status, 200);
@@ -770,7 +696,7 @@ describe('integration: complete auth flow', () => {
             .set('Authorization', `Bearer ${token}`);
         assert.strictEqual(sessionRes.status, 200);
         assert.strictEqual(sessionRes.body.id, userId);
-        assert.strictEqual(sessionRes.body.email, email);
+        assert.strictEqual(sessionRes.body.username, username);
 
         // 4. Signout (clear session)
         const signoutRes = await request(app)
@@ -784,8 +710,7 @@ describe('integration: complete auth flow', () => {
         const user1Res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'User 1',
-                email: 'user1@test.com',
+                username: 'user 1',
                 password: 'password123',
             });
         assert.strictEqual(user1Res.status, 200);
@@ -796,8 +721,7 @@ describe('integration: complete auth flow', () => {
         const user2Res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'User 2',
-                email: 'user2@test.com',
+                username: 'user 2',
                 password: 'password123',
             });
         assert.strictEqual(user2Res.status, 200);
@@ -823,28 +747,27 @@ describe('integration: complete auth flow', () => {
     });
 
     test('token persists across signin calls', async () => {
-        const email = 'persist@test.com';
+        const username = 'user';
         const password = 'password123';
 
         // Signup
         await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Persist Test',
-                email: email,
+                username: username,
                 password: password,
             });
 
         // Signin multiple times
         const signin1 = await request(app)
             .post('/api/v1/auths/signin')
-            .send({ email, password });
+            .send({ username, password });
         assert.strictEqual(signin1.status, 200);
         const token1 = signin1.body.token;
 
         const signin2 = await request(app)
             .post('/api/v1/auths/signin')
-            .send({ email, password });
+            .send({ username, password });
         assert.strictEqual(signin2.status, 200);
         const token2 = signin2.body.token;
 
@@ -863,8 +786,8 @@ describe('integration: complete auth flow', () => {
         assert.strictEqual(session2.status, 200);
 
         assert.strictEqual(session1.body.id, session2.body.id);
-        assert.strictEqual(session1.body.email, email);
-        assert.strictEqual(session2.body.email, email);
+        assert.strictEqual(session1.body.username, username);
+        assert.strictEqual(session2.body.username, username);
     });
 
     test('first user is admin, subsequent users are not', async () => {
@@ -872,105 +795,21 @@ describe('integration: complete auth flow', () => {
         const admin = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'First Admin',
-                email: 'first-admin@test.com',
+                username: 'admin',
                 password: 'password123',
             });
         assert.strictEqual(admin.status, 200);
         assert.strictEqual(admin.body.role, 'admin');
-        assert.strictEqual(admin.body.permissions.workspace.models, true);
 
         // Second user
         const user = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Second User',
-                email: 'second-user@test.com',
+                username: 'user',
                 password: 'password123',
             });
         assert.strictEqual(user.status, 200);
         assert.strictEqual(user.body.role, 'user');
-        assert.strictEqual(user.body.permissions.workspace.models, false);
-    });
-});
-
-/* -------------------- FIELD TRANSLATION TESTS -------------------- */
-
-describe('field translation: email <-> username', () => {
-    afterEach(async () => {
-        await clearDatabase();
-    });
-
-    test('signup accepts email and stores as username', async () => {
-        const email = 'fieldtest@example.com';
-        const res = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                name: 'Field Test',
-                email: email,
-                password: 'password123',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // API returns email (which is username internally)
-        assert.strictEqual(res.body.email, email);
-        assert.strictEqual(res.body.name, email); // name also uses username
-
-        // Verify it's stored correctly in database
-        const user = await Users.getUserById(res.body.id, db);
-        assert.ok(user);
-        assert.strictEqual(user.username, email);
-    });
-
-    test('signin uses email to lookup username', async () => {
-        const email = 'lookup@test.com';
-
-        // Create user
-        await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                name: 'Lookup Test',
-                email: email,
-                password: 'password123',
-            });
-
-        // Signin with email
-        const res = await request(app)
-            .post('/api/v1/auths/signin')
-            .send({
-                email: email,
-                password: 'password123',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.email, email);
-        assert.strictEqual(res.body.name, email);
-    });
-
-    test('session check returns email and name from username', async () => {
-        const email = 'sessionfield@test.com';
-
-        const signupRes = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                name: 'Session Field',
-                email: email,
-                password: 'password123',
-            });
-
-        assert.strictEqual(signupRes.status, 200);
-
-        const sessionRes = await request(app)
-            .get('/api/v1/auths/')
-            .set('Authorization', `Bearer ${signupRes.body.token}`);
-
-        assert.strictEqual(sessionRes.status, 200);
-        assert.strictEqual(sessionRes.body.email, email);
-        assert.strictEqual(sessionRes.body.name, email);
-
-        // Verify database still has username
-        const user = await Users.getUserById(sessionRes.body.id, db);
-        assert.strictEqual(user?.username, email);
     });
 });
 
@@ -985,8 +824,7 @@ describe('token and cookie handling', () => {
         const res = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Cookie Match',
-                email: 'cookie-match@test.com',
+                username: 'user',
                 password: 'password123',
             });
 
@@ -1003,20 +841,19 @@ describe('token and cookie handling', () => {
     });
 
     test('signin sets cookie expiration matching token', async () => {
-        const email = 'signin-cookie@test.com';
+        const username = 'user';
 
         await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Signin Cookie',
-                email: email,
+                username: username,
                 password: 'password123',
             });
 
         const res = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: email,
+                username: username,
                 password: 'password123',
             });
 
@@ -1036,8 +873,7 @@ describe('token and cookie handling', () => {
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Refresh Test',
-                email: 'refresh@test.com',
+                username: 'user',
                 password: 'password123',
             });
         assert.strictEqual(signupRes.status, 200);
@@ -1061,16 +897,14 @@ describe('token and cookie handling', () => {
         const res1 = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'JTI 1',
-                email: 'jti1@test.com',
+                username: 'user 1',
                 password: 'password123',
             });
 
         const res2 = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'JTI 2',
-                email: 'jti2@test.com',
+                username: 'user 2',
                 password: 'password123',
             });
 
@@ -1089,7 +923,7 @@ describe('token and cookie handling', () => {
 describe('POST /api/v1/auths/update/password', () => {
     let testToken: string;
     let testUserId: string;
-    const testEmail = 'password-test@example.com';
+    const testUsername = 'user';
     const testPassword = 'oldpassword123';
 
     afterEach(async () => {
@@ -1101,8 +935,7 @@ describe('POST /api/v1/auths/update/password', () => {
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Password Test',
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
         testToken = signupRes.body.token;
@@ -1127,7 +960,7 @@ describe('POST /api/v1/auths/update/password', () => {
         const oldSignin = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
         assert.strictEqual(oldSignin.status, 400);
@@ -1136,7 +969,7 @@ describe('POST /api/v1/auths/update/password', () => {
         const newSignin = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: newPassword,
             });
         assert.strictEqual(newSignin.status, 200);
@@ -1159,7 +992,7 @@ describe('POST /api/v1/auths/update/password', () => {
         const signin = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
         assert.strictEqual(signin.status, 200);
@@ -1181,7 +1014,7 @@ describe('POST /api/v1/auths/update/password', () => {
         const signin = await request(app)
             .post('/api/v1/auths/signin')
             .send({
-                email: testEmail,
+                username: testUsername,
                 password: testPassword,
             });
         assert.strictEqual(signin.status, 200);
@@ -1295,7 +1128,7 @@ describe('POST /api/v1/auths/update/password', () => {
 describe('POST /api/v1/auths/update/profile', () => {
     let testToken: string;
     let testUserId: string;
-    const testEmail = 'profile-test@example.com';
+    const testUsername = 'user';
 
     afterEach(async () => {
         await clearDatabase();
@@ -1306,8 +1139,7 @@ describe('POST /api/v1/auths/update/profile', () => {
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Profile Test',
-                email: testEmail,
+                username: testUsername,
                 password: 'password123',
                 profile_image_url: '/default.png',
             });
@@ -1322,14 +1154,13 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                name: 'Ignored Name',
+                username: testUsername,
                 profile_image_url: newImageUrl,
             });
 
         assert.strictEqual(res.status, 200);
         assert.strictEqual(res.body.id, testUserId);
-        assert.strictEqual(res.body.email, testEmail);
-        assert.strictEqual(res.body.name, testEmail);
+        assert.strictEqual(res.body.username, testUsername);
         assert.strictEqual(res.body.profile_image_url, newImageUrl);
         assert.strictEqual(res.body.role, 'admin'); // First user
 
@@ -1345,7 +1176,7 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                name: 'Test User',
+                username: testUsername,
                 profile_image_url: externalUrl,
             });
 
@@ -1353,71 +1184,25 @@ describe('POST /api/v1/auths/update/profile', () => {
         assert.strictEqual(res.body.profile_image_url, externalUrl);
     });
 
-    test('ignores name field (uses username)', async () => {
+    test('updates username field', async () => {
         const res = await request(app)
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                name: 'Different Name',
+                username: 'new username',
                 profile_image_url: '/images/test.png',
             });
 
         assert.strictEqual(res.status, 200);
-        // Name should still be username (email)
-        assert.strictEqual(res.body.name, testEmail);
-        assert.strictEqual(res.body.email, testEmail);
-    });
-
-    test('ignores bio field (not supported)', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                name: 'Test',
-                profile_image_url: '/test.png',
-                bio: 'This bio should be ignored',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // Bio field not in response (removed from schema)
-        assert.strictEqual(res.body.bio, undefined);
-    });
-
-    test('ignores gender field (not supported)', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                name: 'Test',
-                profile_image_url: '/test.png',
-                gender: 'non-binary',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // Gender field not in response
-        assert.strictEqual(res.body.gender, undefined);
-    });
-
-    test('ignores date_of_birth field (not supported)', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                name: 'Test',
-                profile_image_url: '/test.png',
-                date_of_birth: '1990-01-01',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // DOB field not in response
-        assert.strictEqual(res.body.date_of_birth, undefined);
+        // Name should be updated
+        assert.strictEqual(res.body.username, 'new username');
     });
 
     test('rejects request without authentication', async () => {
         const res = await request(app)
             .post('/api/v1/auths/update/profile')
             .send({
-                name: 'Test',
+                username: 'user',
                 profile_image_url: '/test.png',
             });
 
@@ -1430,7 +1215,7 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', 'Bearer invalid-token')
             .send({
-                name: 'Test',
+                username: 'user',
                 profile_image_url: '/test.png',
             });
 
@@ -1443,14 +1228,14 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                // Missing name and profile_image_url
+                // Missing username and profile_image_url
             });
 
         assert.strictEqual(res.status, 400);
         assert.strictEqual(res.body.detail, 'Invalid request body');
     });
 
-    test('rejects missing name field', async () => {
+    test('rejects missing username field', async () => {
         const res = await request(app)
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
@@ -1467,7 +1252,7 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                name: 'Test',
+                username: 'user',
             });
 
         assert.strictEqual(res.status, 400);
@@ -1479,330 +1264,22 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                name: 'Test',
+                username: 'user',
                 profile_image_url: '/new.png',
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body.id);
-        assert.ok(res.body.name);
-        assert.ok(res.body.email);
+        assert.ok(res.body.username);
         assert.ok(res.body.role);
         assert.ok(res.body.profile_image_url);
-    });
-});
-
-describe('POST /api/v1/auths/add', () => {
-    let adminToken: string;
-    let userToken: string;
-
-    afterEach(async () => {
-        await clearDatabase();
-    });
-
-    beforeEach(async () => {
-        // Create admin user (first user)
-        const adminRes = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                name: 'Admin',
-                email: 'admin@test.com',
-                password: 'password123',
-            });
-        adminToken = adminRes.body.token;
-
-        // Create regular user
-        const userRes = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                name: 'User',
-                email: 'user@test.com',
-                password: 'password123',
-            });
-        userToken = userRes.body.token;
-    });
-
-    test('admin can create user with specified role', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'New User',
-                email: 'newuser@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.id);
-        assert.strictEqual(res.body.email, 'newuser@test.com');
-        assert.strictEqual(res.body.name, 'newuser@test.com');
-        assert.strictEqual(res.body.role, 'user');
-        assert.ok(res.body.token);
-        assert.strictEqual(res.body.token_type, 'Bearer');
-        assert.ok(res.body.profile_image_url);
-
-        // Verify user can sign in
-        const signin = await request(app)
-            .post('/api/v1/auths/signin')
-            .send({
-                email: 'newuser@test.com',
-                password: 'password123',
-            });
-        assert.strictEqual(signin.status, 200);
-        assert.strictEqual(signin.body.id, res.body.id);
-    });
-
-    test('admin can create pending user', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Pending User',
-                email: 'pending@test.com',
-                password: 'password123',
-                role: 'pending',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.role, 'pending');
-    });
-
-    test('admin can create admin user', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Another Admin',
-                email: 'admin2@test.com',
-                password: 'password123',
-                role: 'admin',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.role, 'admin');
-    });
-
-    test('uses default role when not specified', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Default Role',
-                email: 'default@test.com',
-                password: 'password123',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // Should use default role from schema (user)
-        assert.ok(['user', 'pending'].includes(res.body.role));
-    });
-
-    test('accepts custom profile image URL', async () => {
-        const imageUrl = '/images/custom-avatar.png';
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Custom Avatar',
-                email: 'custom@test.com',
-                password: 'password123',
-                role: 'user',
-                profile_image_url: imageUrl,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.profile_image_url, imageUrl);
-    });
-
-    test('uses default profile image when not provided', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Default Image',
-                email: 'defaultimg@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.profile_image_url);
-    });
-
-    test('does not set cookie for admin-created users', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'No Cookie',
-                email: 'nocookie@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 200);
-        // Should not set cookie (unlike signup)
-        const setCookie = res.headers['set-cookie'];
-        assert.strictEqual(setCookie, undefined);
-    });
-
-    test('rejects duplicate email/username', async () => {
-        // Create first user
-        await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'First',
-                email: 'duplicate@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        // Try to create duplicate
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Second',
-                email: 'duplicate@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.ok(res.body.detail);
-    });
-
-    test('rejects invalid email format', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Invalid Email',
-                email: 'not-an-email',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-    });
-
-    test('rejects password that is too short', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Short Pass',
-                email: 'short@test.com',
-                password: 'short',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.ok(res.body.detail);
-    });
-
-    test('rejects invalid role', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Bad Role',
-                email: 'badrole@test.com',
-                password: 'password123',
-                role: 'superadmin', // Not a valid role
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-    });
-
-    test('rejects missing required fields', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Missing Fields',
-                // Missing email and password
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-    });
-
-    test('rejects non-admin user', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${userToken}`)
-            .send({
-                name: 'Unauthorized',
-                email: 'unauth@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 403);
-        assert.strictEqual(res.body.detail, 'Admin access required');
-    });
-
-    test('rejects unauthenticated request', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .send({
-                name: 'No Auth',
-                email: 'noauth@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 401);
-        assert.strictEqual(res.body.detail, 'Not authenticated');
-    });
-
-    test('normalizes email to lowercase', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Case Test',
-                email: 'UPPERCASE@TEST.COM',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.email, 'uppercase@test.com');
-        assert.strictEqual(res.body.name, 'uppercase@test.com');
-    });
-
-    test('returns token with valid structure', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Token Test',
-                email: 'token@test.com',
-                password: 'password123',
-                role: 'user',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.token);
-
-        // Verify token is valid
-        const decoded = JWT.verifyToken(res.body.token);
-        assert.strictEqual(decoded.id, res.body.id);
-        assert.ok(decoded.jti);
-        assert.ok(decoded.exp);
     });
 });
 
 describe('GET /api/v1/auths/admin/details', () => {
     let adminToken: string;
     let userToken: string;
-    const adminEmail = 'first-admin@test.com';
+    const adminUsername = 'admin';
 
     afterEach(async () => {
         await clearDatabase();
@@ -1813,8 +1290,7 @@ describe('GET /api/v1/auths/admin/details', () => {
         const adminRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Admin',
-                email: adminEmail,
+                username: adminUsername,
                 password: 'password123',
             });
         adminToken = adminRes.body.token;
@@ -1823,8 +1299,7 @@ describe('GET /api/v1/auths/admin/details', () => {
         const userRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'User',
-                email: 'user@test.com',
+                username: 'user',
                 password: 'password123',
             });
         userToken = userRes.body.token;
@@ -1837,8 +1312,7 @@ describe('GET /api/v1/auths/admin/details', () => {
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
-        assert.strictEqual(res.body.name, adminEmail);
-        assert.strictEqual(res.body.email, adminEmail);
+        assert.strictEqual(res.body.username, adminUsername);
     });
 
     test('returns admin details even when requested by regular user', async () => {
@@ -1848,8 +1322,7 @@ describe('GET /api/v1/auths/admin/details', () => {
             .set('Authorization', `Bearer ${userToken}`);
 
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.email, adminEmail);
-        assert.strictEqual(res.body.name, adminEmail);
+        assert.strictEqual(res.body.username, adminUsername);
     });
 
     test('rejects unauthenticated request', async () => {
@@ -1884,27 +1357,6 @@ describe('GET /api/v1/auths/admin/details', () => {
         // Will fail auth first since user doesn't exist
         assert.strictEqual(res.status, 401);
     });
-
-    test('always returns first created user regardless of role changes', async () => {
-        // Create another admin after the first user
-        await request(app)
-            .post('/api/v1/auths/add')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                name: 'Second Admin',
-                email: 'second-admin@test.com',
-                password: 'password123',
-                role: 'admin',
-            });
-
-        const res = await request(app)
-            .get('/api/v1/auths/admin/details')
-            .set('Authorization', `Bearer ${adminToken}`);
-
-        assert.strictEqual(res.status, 200);
-        // Should still return first user
-        assert.strictEqual(res.body.email, adminEmail);
-    });
 });
 
 describe('GET /api/v1/auths/admin/config', () => {
@@ -1920,8 +1372,7 @@ describe('GET /api/v1/auths/admin/config', () => {
         const adminRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Admin',
-                email: 'admin@test.com',
+                username: 'admin',
                 password: 'password123',
             });
         adminToken = adminRes.body.token;
@@ -1930,8 +1381,7 @@ describe('GET /api/v1/auths/admin/config', () => {
         const userRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'User',
-                email: 'user@test.com',
+                username: 'user',
                 password: 'password123',
             });
         userToken = userRes.body.token;
@@ -1961,7 +1411,7 @@ describe('GET /api/v1/auths/admin/config', () => {
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body.SHOW_ADMIN_DETAILS !== undefined);
-        assert.ok(res.body.ADMIN_EMAIL !== undefined);
+        assert.ok(res.body.ADMIN_USERNAME !== undefined);
         assert.ok(res.body.WEBUI_URL !== undefined);
         assert.ok(res.body.ENABLE_SIGNUP !== undefined);
         assert.ok(res.body.ENABLE_API_KEYS !== undefined);
@@ -2015,8 +1465,7 @@ describe('POST /api/v1/auths/admin/config', () => {
         const adminRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Admin',
-                email: 'admin@test.com',
+                username: 'admin',
                 password: 'password123',
             });
         adminToken = adminRes.body.token;
@@ -2025,8 +1474,7 @@ describe('POST /api/v1/auths/admin/config', () => {
         const userRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'User',
-                email: 'user@test.com',
+                username: 'user',
                 password: 'password123',
             });
         userToken = userRes.body.token;
@@ -2035,7 +1483,7 @@ describe('POST /api/v1/auths/admin/config', () => {
     test('updates admin config', async () => {
         const newConfig = {
             SHOW_ADMIN_DETAILS: false,
-            ADMIN_EMAIL: 'admin@example.com',
+            ADMIN_USERNAME: 'admin',
             WEBUI_URL: 'http://localhost:8080',
             ENABLE_SIGNUP: false,
             ENABLE_API_KEYS: true,
@@ -2065,7 +1513,7 @@ describe('POST /api/v1/auths/admin/config', () => {
 
         assert.strictEqual(res.status, 200);
         assert.strictEqual(res.body.SHOW_ADMIN_DETAILS, false);
-        assert.strictEqual(res.body.ADMIN_EMAIL, 'admin@example.com');
+        assert.strictEqual(res.body.ADMIN_USERNAME, 'admin');
         assert.strictEqual(res.body.WEBUI_URL, 'http://localhost:8080');
         assert.strictEqual(res.body.ENABLE_SIGNUP, false);
         assert.strictEqual(res.body.ENABLE_API_KEYS, true);
@@ -2082,7 +1530,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
                 SHOW_ADMIN_DETAILS: false,
-                ADMIN_EMAIL: null,
+                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://updated.com',
                 ENABLE_SIGNUP: false,
                 ENABLE_API_KEYS: false,
@@ -2125,7 +1573,7 @@ describe('POST /api/v1/auths/admin/config', () => {
                 .set('Authorization', `Bearer ${adminToken}`)
                 .send({
                     SHOW_ADMIN_DETAILS: true,
-                    ADMIN_EMAIL: null,
+                    ADMIN_USERNAME: null,
                     WEBUI_URL: 'http://localhost:3000',
                     ENABLE_SIGNUP: true,
                     ENABLE_API_KEYS: false,
@@ -2159,7 +1607,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
                 SHOW_ADMIN_DETAILS: true,
-                ADMIN_EMAIL: null,
+                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
                 ENABLE_API_KEYS: false,
@@ -2192,7 +1640,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
                 SHOW_ADMIN_DETAILS: true,
-                ADMIN_EMAIL: null,
+                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
                 ENABLE_API_KEYS: false,
@@ -2238,7 +1686,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${userToken}`)
             .send({
                 SHOW_ADMIN_DETAILS: true,
-                ADMIN_EMAIL: null,
+                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: false,
                 ENABLE_API_KEYS: false,
@@ -2282,7 +1730,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
                 SHOW_ADMIN_DETAILS: true,
-                ADMIN_EMAIL: null,
+                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
                 ENABLE_API_KEYS: false,
@@ -2306,7 +1754,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             });
 
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.ADMIN_EMAIL, null);
+        assert.strictEqual(res.body.ADMIN_USERNAME, null);
         assert.strictEqual(res.body.FOLDER_MAX_FILE_COUNT, null);
     });
 });
@@ -2323,8 +1771,7 @@ describe('POST /api/v1/auths/update/timezone', () => {
         const signupRes = await request(app)
             .post('/api/v1/auths/signup')
             .send({
-                name: 'Timezone Test',
-                email: 'timezone@test.com',
+                username: 'user',
                 password: 'password123',
             });
         testToken = signupRes.body.token;

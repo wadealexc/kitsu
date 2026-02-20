@@ -54,6 +54,7 @@ function createTestChatObject(
             messages: {},
             currentId: null,
         },
+        files: [],
         messages: [],
         timestamp: currentUnixTimestamp(),
     };
@@ -71,13 +72,14 @@ function createNewChatForm(
             messages: {},
             currentId: null,
         },
+        files: [],
         messages: [],
         timestamp: currentUnixTimestamp(),
     };
 
     return {
         chat: chat,
-        folder_id: folderId,
+        folder_id: folderId ?? null,
     };
 }
 
@@ -125,6 +127,7 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
             },
             currentId: msgId2,
         },
+        files: [],
         messages: [msg1, msg2],
         timestamp: now,
     };
@@ -704,7 +707,7 @@ describe('Chat Routes', () => {
 
             const msgId = crypto.randomUUID();
             const now = currentUnixTimestamp();
-            const chatData: ChatForm = {
+            const chatData: NewChatForm = {
                 chat: {
                     title: 'Complex Chat',
                     models: ['gpt-4'],
@@ -721,9 +724,11 @@ describe('Chat Routes', () => {
                         },
                         currentId: msgId,
                     },
+                    files: [],
                     messages: [],
                     timestamp: currentUnixTimestamp(),
                 },
+                folder_id: null,
             };
 
             const response = await request(app)

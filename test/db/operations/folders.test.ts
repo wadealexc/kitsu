@@ -864,6 +864,7 @@ describe('Folder Operations', () => {
                         history: {
                             messages: {},
                         },
+                        files: [],
                         timestamp: currentUnixTimestamp()
                     },
                     folderId: folder.id,

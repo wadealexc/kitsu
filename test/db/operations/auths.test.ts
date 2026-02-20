@@ -328,26 +328,23 @@ describe('validateUsername', () => {
         });
     });
 
-    // TODO: Re-enable these tests once alphanumeric constraint is restored
-    // (currently disabled for email-based signup compatibility)
-    //
-    // test('rejects invalid characters', () => {
-    //     assert.throws(() => validateUsername('john@doe'), {
-    //         message: 'Username can only contain letters, numbers, underscore, and dash',
-    //     });
-    //     assert.throws(() => validateUsername('john.doe'), {
-    //         message: 'Username can only contain letters, numbers, underscore, and dash',
-    //     });
-    // });
-    //
-    // test('rejects usernames starting with special char', () => {
-    //     assert.throws(() => validateUsername('_john'), {
-    //         message: 'Username must start with a letter or number',
-    //     });
-    //     assert.throws(() => validateUsername('-john'), {
-    //         message: 'Username must start with a letter or number',
-    //     });
-    // });
+    test('rejects invalid characters', () => {
+        assert.throws(() => validateUsername('john@doe'), {
+            message: 'Username can only contain letters, numbers, underscore, dash, and space'
+        });
+        assert.throws(() => validateUsername('john.doe'), {
+            message: 'Username can only contain letters, numbers, underscore, dash, and space'
+        });
+    });
+    
+    test('rejects usernames starting with special char', () => {
+        assert.throws(() => validateUsername('_john'), {
+            message: 'Username must start with a letter or number',
+        });
+        assert.throws(() => validateUsername('-john'), {
+            message: 'Username must start with a letter or number',
+        });
+    });
 });
 
 describe('validatePasswordFormat', () => {

@@ -172,12 +172,13 @@ export async function updateUserInfo(
 }
 
 export type UpdateUserProfile = {
+    username?: string;
     profileImageUrl?: string;
     profileBannerImageUrl?: string;
 };
 
 /**
- * Update user's profile and/or banner image
+ * Update user's username, profile, and/or banner image
  * 
  * @param id - User id
  * @param {UpdateUserProfile} params
