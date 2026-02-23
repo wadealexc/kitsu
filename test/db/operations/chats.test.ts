@@ -28,7 +28,7 @@ function createChatWithMessage(title: string = 'Test Chat'): Chats.NewChat {
         title: title,
         chat: {
             title: title,
-            models: ['test-model'],
+            model: 'test-model',
             history: {
                 messages: {
                     [messageId]: {
@@ -395,7 +395,7 @@ describe('Chat Operations', () => {
 
             const messageId = Object.keys(originalChat.history!.messages)[0]!;
             const updatedData: Chats.UpdateChat = {
-                chat: createTestChatObject('Updated', ['new-model']),
+                chat: createTestChatObject('Updated', 'new-model'),
                 folderId: null,
             };
             updatedData.chat.history = originalChat.history;
@@ -405,7 +405,7 @@ describe('Chat Operations', () => {
             assert.ok(updated);
             const updatedChat = updated.chat;
             assert.strictEqual(updatedChat.title, 'Updated');
-            assert.deepStrictEqual(updatedChat.models, ['new-model']);
+            assert.deepStrictEqual(updatedChat.model, 'new-model');
             // Original message should still exist
             assert.ok(updatedChat.history!.messages[messageId]);
         });

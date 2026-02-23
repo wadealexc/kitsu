@@ -72,7 +72,7 @@ async function createTestChat(userId: string, title: string = 'Test Chat', folde
         title,
         chat: {
             title: title,
-            models: ['gpt-4'],
+            model: 'gpt-4',
             messages: [],
             history: { messages: {} },
             files: [],
@@ -374,14 +374,13 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .send({
                 data: {
                     system_prompt: 'Updated prompt',
-                    model_ids: ['gpt-4', 'claude-3']
+                    model_id: 'gpt-4'
                 }
             })
             .expect(200);
 
         assert.strictEqual(response.body.data.system_prompt, 'Updated prompt');
-        assert.ok(Array.isArray(response.body.data.model_ids));
-        assert.strictEqual(response.body.data.model_ids.length, 2);
+        assert.strictEqual(response.body.data.model_id, 'gpt-4');
     });
 
     test('should merge data and meta with existing values', async () => {
@@ -391,7 +390,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             'Test Folder',
             undefined,
             { icon: ':folder:' },
-            { system_prompt: 'Original', model_ids: ['gpt-4'] }
+            { system_prompt: 'Original', model_id: 'gpt-4' }
         ), db);
 
         const response = await request(app)
@@ -404,7 +403,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
 
         // Original fields should still be present
         assert.strictEqual(response.body.data.system_prompt, 'Original');
-        assert.ok(response.body.data.model_ids);
+        assert.ok(response.body.data.model_id);
         // New field should be added
         assert.ok(response.body.data.files);
     });

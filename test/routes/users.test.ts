@@ -1198,10 +1198,8 @@ describe('GET /api/v1/users/permissions', () => {
 
         // Verify admin has full workspace permissions
         assert.strictEqual(response.body.workspace.models, true);
-        assert.strictEqual(response.body.workspace.knowledge, true);
         assert.strictEqual(response.body.workspace.prompts, true);
         assert.strictEqual(response.body.workspace.tools, true);
-        assert.strictEqual(response.body.features.api_keys, true);
         assert.strictEqual(response.body.features.direct_tool_servers, true);
 
         // Verify structure contains all permission categories
@@ -1223,10 +1221,8 @@ describe('GET /api/v1/users/permissions', () => {
 
         // Verify regular user has limited workspace permissions
         assert.strictEqual(response.body.workspace.models, false);
-        assert.strictEqual(response.body.workspace.knowledge, false);
         assert.strictEqual(response.body.workspace.prompts, false);
         assert.strictEqual(response.body.workspace.tools, false);
-        assert.strictEqual(response.body.features.api_keys, false);
         assert.strictEqual(response.body.features.direct_tool_servers, false);
 
         // Verify user still has some permissions
@@ -1310,7 +1306,6 @@ describe('POST /api/v1/users/default/permissions', () => {
         const newPermissions = {
             workspace: {
                 models: true,
-                knowledge: true,
                 prompts: true,
                 tools: true,
                 models_import: true,
@@ -1323,18 +1318,13 @@ describe('POST /api/v1/users/default/permissions', () => {
             sharing: {
                 models: true,
                 public_models: true,
-                knowledge: false,
-                public_knowledge: false,
                 prompts: false,
                 public_prompts: false,
                 tools: false,
                 public_tools: true,
-                notes: false,
-                public_notes: true,
             },
             chat: {
                 controls: true,
-                valves: true,
                 system_prompt: true,
                 params: true,
                 file_upload: true,
@@ -1342,27 +1332,16 @@ describe('POST /api/v1/users/default/permissions', () => {
                 delete_message: true,
                 continue_response: true,
                 regenerate_response: true,
-                rate_response: true,
                 edit: true,
                 share: true,
                 export: true,
-                stt: true,
-                tts: true,
-                call: true,
-                multiple_models: true,
                 temporary: true,
                 temporary_enforced: false,
             },
             features: {
-                api_keys: true,
-                notes: true,
-                channels: true,
                 folders: true,
                 direct_tool_servers: true,
                 web_search: true,
-                image_generation: true,
-                code_interpreter: true,
-                memories: true,
             },
             settings: {
                 interface: true,
@@ -1385,7 +1364,6 @@ describe('POST /api/v1/users/default/permissions', () => {
 
         assert.strictEqual(getResponse.body.workspace.models, true);
         assert.strictEqual(getResponse.body.sharing.models, true);
-        assert.strictEqual(getResponse.body.features.api_keys, true);
     });
 
     test('should persist changes across requests', async () => {
@@ -1394,7 +1372,6 @@ describe('POST /api/v1/users/default/permissions', () => {
         const newPermissions = {
             workspace: {
                 models: true,
-                knowledge: true,
                 prompts: false,
                 tools: false,
                 models_import: false,
@@ -1407,18 +1384,13 @@ describe('POST /api/v1/users/default/permissions', () => {
             sharing: {
                 models: false,
                 public_models: false,
-                knowledge: false,
-                public_knowledge: false,
                 prompts: false,
                 public_prompts: false,
                 tools: false,
                 public_tools: false,
-                notes: false,
-                public_notes: false,
             },
             chat: {
                 controls: true,
-                valves: true,
                 system_prompt: true,
                 params: true,
                 file_upload: true,
@@ -1426,27 +1398,16 @@ describe('POST /api/v1/users/default/permissions', () => {
                 delete_message: true,
                 continue_response: true,
                 regenerate_response: true,
-                rate_response: true,
                 edit: true,
                 share: true,
                 export: true,
-                stt: true,
-                tts: true,
-                call: true,
-                multiple_models: true,
                 temporary: true,
                 temporary_enforced: false,
             },
             features: {
-                api_keys: false,
-                notes: false,
-                channels: false,
                 folders: true,
                 direct_tool_servers: false,
                 web_search: true,
-                image_generation: false,
-                code_interpreter: false,
-                memories: false,
             },
             settings: {
                 interface: true,
@@ -1467,7 +1428,6 @@ describe('POST /api/v1/users/default/permissions', () => {
             .expect(200);
 
         assert.strictEqual(getResponse.body.workspace.models, true);
-        assert.strictEqual(getResponse.body.workspace.knowledge, true);
         assert.strictEqual(getResponse.body.workspace.prompts, false);
     });
 
@@ -1496,7 +1456,6 @@ describe('POST /api/v1/users/default/permissions', () => {
         const newPermissions = {
             workspace: {
                 models: true,
-                knowledge: true,
                 prompts: true,
                 tools: true,
                 models_import: true,
@@ -1509,18 +1468,13 @@ describe('POST /api/v1/users/default/permissions', () => {
             sharing: {
                 models: false,
                 public_models: false,
-                knowledge: false,
-                public_knowledge: false,
                 prompts: false,
                 public_prompts: false,
                 tools: false,
                 public_tools: false,
-                notes: false,
-                public_notes: false,
             },
             chat: {
                 controls: true,
-                valves: true,
                 system_prompt: true,
                 params: true,
                 file_upload: true,
@@ -1528,27 +1482,16 @@ describe('POST /api/v1/users/default/permissions', () => {
                 delete_message: true,
                 continue_response: true,
                 regenerate_response: true,
-                rate_response: true,
                 edit: true,
                 share: true,
                 export: true,
-                stt: true,
-                tts: true,
-                call: true,
-                multiple_models: true,
                 temporary: true,
                 temporary_enforced: false,
             },
             features: {
-                api_keys: false,
-                notes: false,
-                channels: false,
                 folders: true,
                 direct_tool_servers: false,
                 web_search: true,
-                image_generation: false,
-                code_interpreter: false,
-                memories: false,
             },
             settings: {
                 interface: true,

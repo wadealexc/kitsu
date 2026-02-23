@@ -122,11 +122,11 @@ export function createTestFileForm(
  */
 export function createTestChatObject(
     title: string = 'Test Chat',
-    models: string[] = ['test-model'],
+    model: string = 'test-model',
 ): ChatObject {
     return {
         title: title,
-        models: models,
+        model: model,
         history: {
             messages: {},
             currentId: null,

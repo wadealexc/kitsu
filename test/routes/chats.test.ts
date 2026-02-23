@@ -45,11 +45,11 @@ app.use('/api/v1/chats', chatsRouter);
  */
 function createTestChatObject(
     title: string = 'Test Chat',
-    models: string[] = ['test-model'],
+    model: string = 'test-model',
 ): ChatObject {
     return {
         title: title,
-        models: models,
+        model: model,
         history: {
             messages: {},
             currentId: null,
@@ -62,12 +62,12 @@ function createTestChatObject(
 
 function createNewChatForm(
     title: string = 'Test Chat',
-    models: string[] = ['gpt-4'],
+    model: string = 'gpt-4',
     folderId?: string,
 ): NewChatForm {
     const chat: ChatObject = {
         title: title,
-        models: models,
+        model: model,
         history: {
             messages: {},
             currentId: null,
@@ -108,7 +108,7 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
 
     const chatObject: ChatObject = {
         title: title,
-        models: [model],
+        model: model,
         params: { temperature: 0.7 },
         history: {
             messages: {
@@ -641,7 +641,7 @@ describe('Chat Routes', () => {
         test('should create new chat with valid data', async () => {
             const { userId, token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = createNewChatForm('New Chat', ['gpt-4']);
+            const chatData: ChatForm = createNewChatForm('New Chat', 'gpt-4');
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -659,7 +659,7 @@ describe('Chat Routes', () => {
         test('should set default values for optional fields', async () => {
             const { token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = createNewChatForm('New Chat', ['gpt-4']);
+            const chatData: ChatForm = createNewChatForm('New Chat', 'gpt-4');
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -677,7 +677,7 @@ describe('Chat Routes', () => {
             const { userId, token } = await createUserWithToken('user');
             const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
 
-            const chatData: ChatForm = createNewChatForm('Folder Chat', ['gpt-4'], folder.id);
+            const chatData: ChatForm = createNewChatForm('Folder Chat', 'gpt-4', folder.id);
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -691,7 +691,7 @@ describe('Chat Routes', () => {
         test('should extract title from chat.title', async () => {
             const { token } = await createUserWithToken('user');
 
-            const chatData: ChatForm = createNewChatForm('Extracted Title', ['gpt-4']);
+            const chatData: ChatForm = createNewChatForm('Extracted Title', 'gpt-4');
 
             const response = await request(app)
                 .post('/api/v1/chats/new')
@@ -710,7 +710,7 @@ describe('Chat Routes', () => {
             const chatData: NewChatForm = {
                 chat: {
                     title: 'Complex Chat',
-                    models: ['gpt-4'],
+                    model: 'gpt-4',
                     history: {
                         messages: {
                             [msgId]: {
@@ -802,7 +802,7 @@ describe('Chat Routes', () => {
             const updateData: ChatForm = {
                 chat: {
                     title: 'Updated Title',
-                    models: ['gpt-3.5-turbo'],
+                    model: 'gpt-3.5-turbo',
                 }
             };
 
@@ -813,7 +813,7 @@ describe('Chat Routes', () => {
                 .expect(200);
 
             assert.strictEqual(response.body.chat.title, 'Updated Title');
-            assert.deepStrictEqual(response.body.chat.models, ['gpt-3.5-turbo']);
+            assert.strictEqual(response.body.chat.model, 'gpt-3.5-turbo');
         });
 
         test('should update updatedAt timestamp', async () => {
@@ -937,15 +937,14 @@ describe('Chat Routes', () => {
     /* -------------------- PARTIAL CHAT UPDATES -------------------- */
 
     describe('Partial Chat Updates', () => {
-        test('should preserve models array when updating only title', async () => {
+        test('should preserve model when updating only title', async () => {
             const { userId, token } = await createUserWithToken('user');
 
-            // Create chat with models and messages
+            // Create chat with model and messages
             const chat = await createTestChat(userId, 'Original Title');
 
             // Verify initial state
-            assert.strictEqual(chat.chat.models.length, 1);
-            assert.strictEqual(chat.chat.models[0], 'gpt-4');
+            assert.strictEqual(chat.chat.model, 'gpt-4');
             assert.strictEqual(chat.chat.messages.length, 2);
 
             // Update only title
@@ -965,9 +964,8 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.title, 'New Title');
             assert.strictEqual(response.body.chat.title, 'New Title');
 
-            // Verify models array was preserved (should NOT be cleared)
-            assert.strictEqual(response.body.chat.models.length, 1);
-            assert.strictEqual(response.body.chat.models[0], 'gpt-4');
+            // Verify model was preserved (should NOT be cleared)
+            assert.strictEqual(response.body.chat.model, 'gpt-4');
         });
 
         test('should preserve messages array when updating only title', async () => {
@@ -1001,17 +999,16 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.chat.messages[0].content, 'Hello');
         });
 
-        test('should preserve models when updating history and messages', async () => {
+        test('should preserve model when updating history and messages', async () => {
             const { userId, token } = await createUserWithToken('user');
 
-            // Create chat with models
+            // Create chat with model
             const chat = await createTestChat(userId, 'Test Chat');
 
             // Verify initial state
-            assert.strictEqual(chat.chat.models.length, 1);
-            assert.strictEqual(chat.chat.models[0], 'gpt-4');
+            assert.strictEqual(chat.chat.model, 'gpt-4');
 
-            // Update history and messages (but not models)
+            // Update history and messages (but not model)
             const msgId = crypto.randomUUID();
             const now = currentUnixTimestamp();
             const updateData: ChatForm = {
@@ -1047,35 +1044,8 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.chat.messages.length, 1);
             assert.strictEqual(response.body.chat.messages[0].content, 'Updated message');
 
-            // Verify models array was preserved (should NOT be cleared)
-            assert.strictEqual(response.body.chat.models.length, 1);
-            assert.strictEqual(response.body.chat.models[0], 'gpt-4');
-        });
-
-        test('should allow explicit clearing of models', async () => {
-            const { userId, token } = await createUserWithToken('user');
-
-            // Create chat with models
-            const chat = await createTestChat(userId, 'Test Chat');
-
-            // Verify initial state
-            assert.strictEqual(chat.chat.models.length, 1);
-
-            // Explicitly send empty models array
-            const updateData: ChatForm = {
-                chat: {
-                    models: [],
-                }
-            };
-
-            const response = await request(app)
-                .post(`/api/v1/chats/${chat.id}`)
-                .set('Authorization', `Bearer ${token}`)
-                .send(updateData)
-                .expect(200);
-
-            // Verify models was explicitly cleared (this should work)
-            assert.strictEqual(response.body.chat.models.length, 0);
+            // Verify model was preserved (should NOT be cleared)
+            assert.strictEqual(response.body.chat.model, 'gpt-4');
         });
     });
 

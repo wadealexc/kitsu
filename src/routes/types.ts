@@ -234,7 +234,6 @@ export type UserSettings = z.infer<typeof UserSettingsSchema>;
 // Permission schemas
 export const WorkspacePermissionsSchema = z.object({
     models: z.boolean().default(false),
-    knowledge: z.boolean().default(false),
     prompts: z.boolean().default(false),
     tools: z.boolean().default(false),
     models_import: z.boolean().default(false),
@@ -249,20 +248,15 @@ export type WorkspacePermissions = z.infer<typeof WorkspacePermissionsSchema>;
 export const SharingPermissionsSchema = z.object({
     models: z.boolean().default(false),
     public_models: z.boolean().default(false),
-    knowledge: z.boolean().default(false),
-    public_knowledge: z.boolean().default(false),
     prompts: z.boolean().default(false),
     public_prompts: z.boolean().default(false),
     tools: z.boolean().default(false),
     public_tools: z.boolean().default(true),
-    notes: z.boolean().default(false),
-    public_notes: z.boolean().default(true),
 });
 export type SharingPermissions = z.infer<typeof SharingPermissionsSchema>;
 
 export const ChatPermissionsSchema = z.object({
     controls: z.boolean().default(true),
-    valves: z.boolean().default(true),
     system_prompt: z.boolean().default(true),
     params: z.boolean().default(true),
     file_upload: z.boolean().default(true),
@@ -270,29 +264,18 @@ export const ChatPermissionsSchema = z.object({
     delete_message: z.boolean().default(true),
     continue_response: z.boolean().default(true),
     regenerate_response: z.boolean().default(true),
-    rate_response: z.boolean().default(true),
     edit: z.boolean().default(true),
     share: z.boolean().default(true),
     export: z.boolean().default(true),
-    stt: z.boolean().default(true),
-    tts: z.boolean().default(true),
-    call: z.boolean().default(true),
-    multiple_models: z.boolean().default(true),
     temporary: z.boolean().default(true),
     temporary_enforced: z.boolean().default(false),
 });
 export type ChatPermissions = z.infer<typeof ChatPermissionsSchema>;
 
 export const FeaturesPermissionsSchema = z.object({
-    api_keys: z.boolean().default(false),
-    notes: z.boolean().default(true),
-    channels: z.boolean().default(true),
     folders: z.boolean().default(true),
     direct_tool_servers: z.boolean().default(false),
     web_search: z.boolean().default(true),
-    image_generation: z.boolean().default(true),
-    code_interpreter: z.boolean().default(true),
-    memories: z.boolean().default(true),
 });
 export type FeaturesPermissions = z.infer<typeof FeaturesPermissionsSchema>;
 
@@ -578,12 +561,9 @@ export const ChatMessageSchema = z.object({
     // "Optional" fields:
     // these fields aren't optional, but short of splitting this type into a 
     // union of UserMessage and AsstMessage, we're gonna do this for now
-    // - role: user
-    models: z.array(z.string()).optional(),
     // - role: assistant
     model: z.string().optional(),
     modelName: z.string().optional(),
-    modelIdx: z.number().optional(),
     statusHistory: z.array(ChatMessageStatusSchema).optional(),
     usage: ChatMessageUsageSchema.optional(),
     done: z.boolean().optional(),
@@ -612,7 +592,7 @@ export interface ChatObject {
     title: string;
     // not optional for the DB, but optional for 'updates'
     // TODO: we need to separate API schema from DB schema
-    models: string[];
+    model: string;
     params?: ModelParams;
     history: ChatHistory;
     messages: FlattenedMessage[];
@@ -623,7 +603,7 @@ export interface ChatObject {
 export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     id: z.string().optional(),
     title: z.string(),
-    models: z.array(z.string()),
+    model: z.string(),
     params: ModelParamsSchema.default({}),
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
@@ -636,7 +616,7 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
 export const ChatObjectUpdateSchema = z.object({
     id: z.string(),
     title: z.string(),
-    models: z.array(z.string()),
+    model: z.string(),
     params: ModelParamsSchema,
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
@@ -710,31 +690,6 @@ export const EventFormSchema = z.object({
     data: z.record(z.string(), z.any()),
 });
 export type EventForm = z.infer<typeof EventFormSchema>;
-
-// Chat usage stats response
-export const ChatUsageStatsResponseSchema = z.object({
-    id: ChatIdSchema,
-    models: z.record(z.string(), z.any()).optional().default({}),
-    message_count: z.number(),
-    history_models: z.record(z.string(), z.any()).optional().default({}),
-    history_message_count: z.number(),
-    history_user_message_count: z.number(),
-    history_assistant_message_count: z.number(),
-    average_response_time: z.number(),
-    average_user_message_content_length: z.number(),
-    average_assistant_message_content_length: z.number(),
-    last_message_at: z.number(),
-    updated_at: z.number(),
-    created_at: z.number(),
-}).passthrough();  // Allow additional computed statistics
-export type ChatUsageStatsResponse = z.infer<typeof ChatUsageStatsResponseSchema>;
-
-// Chat usage stats list response (paginated)
-export const ChatUsageStatsListResponseSchema = z.object({
-    items: z.array(ChatUsageStatsResponseSchema),
-    total: z.number(),
-}).passthrough();  // Allow additional pagination metadata
-export type ChatUsageStatsListResponse = z.infer<typeof ChatUsageStatsListResponseSchema>;
 
 // Query parameters for GET /api/v1/chats/ and /api/v1/chats/list
 export const ChatListQuerySchema = z.object({
@@ -852,14 +807,14 @@ export interface FolderData {
     system_prompt?: string;
     /** Files and knowledge collections attached to this folder */
     files?: FolderFileItem[];
-    /** Selected model IDs for this folder */
-    model_ids?: string[];
+    /** Selected model ID for this folder */
+    model_id?: string;
 }
 
 export const FolderDataSchema: z.ZodType<FolderData> = z.object({
     system_prompt: z.string().optional(),
     files: z.array(FolderFileItemSchema).optional(),
-    model_ids: z.array(z.string()).optional(),
+    model_id: z.string().optional(),
 });
 
 /** Folder metadata for UI presentation */

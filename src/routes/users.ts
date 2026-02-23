@@ -17,7 +17,6 @@ const router = Router();
 let defaultPermissions: Types.UserPermissions = {
     workspace: {
         models: false,
-        knowledge: false,
         prompts: false,
         tools: false,
         models_import: false,
@@ -30,18 +29,13 @@ let defaultPermissions: Types.UserPermissions = {
     sharing: {
         models: false,
         public_models: false,
-        knowledge: false,
-        public_knowledge: false,
         prompts: false,
         public_prompts: false,
         tools: false,
         public_tools: false,
-        notes: false,
-        public_notes: false,
     },
     chat: {
         controls: true,
-        valves: true,
         system_prompt: true,
         params: true,
         file_upload: true,
@@ -49,27 +43,16 @@ let defaultPermissions: Types.UserPermissions = {
         delete_message: true,
         continue_response: true,
         regenerate_response: true,
-        rate_response: true,
         edit: true,
         share: true,
         export: true,
-        stt: true,
-        tts: true,
-        call: true,
-        multiple_models: true,
         temporary: true,
         temporary_enforced: false,
     },
     features: {
-        api_keys: false,
-        notes: false,
-        channels: false,
         folders: true,
         direct_tool_servers: false,
         web_search: true,
-        image_generation: false,
-        code_interpreter: false,
-        memories: false,
     },
     settings: {
         interface: true,
@@ -651,7 +634,6 @@ function getPermissions(role: UserRole): Types.UserPermissions {
     if (isAdmin) {
         permissions.workspace = {
             models: true,
-            knowledge: true,
             prompts: true,
             tools: true,
             models_import: true,
@@ -661,7 +643,6 @@ function getPermissions(role: UserRole): Types.UserPermissions {
             tools_import: true,
             tools_export: true,
         };
-        permissions.features.api_keys = true;
         permissions.features.direct_tool_servers = true;
     }
 

@@ -505,7 +505,7 @@ describe('Folder Operations', () => {
             const folder = await Folders.createFolder(
                 createTestFolderForm(userId, 'Test Folder', undefined, undefined, {
                     system_prompt: 'Original prompt',
-                    model_ids: ['model1']
+                    model_id: 'model1'
                 }),
                 db
             );
@@ -520,7 +520,7 @@ describe('Folder Operations', () => {
             assert.ok(updated);
             assert.ok(updated.data);
             assert.strictEqual(updated.data.system_prompt, 'Updated prompt');
-            assert.deepStrictEqual(updated.data.model_ids, ['model1']);
+            assert.deepStrictEqual(updated.data.model_id, 'model1');
         });
 
         test('should perform partial update', async () => {
@@ -859,7 +859,7 @@ describe('Folder Operations', () => {
                     title: 'Test Chat',
                     chat: {
                         title: 'Test Chat',
-                        models: [],
+                        model: '',
                         messages: [],
                         history: {
                             messages: {},
@@ -1105,7 +1105,7 @@ describe('Folder Operations', () => {
                         collection_name: 'kb-main',
                     },
                 ],
-                model_ids: ['model-1', 'model-2', 'model-3'],
+                model_id: 'model-1',
             };
 
             const folder = await Folders.createFolder(
@@ -1128,7 +1128,7 @@ describe('Folder Operations', () => {
                 files: [
                     { type: 'file', id: 'file-1', name: 'doc1.pdf' },
                 ],
-                model_ids: ['model-1'],
+                model_id: 'model-1',
             };
 
             const folder = await Folders.createFolder(
@@ -1155,7 +1155,7 @@ describe('Folder Operations', () => {
             assert.ok(updated.data);
             assert.strictEqual(updated.data.system_prompt, 'Updated prompt');
             assert.strictEqual(updated.data.files?.length, 2);
-            assert.deepStrictEqual(updated.data.model_ids, ['model-1']);
+            assert.deepStrictEqual(updated.data.model_id, 'model-1');
         });
     });
 });

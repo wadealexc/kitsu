@@ -16,7 +16,7 @@ import { currentUnixTimestamp } from '../../src/db/utils.js';
 function _createChatObject(title: string = 'Chat'): ChatObject {
     return {
         title: title,
-        models: [],
+        model: '',
         messages: [],
         history: {
             messages: {},
