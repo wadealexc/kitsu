@@ -26,6 +26,7 @@ import healthRouter from './routes/health.js';
 import pwaRouter from './routes/pwa.js';
 import { validateChatId } from './routes/middleware.js';
 import { MockLlama } from '../test/mockLlama.js';
+import { RoutedLlama } from '../test/routedLlama.js';
 
 /* -------------------- CONFIG -------------------- */
 
@@ -78,7 +79,8 @@ const tools = new ToolServer(app, { browser: browser });
 tools.serve();
 
 // Start llama-server
-const llama = new MockLlama() as unknown as LlamaManager;
+const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager; 
+// const llama = new MockLlama() as unknown as LlamaManager;
 // const llama = new LlamaManager({
 //     ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
 //     logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,

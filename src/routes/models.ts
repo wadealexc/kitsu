@@ -69,7 +69,8 @@ router.get('/', requireAuth, async (
         const availableModels: Types.ModelResponse[] = availableCustomModels.map(toModelResponse);
 
         // Add base models for admin
-        if (isAdmin) {
+        // TODO: temporarily allowing all models
+        if (isAdmin || !isAdmin) {
             const baseModels: Types.ModelResponse[] = baseModelNames.map(name => (toModelResponse({
                 id: name,
                 userId: userId,

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
-import './express.d.ts'; // Ensure Express.Request.user type is loaded
+/// <reference path="./express.d.ts" />
 
 import type { TypedRequest } from './types.js';
 import * as Types from './types.js';

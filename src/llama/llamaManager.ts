@@ -641,7 +641,6 @@ export class LlamaManager {
 
     getAllModelNames(): string[] {
         return [
-            'auto',
             ...this.getBaseLlamas().map(llama => llama.model.name),
             ...this.getVisionLlamas().map(llama => llama.model.name),
         ]

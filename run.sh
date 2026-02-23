@@ -14,4 +14,4 @@ source "$HOME/.nvm/nvm.sh"
 # (see README for details)
 export CHROME_DEVEL_SANDBOX=/usr/local/sbin/chrome-devel-sandbox
 
-exec node dist/index.js
+exec node dist/src/index.js
