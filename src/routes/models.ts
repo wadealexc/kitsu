@@ -34,11 +34,11 @@ const router = Router();
  * TODO - implement memory cache and use query.refresh to fetch from DB
  * 
  * @query {Types.ModelsQuery}
- * @returns {{"data": Types.ModelResponse[]}}
+ * @returns {{Types.ModelResponse[]}}
  */
 router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.ModelsQuery>,
-    res: Response<{ data: Types.ModelResponse[] } | Types.ErrorResponse>,
+    res: Response<Types.ModelResponse[] | Types.ErrorResponse>,
     next: NextFunction
 ) => {
     const query = Types.ModelsQuerySchema.safeParse(req.query);
@@ -89,7 +89,7 @@ router.get('/', requireAuth, async (
             availableModels.push(...baseModels);
         }
 
-        res.status(200).json({ data: availableModels });
+        res.status(200).json(availableModels);
     } catch (err) {
         return next(new Error(`Failed to list models: ${err}`));
     }

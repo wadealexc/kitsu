@@ -620,6 +620,7 @@ export const ChatObjectUpdateSchema = z.object({
     params: ModelParamsSchema,
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
+    files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
 }).partial();
 

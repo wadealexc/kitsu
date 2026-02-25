@@ -18,13 +18,13 @@ export type SseStatusItem = {
     description?: string;
     done?: boolean;
     hidden?: boolean;
+    query?: string;
 } & (
     | { action: 'web_search'; urls?: string[]; items?: unknown[]; query?: string }
     | { action: 'knowledge_search'; query: string }
     | { action: 'web_search_queries_generated'; queries: string[] }
     | { action: 'queries_generated'; queries: string[] }
     | { action: 'sources_retrieved'; count: number }
-    | { action?: string }
 );
 
 /** Emitted during tool call execution to show progress in the UI */

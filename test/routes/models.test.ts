@@ -97,10 +97,10 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
-        assert.ok(response.body.data);
-        assert.ok(Array.isArray(response.body.data));
-        assert.strictEqual(response.body.data.length, 1);
-        assert.strictEqual(response.body.data[0].base_model_id, 'qwen3-vl-30b');
+        assert.ok(response.body);
+        assert.ok(Array.isArray(response.body));
+        assert.strictEqual(response.body.length, 1);
+        assert.strictEqual(response.body[0].base_model_id, 'qwen3-vl-30b');
     });
 
     test('should accessible custom models and base models for admin', async () => {
@@ -112,18 +112,18 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
-        assert.ok(response.body.data);
-        assert.ok(Array.isArray(response.body.data));
-        assert.strictEqual(response.body.data.length, 3); // 2 base + 1 custom
+        assert.ok(response.body);
+        assert.ok(Array.isArray(response.body));
+        assert.strictEqual(response.body.length, 3); // 2 base + 1 custom
 
         // Verify base models
-        const baseModels = response.body.data.filter((m: any) => m.base_model_id === null);
+        const baseModels = response.body.filter((m: any) => m.base_model_id === null);
         assert.strictEqual(baseModels.length, 2);
         assert.ok(baseModels.some((m: any) => m.id === 'qwen3-vl-30b'));
         assert.ok(baseModels.some((m: any) => m.id === 'llama3-70b'));
 
         // Verify custom models
-        const customModels = response.body.data.filter((m: any) => m.base_model_id !== null);
+        const customModels = response.body.filter((m: any) => m.base_model_id !== null);
         assert.strictEqual(customModels.length, 1);
         assert.strictEqual(customModels[0].base_model_id, 'qwen3-vl-30b');
     });
@@ -143,7 +143,7 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token1}`)
             .expect(200);
 
-        assert.strictEqual(response.body.data.length, 1); // 1 accessible custom
+        assert.strictEqual(response.body.length, 1); // 1 accessible custom
     });
 
     test('should include public custom models for all users', async () => {
@@ -159,7 +159,7 @@ describe('GET /api/v1/models/', () => {
             .set('Authorization', `Bearer ${token2}`)
             .expect(200);
 
-        assert.strictEqual(response.body.data.length, 1); // 1 public custom
+        assert.strictEqual(response.body.length, 1); // 1 public custom
     });
 
     test('should fail without authentication token', async () => {
