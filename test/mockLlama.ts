@@ -5,7 +5,7 @@ import { type ModelConfig } from '../src/config.js';
 import type { LlamaRequest, LlamaResponse } from '../src/llama/llamaManager.js';
 import LlamaStream from '../src/llama/llamaStream.js';
 
-const TEST_MODEL_NAME = 'test model';
+import * as proto from '../src/protocol.js';
 
 export class MockLlama {
 
@@ -89,6 +89,18 @@ export class MockLlama {
         }
 
         return Promise.resolve(response);
+    }
+
+    getModelInfo(name: string): proto.ModelInfo | undefined {
+        if (this.models.includes(name)) {
+            return {
+                name: name,
+                path: 'path.gguf',
+                mmprojPath: 'mmproj.gguf',
+                args: [],
+                params: {},
+            }
+        }
     }
 
     getAllModelNames(): string[] {

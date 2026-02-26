@@ -7,29 +7,20 @@ import { db } from '../db/client.js';
 import * as Models from '../db/operations/models.js';
 import { type Model } from '../db/operations/models.js';
 import * as Users from '../db/operations/users.js';
-import { currentUnixTimestamp } from '../db/utils.js';
-import { HttpError, NotFoundError, ForbiddenError, BadRequestError, UnauthorizedError } from './errors.js';
+import { HttpError, NotFoundError, BadRequestError, UnauthorizedError } from './errors.js';
 
 const router = Router();
-
-// TODO - bad distinction between "base model" and "custom model" at the moment.
-// Revisit.
 
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
 
 /**
  * GET /api/v1/models/ - Fetch models the user has access to.
- * Access Control: Any authenticated user. Admins also fetch base models.
+ * Access Control: Any authenticated user.
  * 
  * @note this method only returns custom models in the DB that have baseModelIds matching
  * models currently served by LlamaManager. i.e. if you remove a base model from
  * LlamaManager, any custom models in the DB using it as the base will not be
  * returned here.
- * 
- * @note is caller is admin, this method also returns base models. the intent is
- * to make base models available to the server admin through the UI, at which point
- * the server admin can test the base models and make them available to users as
- * a custom model.
  *
  * TODO - implement memory cache and use query.refresh to fetch from DB
  * 
@@ -47,101 +38,22 @@ router.get('/', requireAuth, async (
     }
 
     const userId = req.user!.id;
-    const isAdmin = req.user!.role === 'admin';
 
     try {
-        // Get base models from LlamaManager
+        // Get base models from LlamaManager to validate availability
         const llama = req.app.locals.llama as LlamaManager;
         const baseModelNames = llama.getAllModelNames();
 
-        console.log(`base model names: ${JSON.stringify(baseModelNames, null, 2)}`)
-
-        // Fetch custom models:
-        // - where the user has read access
-        // - that have available base models
-        //
-        // (TODO - maybe keep these in here, but toggle isActive to false?)
+        // Fetch custom models accessible to this user, filtered to those with available base models
         const allCustomModels = await Models.getCustomModels(db);
-        const availableCustomModels = allCustomModels
+        const availableModels: Types.ModelResponse[] = allCustomModels
             .filter(model => baseModelNames.some(base => base === model.baseModelId))
-            .filter(model => Models.hasAccess(model, userId, 'read'));
-
-        const availableModels: Types.ModelResponse[] = availableCustomModels.map(toModelResponse);
-
-        // Add base models for admin
-        // TODO: temporarily allowing all models
-        if (isAdmin || !isAdmin) {
-            const baseModels: Types.ModelResponse[] = baseModelNames.map(name => (toModelResponse({
-                id: name,
-                userId: userId,
-                baseModelId: null,
-                name: name,
-                params: {},
-                meta: {
-                    profile_image_url: '/static/favicon.png',
-                },
-                accessControl: null,
-                isActive: true,
-                updatedAt: 0,
-                createdAt: 0,
-            })));
-
-            availableModels.push(...baseModels);
-        }
+            .filter(model => Models.hasAccess(model, userId, 'read'))
+            .map(toModelResponse);
 
         res.status(200).json(availableModels);
     } catch (err) {
         return next(new Error(`Failed to list models: ${err}`));
-    }
-});
-
-/**
- * GET /api/v1/models/list
- * Access Control: Any authenticated user (filtered by access)
- *
- * Get paginated list of custom models only (from database) with filtering and sorting.
- * Base models are NOT included in this endpoint.
- *
- * @query {Types.ModelListQuery} - query parameters for search, filtering, and pagination
- * @returns {Types.ModelAccessListResponse} - paginated model list with access info
- */
-router.get('/list', requireAuth, async (
-    req: Types.TypedRequest<{}, any, Types.ModelListQuery>,
-    res: Response<Types.ModelAccessListResponse | Types.ErrorResponse>
-) => {
-    const query = Types.ModelListQuerySchema.safeParse(req.query);
-    if (!query.success) {
-        return res.status(400).json({ detail: 'Invalid query parameters', errors: query.error.issues });
-    }
-
-    const userId = req.user!.id;
-    const { page, query: searchQuery, view_option: viewOption, order_by: orderBy, direction } = query.data;
-
-    try {
-        // Build filter
-        const filter: Models.SearchFilter = {
-            query: searchQuery,
-            viewOption,
-            orderBy,
-            direction,
-        };
-
-        // Calculate pagination
-        const pageSize = 30;
-        const skip = (page - 1) * pageSize;
-
-        // Search models
-        const result = await Models.searchModels(userId, filter, skip, pageSize, db);
-
-        // Convert to response format with write_access flag
-        const items: Types.ModelAccessResponse[] = result.items.map(model => {
-            const canWrite = Models.hasAccess(model, userId, 'write');
-            return toModelAccessResponse(model, canWrite);
-        });
-
-        res.status(200).json({ items, total: result.total });
-    } catch (err) {
-        return res.status(500).json({ detail: `Failed to list models: ${err}` });
     }
 });
 
@@ -240,7 +152,7 @@ router.post('/create', requireAuth, async (
             name: formData.name,
             params: formData.params,
             meta: formData.meta,
-            accessControl: formData.access_control,
+            isPublic: formData.isPublic,
             isActive: formData.is_active,
         }, db);
 
@@ -346,17 +258,15 @@ router.post('/model/update', requireAuth, async (
                 throw BadRequestError(`base model '${formData.base_model_id}' not found`);
         }
 
-        // TODO: yikes!
-        const updateModel: Models.UpdateModel = { ...formData };
-        if (formData.access_control !== undefined) 
-            updateModel.accessControl = formData.access_control;
-        if (formData.base_model_id !== undefined) 
-            updateModel.baseModelId = formData.base_model_id;
-        if (formData.is_active !== undefined) 
-            updateModel.isActive = formData.is_active;
-
         // Update model in database
-        const updated = await Models.updateModelById(formData.id, updateModel, db);
+        const updated = await Models.updateModelById(formData.id, {
+            baseModelId: formData.base_model_id,
+            name: formData.name,
+            params: formData.params,
+            meta: formData.meta,
+            isPublic: formData.isPublic,
+            isActive: formData.is_active,
+        }, db);
         res.status(200).json(toModelModelResponse(updated));
     } catch (error) {
         if (error instanceof HttpError) {
@@ -445,20 +355,23 @@ router.get('/base', requireAdmin, async (
         const llama = req.app.locals.llama as LlamaManager;
         const baseModelNames = llama.getAllModelNames();
 
-        const baseModels: Types.ModelResponse[] = baseModelNames.map(name => (toModelResponse({
-            id: name,
-            userId: userId,
-            baseModelId: null,
-            name: name,
-            params: {},
-            meta: {
-                profile_image_url: '/static/favicon.png',
-            },
-            accessControl: null,
-            isActive: true,
-            updatedAt: 0,
-            createdAt: 0,
-        })));
+        const baseModels: Types.ModelResponse[] = baseModelNames.map(name => {
+            const modelInfo = llama.getModelInfo(name);
+            return toModelResponse({
+                id: name,
+                userId: userId,
+                baseModelId: name,
+                name: name,
+                params: modelInfo?.params ?? {},
+                meta: {
+                    profile_image_url: '/static/favicon.png',
+                },
+                isPublic: false,
+                isActive: true,
+                updatedAt: 0,
+                createdAt: 0,
+            });
+        });
 
         res.status(200).json(baseModels);
     } catch (err) {
@@ -497,7 +410,7 @@ function toModelResponse(model: Model): Types.ModelResponse {
         name: model.name,
         params: model.params,
         meta: model.meta,
-        access_control: model.accessControl || undefined,
+        isPublic: model.isPublic,
         is_active: model.isActive,
         updated_at: model.updatedAt,
         created_at: model.createdAt,
@@ -512,11 +425,11 @@ function toModelModelResponse(model: Model): Types.ModelModel {
         name: model.name,
         params: model.params,
         meta: model.meta,
-        access_control: model.accessControl || undefined,
+        isPublic: model.isPublic,
         is_active: model.isActive,
         updated_at: model.updatedAt,
         created_at: model.createdAt,
-    }
+    };
 }
 
 function toModelAccessResponse(
@@ -530,7 +443,7 @@ function toModelAccessResponse(
         name: modelUser.name,
         params: modelUser.params,
         meta: modelUser.meta,
-        access_control: modelUser.accessControl || undefined,
+        isPublic: modelUser.isPublic,
         is_active: modelUser.isActive,
         updated_at: modelUser.updatedAt,
         created_at: modelUser.createdAt,
@@ -541,7 +454,7 @@ function toModelAccessResponse(
             profile_image_url: modelUser.user.profileImageUrl,
         } : null,
         write_access: canWrite,
-    }
+    };
 }
 
 export default router;

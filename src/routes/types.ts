@@ -312,19 +312,34 @@ export type AccessControl = z.infer<typeof AccessControlSchema>;
 
 // Model parameters
 export const ModelParamsSchema = z.object({
-    temperature: z.number().optional(),
-    top_p: z.number().optional(),
-    top_k: z.number().optional(),
-    max_tokens: z.number().optional(),
-    seed: z.number().optional(),
-}).passthrough();  // Allow additional model-specific params
+    // Sampling
+    temperature:       z.number().optional(),
+    top_p:             z.number().optional(),
+    top_k:             z.number().optional(),
+    min_p:             z.number().optional(),
+    max_tokens:        z.number().optional(),
+    seed:              z.number().optional(),
+    frequency_penalty: z.number().optional(),
+    presence_penalty:  z.number().optional(),
+    repeat_penalty:    z.number().optional(),
+    repeat_last_n:     z.number().optional(),
+    mirostat:          z.number().optional(),
+    mirostat_eta:      z.number().optional(),
+    mirostat_tau:      z.number().optional(),
+    tfs_z:             z.number().optional(),
+    // Control
+    stop:             z.union([z.string(), z.array(z.string())]).optional(),
+    system:           z.string().optional(),
+    stream_response:  z.boolean().optional(),
+    reasoning_effort: z.string().optional(),
+    logit_bias:       z.string().optional(),
+});  // Allow additional model-specific params
 export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata
 export const ModelMetaSchema = z.object({
     profile_image_url: z.string().default('/static/favicon.png'),
     description: z.string().nullable().optional(),
-    capabilities: z.record(z.string(), z.any()).nullable().optional(),
 }).passthrough();  // Allow additional properties
 export type ModelMeta = z.infer<typeof ModelMetaSchema>;
 
@@ -341,11 +356,11 @@ export type UserResponse = z.infer<typeof UserResponseSchema>;
 export const ModelResponseSchema = z.object({
     id: z.string().max(256),
     user_id: UserIdSchema,
-    base_model_id: z.string().nullable(),
+    base_model_id: z.string(),
     name: z.string(),
     params: ModelParamsSchema,
     meta: ModelMetaSchema,
-    access_control: AccessControlSchema.optional(),
+    isPublic: z.boolean(),
     is_active: z.boolean(),
     updated_at: z.number(),
     created_at: z.number(),
@@ -377,7 +392,7 @@ export const ModelFormSchema = z.object({
     name: z.string().max(256),
     meta: ModelMetaSchema,
     params: ModelParamsSchema,
-    access_control: AccessControlSchema.optional(),
+    isPublic: z.boolean().default(true),
     is_active: z.boolean().default(true),
 });
 export type ModelForm = z.infer<typeof ModelFormSchema>;
@@ -387,12 +402,6 @@ export const ModelIdFormSchema = z.object({
     id: z.string(),
 });
 export type ModelIdForm = z.infer<typeof ModelIdFormSchema>;
-
-// Models import form
-export const ModelsImportFormSchema = z.object({
-    models: z.array(z.record(z.string(), z.any())),
-});
-export type ModelsImportForm = z.infer<typeof ModelsImportFormSchema>;
 
 // Query parameters for GET /api/v1/models
 export const ModelsQuerySchema = z.object({
@@ -687,11 +696,7 @@ export const ChatCompletionFormSchema = z.object({
         // direct: z.boolean().optional(),
     }).passthrough().optional(),
     background_tasks: z.any().optional(),
-    params: z.object({
-        stream_delta_chunk_size: z.number().optional(),
-        reasoning_tags: z.any().optional(),
-        function_calling: z.enum(['native', 'default']).optional(),
-    }).optional(),
+    params: ModelParamsSchema.optional(),
 }).passthrough();  // Allow additional OpenAI extensions
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 

@@ -127,7 +127,8 @@ export class LlamaManager {
                     name: name,
                     path: modelPath,
                     mmprojPath: mmprojPath,
-                    params: model.params ?? [],
+                    args: model.args ?? [],
+                    params: model.params ?? {},
                 },
                 pending: [],
                 active: null,
@@ -449,10 +450,10 @@ export class LlamaManager {
             args = [...args, '--mmproj', model.mmprojPath];
         }
 
-        // Add any extra params
-        if (model.params) {
-            console.log(chalk.dim(` - extra params: ${model.params}`));
-            args = [...args, ...model.params];
+        // Add any extra CLI args
+        if (model.args && model.args.length > 0) {
+            console.log(chalk.dim(` - extra args: ${model.args}`));
+            args = [...args, ...model.args];
         }
 
         // log verbosity ("messages with a higher verbosity will be ignored")
@@ -638,6 +639,10 @@ export class LlamaManager {
     }
 
     /* -------------------- GETTERS -------------------- */
+
+    getModelInfo(name: string): proto.ModelInfo | undefined {
+        return this.llamas.get(name)?.model;
+    }
 
     getAllModelNames(): string[] {
         return [

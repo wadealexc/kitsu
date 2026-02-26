@@ -103,7 +103,8 @@ const ModelSchema = z.object({
         gguf: z.string(),
         mmproj: z.optional(z.string()),
         alias: z.optional(z.string()),
-        params: z.optional(z.array(z.coerce.string())),
+        args: z.optional(z.array(z.coerce.string())),
+        params: z.record(z.string(), z.any()).optional(),
     })).min(1),
 });
 
@@ -122,11 +123,13 @@ const ModelSchema = z.object({
  *             "mmproj": "qwen/mmproj-BF16",
  *             // OPTIONAL: API will serve model under this alias
  *             "alias": "qwen3-vl-30b",
- *             // OPTIONAL: Extra params for llama-server
- *             "params": [
+ *             // OPTIONAL: Extra CLI args for llama-server
+ *             "args": [
  *                 "--ctx-size",
  *                 50000
- *             ]
+ *             ],
+ *             // OPTIONAL: Inference defaults (temperature, system prompt, etc.)
+ *             "params": { "temperature": 0.7, "system": "You are a helpful assistant." }
  *         }
  *     ]
  * }

@@ -7,6 +7,7 @@ import { requireAuth } from './middleware.js';
 import * as proto from '../protocol.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
+import * as Models from '../db/operations/models.js';
 import { NotFoundError } from './errors.js';
 
 const router = Router();
@@ -39,18 +40,34 @@ router.post('/completions', requireAuth, async (
     console.log(`body: \n\n${JSON.stringify(parsed, null, 2)}\n\n`);
 
     const userId = req.user!.id;
-    // const isAdmin = req.user!.role === 'admin';
-    const { chat_id: chatId, id: messageId, parent_message: parentMessage, model } = parsed.data;
+    const { chat_id: chatId, id: messageId, parent_message: parentMessage } = parsed.data;
 
     /* -------------------- PRE-PROCESSING & VALIDATION -------------------- */
 
-    // TODO: Model access control
-    // Check if user has permission to use the requested model
-    // Note: BYPASS_MODEL_ACCESS_CONTROL config flag mentioned in analysis
-    // const hasModelAccess = await Models.checkUserHasModelAccess(userId, model, db);
-    // if (!hasModelAccess && !isAdmin) {
-    //     return res.status(403).json({ detail: 'Insufficient permissions to access model' });
-    // }
+    // Resolve custom model → base model
+    // If the requested model ID matches a DB custom model, check access and
+    // rewrite model to the base model name for LlamaManager routing.
+    let resolvedModel = parsed.data.model;
+    const customModel = await Models.getModelById(resolvedModel, db);
+    if (customModel) {
+        if (!Models.hasAccess(customModel, userId, 'read')) {
+            return res.status(403).json({ detail: 'No access to this model' });
+        }
+        resolvedModel = customModel.baseModelId;
+    }
+    
+    // Oh god it's horrible
+    let systemPrompt = (parsed.data.model_item?.params as any).system as string;
+    let messages = parsed.data.messages as proto.Message[];
+    // Add system prompt if needed
+    if (messages[0]?.role !== 'system') {
+        messages.unshift({
+            role: 'system',
+            content: systemPrompt,
+        })
+    }
+
+    const completionBody = { ...parsed.data, model: resolvedModel, messages: messages, };
 
     // Verify user owns the referenced chat (unless 'local', which is not persisted)
     if (chatId) {        
@@ -99,7 +116,7 @@ router.post('/completions', requireAuth, async (
 
         // Forward request to llama-server
         const response: LlamaResponse = await llama.completions({
-            body: parsed.data,
+            body: completionBody,
             signal: ctrl.signal,
         });
 

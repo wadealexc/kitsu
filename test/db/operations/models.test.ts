@@ -16,13 +16,13 @@ function createModelForm(overrides: Partial<NewModel> & { userId: string }): New
     return {
         name: overrides?.name || `Test Model`,
         id: overrides?.id || overrides?.name || `Test Model ${id}`,
-        baseModelId: overrides?.baseModelId !== undefined ? overrides.baseModelId : null,
+        baseModelId: overrides?.baseModelId !== undefined ? overrides.baseModelId : 'Base Model',
         userId: overrides?.userId,
         params: overrides?.params || {},
         meta: overrides?.meta || {
             profile_image_url: 'img.png'
         },
-        accessControl: overrides?.accessControl,
+        isPublic: overrides?.isPublic,
         isActive: overrides?.isActive !== undefined ? overrides.isActive : true,
     }
 }
@@ -57,7 +57,7 @@ async function createOldModel(
             name: modelForm.name,
             params: modelForm.params,
             meta: modelForm.meta,
-            accessControl: modelForm.accessControl,
+            isPublic: modelForm.isPublic,
             isActive: modelForm.isActive,
             createdAt: createdAt ?? now - 1000,
             updatedAt: updatedAt ?? createdAt ?? now - 1000,
@@ -86,27 +86,6 @@ describe('insertNewModel', () => {
         testUserId = user.id;
     });
 
-    test('creates base model successfully', async () => {
-        const modelForm = createModelForm({
-            id: 'gpt-4-turbo',
-            name: 'GPT-4 Turbo',
-            baseModelId: null,
-            userId: testUserId,
-        });
-
-        const model = await Models.insertNewModel(modelForm, db);
-
-        assert.ok(model);
-        assert.strictEqual(model.id, 'gpt-4-turbo');
-        assert.strictEqual(model.name, 'GPT-4 Turbo');
-        assert.strictEqual(model.baseModelId, null);
-        assert.strictEqual(model.userId, testUserId);
-        assert.strictEqual(model.isActive, true);
-        assert.ok(model.createdAt);
-        assert.ok(model.updatedAt);
-        assert.strictEqual(model.createdAt, model.updatedAt);
-    });
-
     test('creates custom model successfully', async () => {
         const modelForm = createModelForm({
             id: 'my-custom-gpt4',
@@ -126,21 +105,16 @@ describe('insertNewModel', () => {
         assert.deepStrictEqual(model.meta, { profile_image_url: 'img.png', description: 'Custom configuration' });
     });
 
-    test('creates model with access control', async () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [testUserId, 'other-user'] },
-            write: { user_ids: [testUserId] },
-        };
-
+    test('creates model with public access', async () => {
         const modelForm = createModelForm({
-            accessControl,
+            isPublic: true,
             userId: testUserId,
         });
 
         const model = await Models.insertNewModel(modelForm, db);
 
         assert.ok(model);
-        assert.deepStrictEqual(model.accessControl, accessControl);
+        assert.strictEqual(model.isPublic, true);
     });
 
     test('creates inactive model', async () => {
@@ -178,13 +152,7 @@ describe('getCustomModels', () => {
         testUserId = user.id;
         testUsername = user.username;
 
-        // Create base models (should not be returned)
-        await createTestModel(db, testUserId, {
-            id: 'base-model',
-            baseModelId: null,
-        });
-
-        // Create custom models (should be returned)
+        // Create custom models
         await createTestModel(db, testUserId, {
             id: 'custom-1',
             baseModelId: 'base-model',
@@ -195,7 +163,7 @@ describe('getCustomModels', () => {
         });
     });
 
-    test('retrieves only custom models', async () => {
+    test('retrieves custom models', async () => {
         const models = await Models.getCustomModels(db);
 
         assert.ok(models.length >= 2);
@@ -212,12 +180,6 @@ describe('getCustomModels', () => {
         assert.strictEqual(customModel.user!.username, testUsername);
         assert.ok(customModel.user!.role);
         assert.ok(customModel.user!.profileImageUrl);
-    });
-
-    test('excludes base models', async () => {
-        const models = await Models.getCustomModels(db);
-
-        assert.ok(!models.some(m => m.id === 'base-model'));
     });
 });
 
@@ -297,24 +259,17 @@ describe('updateModelById', () => {
         assert.strictEqual(updated.baseModelId, 'new-base');
     });
 
-    test('updates accessControl', async () => {
-        const model = await createTestModel(db, testUserId);
+    test('updates access control', async () => {
+        const model = await createTestModel(db, testUserId, {
+            isPublic: false,
+        });
 
-        const newAccessControl: AccessControl = {
-            read: { user_ids: ['user1', 'user2'] },
-            write: { user_ids: ['user1'] },
-        };
+        assert.strictEqual(model.isPublic, false);
 
-        const updated = await Models.updateModelById(
-            model.id,
-            {
-                accessControl: newAccessControl,
-            },
-            db
-        );
+        const updated = await Models.updateModelById(model.id, { isPublic: true }, db);
 
         assert.ok(updated);
-        assert.deepStrictEqual(updated.accessControl, newAccessControl);
+        assert.strictEqual(updated.isPublic, true);
     });
 
     test('updates isActive', async () => {
@@ -464,217 +419,6 @@ describe('deleteAllModels', () => {
     });
 });
 
-/* -------------------- SEARCH & FILTERING -------------------- */
-
-describe('searchModels', () => {
-    let db: TestDatabase;
-    let user1: { id: string; username: string };
-    let user2: { id: string; username: string };
-
-    before(async () => {
-        db = await newDBWithAdmin();
-        const u1 = await Users.createUser(newUserParams(), db);
-        const u2 = await Users.createUser(newUserParams(), db);
-        user1 = { id: u1.id, username: u1.username };
-        user2 = { id: u2.id, username: u2.username };
-
-        // Create base models
-        await createTestModel(db, user1.id, {
-            id: 'base-gpt4',
-            name: 'GPT-4',
-            baseModelId: null,
-        });
-
-        // Create custom models for user1
-        await createTestModel(db, user1.id, {
-            id: 'user1-gpt4-custom',
-            name: 'User1 GPT-4 Custom',
-            baseModelId: 'base-gpt4',
-        });
-        await createTestModel(db, user1.id, {
-            id: 'user1-llama-custom',
-            name: 'User1 Llama Custom',
-            baseModelId: 'base-llama',
-        });
-
-        // Create custom models for user2 (public)
-        await createTestModel(db, user2.id, {
-            id: 'user2-public',
-            name: 'User2 Public Model',
-            baseModelId: 'base-gpt4',
-            accessControl: null,
-        });
-
-        // Create custom models for user2 (private)
-        await createTestModel(db, user2.id, {
-            id: 'user2-private',
-            name: 'User2 Private Model',
-            baseModelId: 'base-gpt4',
-            accessControl: {},
-        });
-
-        // Create custom models with shared access
-        await createTestModel(db, user2.id, {
-            id: 'user2-shared',
-            name: 'User2 Shared Model',
-            baseModelId: 'base-gpt4',
-            accessControl: {
-                read: { user_ids: [user1.id, user2.id] },
-                write: { user_ids: [user2.id] },
-            },
-        });
-    });
-
-    test('searches all accessible models', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 30, db);
-
-        // Should include: user1's models, public models, and shared models
-        assert.ok(result.total == 4);
-        assert.ok(result.items.some(m => m.id === 'user1-gpt4-custom'));
-        assert.ok(result.items.some(m => m.id === 'user1-llama-custom'));
-        assert.ok(result.items.some(m => m.id === 'user2-public'));
-        assert.ok(result.items.some(m => m.id === 'user2-shared'));
-    });
-
-    test('excludes private models from other users', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 30, db);
-
-        assert.ok(!result.items.some(m => m.id === 'user2-private'));
-    });
-
-    test('filters by query string', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { query: 'GPT' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.length > 0);
-        assert.ok(result.items.every(
-            m => m.name.toUpperCase().includes('GPT') || m.baseModelId?.toUpperCase().includes('GPT'))
-        );
-    });
-
-    test('filters by viewOption: created', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { viewOption: 'created' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.every(m => m.userId === user1.id));
-        assert.ok(result.items.some(m => m.id === 'user1-gpt4-custom'));
-    });
-
-    test('filters by viewOption: shared', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { viewOption: 'shared' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.every(m => m.userId !== user1.id));
-        assert.ok(!result.items.some(m => m.id === 'user1-gpt4-custom'));
-    });
-
-    test('sorts by name ascending', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { orderBy: 'name', direction: 'asc' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.length > 0);
-        for (let i = 1; i < result.items.length; i++) {
-            assert.ok(result.items[i]!.name >= result.items[i - 1]!.name);
-        }
-    });
-
-    test('sorts by name descending', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { orderBy: 'name', direction: 'desc' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.length > 0);
-        for (let i = 1; i < result.items.length; i++) {
-            assert.ok(result.items[i]!.name <= result.items[i - 1]!.name);
-        }
-    });
-
-    test('sorts by created_at', async () => {
-        const result = await Models.searchModels(
-            user1.id,
-            { orderBy: 'created_at', direction: 'desc' },
-            0,
-            30,
-            db
-        );
-
-        assert.ok(result.items.length > 0);
-        for (let i = 1; i < result.items.length; i++) {
-            assert.ok(result.items[i]!.createdAt <= result.items[i - 1]!.createdAt);
-        }
-    });
-
-    test('sorts by updated_at (default)', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 30, db);
-
-        assert.ok(result.items.length > 0);
-        for (let i = 1; i < result.items.length; i++) {
-            assert.ok(result.items[i]!.updatedAt <= result.items[i - 1]!.updatedAt);
-        }
-    });
-
-    test('paginates results', async () => {
-        const page1 = await Models.searchModels(user1.id, {}, 0, 2, db);
-        const page2 = await Models.searchModels(user1.id, {}, 2, 2, db);
-
-        assert.ok(page1.items.length <= 2);
-        if (page1.total > 2) {
-            assert.ok(page2.items.length > 0);
-            // Verify different results
-            assert.ok(!page1.items.some(m1 => page2.items.some(m2 => m1.id === m2.id)));
-        }
-    });
-
-    test('includes user information', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 30, db);
-
-        assert.ok(result.items.length > 0);
-        result.items.forEach(item => {
-            assert.ok(item.user);
-            assert.ok(item.user.id);
-            assert.ok(item.user.username);
-            assert.ok(item.user.role);
-            assert.ok(item.user.profileImageUrl);
-        });
-    });
-
-    test('returns correct total count', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 2, db);
-
-        assert.ok(result.total >= result.items.length);
-    });
-
-    test('excludes base models', async () => {
-        const result = await Models.searchModels(user1.id, {}, 0, 30, db);
-
-        assert.ok(!result.items.some(m => m.id === 'base-gpt4'));
-    });
-});
-
 /* -------------------- ACCESS CONTROL OPERATIONS -------------------- */
 
 describe('hasAccess', () => {
@@ -682,121 +426,37 @@ describe('hasAccess', () => {
     const userId = 'user-123';
     const otherUserId = 'user-456';
 
-    function _model(ac: AccessControl | null): Model {
+    function _model(isPublic: boolean): Model {
         return {
             id: 'Test Model',
             name: 'test-model',
-            baseModelId: null,
+            baseModelId: 'Base Model',
             userId: ownerId,
             isActive: true,
             updatedAt: 0,
             createdAt: 0,
             meta: { profile_image_url: 'img.png' },
             params: {},
-            accessControl: ac,
+            isPublic: isPublic,
         }
     }
 
-    test('allows public read access (null accessControl)', () => {
-        const hasRead = Models.hasAccess(_model(null), userId, 'read');
+    test('allows public read access', () => {
+        const hasRead = Models.hasAccess(_model(true), userId, 'read');
         assert.strictEqual(hasRead, true);
     });
 
-    test('denies public write access (null accessControl)', () => {
-        const hasWrite = Models.hasAccess(_model(null), userId, 'write');
+    test('denies public write access', () => {
+        const hasWrite = Models.hasAccess(_model(true), userId, 'write');
         assert.strictEqual(hasWrite, false);
     });
 
-    test('denies access for empty accessControl', () => {
-        const hasRead = Models.hasAccess(_model({}), userId, 'read');
-        const hasWrite = Models.hasAccess(_model({}), userId, 'write');
-
-        assert.strictEqual(hasRead, false);
-        assert.strictEqual(hasWrite, false);
-    });
-
-    test('allows read access for users in read.user_ids', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [userId, otherUserId] },
-            write: { user_ids: [otherUserId] },
-        };
-
-        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
-        assert.strictEqual(hasRead, true);
-    });
-
-    test('allows write access for users in write.user_ids', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [otherUserId] },
-            write: { user_ids: [userId] },
-        };
-
-        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
+    test('allows write access for creator, regardless of access setting', () => {
+        let hasWrite = Models.hasAccess(_model(false), ownerId, 'write');
         assert.strictEqual(hasWrite, true);
-    });
 
-    test('denies read access for users not in read.user_ids', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [otherUserId] },
-            write: { user_ids: [] },
-        };
-
-        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
-        assert.strictEqual(hasRead, false);
-    });
-
-    test('denies write access for users not in write.user_ids', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [userId] },
-            write: { user_ids: [otherUserId] },
-        };
-
-        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
-        assert.strictEqual(hasWrite, false);
-    });
-
-    test('handles missing read property', () => {
-        const accessControl: AccessControl = {
-            write: { user_ids: [userId] },
-        };
-
-        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
-        assert.strictEqual(hasRead, false);
-    });
-
-    test('handles missing write property', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [userId] },
-        };
-
-        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
-        assert.strictEqual(hasWrite, false);
-    });
-
-    test('handles empty user_ids array', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [] },
-            write: { user_ids: [] },
-        };
-
-        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
-        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
-
-        assert.strictEqual(hasRead, false);
-        assert.strictEqual(hasWrite, false);
-    });
-
-    test('handles undefined user_ids', () => {
-        const accessControl: AccessControl = {
-            read: { user_ids: [] },
-            write: { user_ids: [] },
-        };
-
-        const hasRead = Models.hasAccess(_model(accessControl), userId, 'read');
-        const hasWrite = Models.hasAccess(_model(accessControl), userId, 'write');
-
-        assert.strictEqual(hasRead, false);
-        assert.strictEqual(hasWrite, false);
+        hasWrite = Models.hasAccess(_model(true), ownerId, 'write');
+        assert.strictEqual(hasWrite, true);
     });
 });
 
@@ -847,7 +507,6 @@ describe('Edge Cases', () => {
             params: {
                 temperature: 0.7,
                 top_p: 0.9,
-                nested: { deep: { value: 123 } },
             },
             meta: {
                 profile_image_url: 'img.png',
@@ -863,7 +522,6 @@ describe('Edge Cases', () => {
         assert.deepStrictEqual(model.params, {
             temperature: 0.7,
             top_p: 0.9,
-            nested: { deep: { value: 123 } },
         });
         assert.deepStrictEqual(model.meta, {
             profile_image_url: 'img.png',
@@ -871,61 +529,5 @@ describe('Edge Cases', () => {
             capabilities: { vision: true },
             array: [1, 2, 3],
         });
-    });
-
-    test('handles search with no results', async () => {
-        const result = await Models.searchModels(
-            testUserId,
-            { query: 'nonexistent-query-xyz' },
-            0,
-            30,
-            db
-        );
-
-        assert.strictEqual(result.total, 0);
-        assert.strictEqual(result.items.length, 0);
-    });
-
-    test('handles pagination beyond results', async () => {
-        await createTestModel(db, testUserId, { baseModelId: 'base' });
-
-        const result = await Models.searchModels(testUserId, {}, 100, 30, db);
-
-        assert.strictEqual(result.items.length, 0);
-        assert.ok(result.total > 0);
-    });
-
-    test('handles multiple users with same model access', async () => {
-        const user2 = await Users.createUser(newUserParams(), db);
-        const user3 = await Users.createUser(newUserParams(), db);
-
-        const accessControl: AccessControl = {
-            read: { user_ids: [testUserId, user2.id, user3.id] },
-            write: { user_ids: [testUserId] },
-        };
-
-        const model = await createTestModel(db, testUserId, {
-            baseModelId: 'base',
-            accessControl: accessControl,
-        });
-
-        const result1 = await Models.searchModels(testUserId, {}, 0, 30, db);
-        const result2 = await Models.searchModels(user2.id, {}, 0, 30, db);
-        const result3 = await Models.searchModels(user3.id, {}, 0, 30, db);
-
-        assert.ok(result1.items.some(m => m.id === model.id));
-        assert.ok(result2.items.some(m => m.id === model.id));
-        assert.ok(result3.items.some(m => m.id === model.id));
-    });
-
-    test('handles timestamp precision', async () => {
-        const before = currentUnixTimestamp();
-        const model = await createTestModel(db, testUserId);
-        const after = currentUnixTimestamp();
-
-        assert.ok(model.createdAt >= before);
-        assert.ok(model.createdAt <= after);
-        assert.ok(model.updatedAt >= before);
-        assert.ok(model.updatedAt <= after);
     });
 });

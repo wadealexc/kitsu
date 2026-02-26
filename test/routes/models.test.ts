@@ -50,10 +50,10 @@ async function createCustomModel(
         id?: string;
         name?: string;
         baseModelId?: string;
-        accessControl?: any;
+        isPublic?: boolean;
         isActive?: boolean;
     }
-) {
+): Promise<Model> {
     const modelId = overrides?.id || `custom-model-${crypto.randomUUID()}`;
     const model = await Models.insertNewModel(
         {
@@ -65,9 +65,8 @@ async function createCustomModel(
             meta: {
                 profile_image_url: '/static/favicon.png',
                 description: 'Test model',
-                capabilities: null,
             },
-            accessControl: overrides?.accessControl || null,
+            isPublic: overrides?.isPublic ?? undefined,
             isActive: overrides?.isActive ?? true,
         },
         db
@@ -103,7 +102,7 @@ describe('GET /api/v1/models/', () => {
         assert.strictEqual(response.body[0].base_model_id, 'qwen3-vl-30b');
     });
 
-    test('should accessible custom models and base models for admin', async () => {
+    test('should accessible custom models for admin', async () => {
         const { userId, token } = await createUserWithToken('admin');
         await createCustomModel(userId);
 
@@ -114,13 +113,8 @@ describe('GET /api/v1/models/', () => {
 
         assert.ok(response.body);
         assert.ok(Array.isArray(response.body));
-        assert.strictEqual(response.body.length, 3); // 2 base + 1 custom
-
-        // Verify base models
-        const baseModels = response.body.filter((m: any) => m.base_model_id === null);
-        assert.strictEqual(baseModels.length, 2);
-        assert.ok(baseModels.some((m: any) => m.id === 'qwen3-vl-30b'));
-        assert.ok(baseModels.some((m: any) => m.id === 'llama3-70b'));
+        assert.strictEqual(response.body.length, 1); // 2 base + 1 custom
+        assert.strictEqual(response.body[0].base_model_id, 'qwen3-vl-30b');
 
         // Verify custom models
         const customModels = response.body.filter((m: any) => m.base_model_id !== null);
@@ -130,28 +124,36 @@ describe('GET /api/v1/models/', () => {
 
     test('should filter custom models by access control', async () => {
         const { userId: userId1, token: token1 } = await createUserWithToken('user');
-        const { userId: userId2 } = await createUserWithToken('user');
+        const { userId: userId2, token: token2 } = await createUserWithToken('user');
 
         // User 1 creates a private model
         await createCustomModel(userId1, {
-            accessControl: { read: { user_ids: [userId1] }, write: { user_ids: [userId1] } },
+            isPublic: false,
         });
 
-        // User 2 should only see base models
-        const response = await request(app)
+        // User 1 should only see the model they made
+        const response1 = await request(app)
             .get('/api/v1/models/')
             .set('Authorization', `Bearer ${token1}`)
             .expect(200);
 
-        assert.strictEqual(response.body.length, 1); // 1 accessible custom
+        assert.strictEqual(response1.body.length, 1);
+
+        // User 2 should not see any models
+        const response2 = await request(app)
+            .get('/api/v1/models/')
+            .set('Authorization', `Bearer ${token2}`)
+            .expect(200);
+
+        assert.strictEqual(response2.body.length, 0);
     });
 
     test('should include public custom models for all users', async () => {
         const { userId: userId1 } = await createUserWithToken('user');
         const { token: token2 } = await createUserWithToken('user');
 
-        // User 1 creates a public model (access_control = null)
-        await createCustomModel(userId1, { accessControl: null });
+        // User 1 creates a public model
+        await createCustomModel(userId1, { isPublic: true });
 
         // User 2 should see it
         const response = await request(app)
@@ -176,144 +178,6 @@ describe('GET /api/v1/models/', () => {
     });
 });
 
-describe('GET /api/v1/models/list', () => {
-    beforeEach(async () => {
-        await clearDatabase();
-    });
-
-    test('should return paginated custom models only', async () => {
-        const { userId, token } = await createUserWithToken('user');
-        await createCustomModel(userId);
-        await createCustomModel(userId);
-
-        const response = await request(app)
-            .get('/api/v1/models/list')
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.ok(response.body.items);
-        assert.ok(Array.isArray(response.body.items));
-        assert.strictEqual(response.body.items.length, 2);
-        assert.strictEqual(response.body.total, 2);
-
-        // Verify no base models
-        assert.ok(response.body.items.every((m: any) => m.base_model_id !== null));
-
-        // Verify response includes user and write_access
-        const model = response.body.items[0];
-        assert.ok(model.user);
-        assert.ok(typeof model.write_access === 'boolean');
-    });
-
-    test('should include write_access flag based on permissions', async () => {
-        const { userId: userId1, token: token1 } = await createUserWithToken('user');
-        const { userId: userId2 } = await createUserWithToken('user');
-
-        // User 1 creates a model
-        await createCustomModel(userId1);
-
-        // User 2 creates a model with write access for user 1
-        await createCustomModel(userId2, {
-            accessControl: {
-                read: { user_ids: [userId1, userId2] },
-                write: { user_ids: [userId2] },
-            },
-        });
-
-        const response = await request(app)
-            .get('/api/v1/models/list')
-            .set('Authorization', `Bearer ${token1}`)
-            .expect(200);
-
-        assert.strictEqual(response.body.items.length, 2);
-
-        // User 1's own model should have write_access = true
-        const ownModel = response.body.items.find((m: any) => m.user_id === userId1);
-        assert.strictEqual(ownModel.write_access, true);
-
-        // User 2's model should have write_access = false for user 1
-        const sharedModel = response.body.items.find((m: any) => m.user_id === userId2);
-        assert.strictEqual(sharedModel.write_access, false);
-    });
-
-    test('should support pagination with page parameter', async () => {
-        const { userId, token } = await createUserWithToken('user');
-
-        // Create 35 models (more than page size of 30)
-        for (let i = 0; i < 35; i++) {
-            await createCustomModel(userId);
-        }
-
-        const page1Response = await request(app)
-            .get('/api/v1/models/list')
-            .query({ page: 1 })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(page1Response.body.items.length, 30);
-        assert.strictEqual(page1Response.body.total, 35);
-
-        const page2Response = await request(app)
-            .get('/api/v1/models/list')
-            .query({ page: 2 })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(page2Response.body.items.length, 5);
-        assert.strictEqual(page2Response.body.total, 35);
-    });
-
-    test('should support sorting by order_by and direction', async () => {
-        const { userId, token } = await createUserWithToken('user');
-        await createCustomModel(userId, { name: 'Zebra Model' });
-        await createCustomModel(userId, { name: 'Alpha Model' });
-
-        const response = await request(app)
-            .get('/api/v1/models/list')
-            .query({ order_by: 'name', direction: 'asc' })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(response.body.items.length, 2);
-        assert.strictEqual(response.body.items[0].name, 'Alpha Model');
-        assert.strictEqual(response.body.items[1].name, 'Zebra Model');
-    });
-
-    test('should filter by search query', async () => {
-        const { userId, token } = await createUserWithToken('user');
-        await createCustomModel(userId, { name: 'GPT Model' });
-        await createCustomModel(userId, { name: 'BERT Model' });
-
-        const response = await request(app)
-            .get('/api/v1/models/list')
-            .query({ query: 'GPT' })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(response.body.items.length, 1);
-        assert.strictEqual(response.body.items[0].name, 'GPT Model');
-    });
-
-    test('should fail without authentication token', async () => {
-        await request(app)
-            .get('/api/v1/models/list')
-            .expect(401);
-    });
-
-    test('should validate query parameters', async () => {
-        const { token } = await createUserWithToken('user');
-
-        const response = await request(app)
-            .get('/api/v1/models/list')
-            .query({ page: 'not_a_number' })
-            .set('Authorization', `Bearer ${token}`)
-            .expect(400);
-
-        assert.ok(response.body.detail);
-        assert.ok(response.body.errors);
-    });
-});
-
 describe('GET /api/v1/models/base', () => {
     beforeEach(async () => {
         await clearDatabase();
@@ -331,9 +195,6 @@ describe('GET /api/v1/models/base', () => {
         assert.strictEqual(response.body.length, 2);
         assert.ok(response.body.some((m: any) => m.id === 'qwen3-vl-30b'));
         assert.ok(response.body.some((m: any) => m.id === 'llama3-70b'));
-
-        // Verify base_model_id is null
-        assert.ok(response.body.every((m: any) => m.base_model_id === null));
     });
 
     test('should fail with 403 for non-admin users', async () => {
@@ -367,10 +228,10 @@ describe('POST /api/v1/models/create', () => {
             name: 'Test Custom Model',
             base_model_id: 'qwen3-vl-30b',
             params: { temperature: 0.8 },
+            isPublic: true,
             meta: {
                 profile_image_url: '/static/favicon.png',
                 description: 'Test description',
-                capabilities: null,
             },
             is_active: true,
         };
@@ -396,12 +257,14 @@ describe('POST /api/v1/models/create', () => {
     test('should fail when base_model_id does not exist in LlamaManager', async () => {
         const { token } = await createUserWithToken('user');
 
-        const modelData = {
+        const modelData: ModelForm = {
             id: 'test-custom-model',
             name: 'Test Custom Model',
             base_model_id: 'nonexistent-model',
+            isPublic: true,
+            is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
         };
 
         const response = await request(app)
@@ -418,12 +281,14 @@ describe('POST /api/v1/models/create', () => {
         const { userId, token } = await createUserWithToken('user');
         await createCustomModel(userId, { id: 'duplicate-id' });
 
-        const modelData = {
+        const modelData: ModelForm = {
             id: 'duplicate-id',
             name: 'Another Model',
             base_model_id: 'qwen3-vl-30b',
+            isPublic: true,
+            is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
         };
 
         const response = await request(app)
@@ -440,12 +305,14 @@ describe('POST /api/v1/models/create', () => {
         const { token } = await createUserWithToken('user');
 
         const longId = 'a'.repeat(257);
-        const modelData = {
+        const modelData: ModelForm = {
             id: longId,
             name: 'Test Model',
             base_model_id: 'qwen3-vl-30b',
+            isPublic: true,
+            is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
         };
 
         const response = await request(app)
@@ -509,10 +376,7 @@ describe('GET /api/v1/models/model', () => {
 
         await createCustomModel(userId1, {
             id: 'shared-model',
-            accessControl: {
-                read: { user_ids: [userId1, userId2] },
-                write: { user_ids: [userId1] },
-            },
+            isPublic: true,
         });
 
         const response = await request(app)
@@ -531,10 +395,7 @@ describe('GET /api/v1/models/model', () => {
 
         await createCustomModel(userId1, {
             id: 'private-model',
-            accessControl: {
-                read: { user_ids: [userId1] },
-                write: { user_ids: [userId1] },
-            },
+            isPublic: false,
         });
 
         const response = await request(app)
@@ -630,13 +491,7 @@ describe('POST /api/v1/models/model/toggle', () => {
         const { userId: userId1 } = await createUserWithToken('user');
         const { token: token2 } = await createUserWithToken('user');
 
-        await createCustomModel(userId1, {
-            id: 'readonly-model',
-            accessControl: {
-                read: { user_ids: [userId1] },
-                write: { user_ids: [userId1] },
-            },
-        });
+        await createCustomModel(userId1, { id: 'readonly-model' });
 
         const response = await request(app)
             .post('/api/v1/models/model/toggle')
@@ -676,7 +531,7 @@ describe('POST /api/v1/models/model/update', () => {
         const { userId, token } = await createUserWithToken('user');
         await createCustomModel(userId, { id: 'update-model' });
 
-        const updateData = {
+        const updateData: ModelForm = {
             id: 'update-model',
             name: 'Updated Model Name',
             base_model_id: 'llama3-70b',
@@ -684,10 +539,9 @@ describe('POST /api/v1/models/model/update', () => {
             meta: {
                 profile_image_url: '/new-image.png',
                 description: 'Updated description',
-                capabilities: null,
             },
-            access_control: { read: { user_ids: [userId] }, write: { user_ids: [userId] } },
             is_active: false,
+            isPublic: false,
         };
 
         const response = await request(app)
@@ -709,12 +563,14 @@ describe('POST /api/v1/models/model/update', () => {
     test('should fail when trying to update base model', async () => {
         const { token } = await createUserWithToken('user');
 
-        const updateData = {
+        const updateData: ModelForm = {
             id: 'qwen3-vl-30b',
             name: 'Hacked Base Model',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
+            isPublic: true,
+            is_active: true,
         };
 
         const response = await request(app)
@@ -730,12 +586,14 @@ describe('POST /api/v1/models/model/update', () => {
         const { userId, token } = await createUserWithToken('user');
         await createCustomModel(userId, { id: 'update-model' });
 
-        const updateData = {
+        const updateData: ModelForm = {
             id: 'update-model',
             name: 'Test',
             base_model_id: 'nonexistent-base-model',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
+            isPublic: true,
+            is_active: true,
         };
 
         const response = await request(app)
@@ -752,20 +610,16 @@ describe('POST /api/v1/models/model/update', () => {
         const { userId: userId1 } = await createUserWithToken('user');
         const { token: token2 } = await createUserWithToken('user');
 
-        await createCustomModel(userId1, {
-            id: 'readonly-model',
-            accessControl: {
-                read: { user_ids: [userId1] },
-                write: { user_ids: [userId1] },
-            },
-        });
+        await createCustomModel(userId1, { id: 'readonly-model' });
 
-        const updateData = {
+        const updateData: ModelForm = {
             id: 'readonly-model',
             name: 'Hacked Name',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
+            isPublic: true,
+            is_active: true,
         };
 
         const response = await request(app)
@@ -780,12 +634,14 @@ describe('POST /api/v1/models/model/update', () => {
     test('should fail when model not found', async () => {
         const { token } = await createUserWithToken('user');
 
-        const updateData = {
+        const updateData: ModelForm = {
             id: 'nonexistent-model',
             name: 'Test',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null, capabilities: null },
+            meta: { profile_image_url: '/static/favicon.png', description: null },
+            isPublic: true,
+            is_active: true,
         };
 
         const response = await request(app)
@@ -861,13 +717,7 @@ describe('POST /api/v1/models/model/delete', () => {
         const { userId: userId1 } = await createUserWithToken('user');
         const { token: token2 } = await createUserWithToken('user');
 
-        await createCustomModel(userId1, {
-            id: 'protected-model',
-            accessControl: {
-                read: { user_ids: [userId1] },
-                write: { user_ids: [userId1] },
-            },
-        });
+        await createCustomModel(userId1, { id: 'protected-model' });
 
         const response = await request(app)
             .post('/api/v1/models/model/delete')

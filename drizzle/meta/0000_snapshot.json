@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8e1bde42-4eeb-4f89-98cc-9fff0183abae",
+  "id": "a692048d-df90-4e25-98c5-8d2611d05437",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth": {
@@ -690,7 +690,7 @@
           "name": "base_model_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "name": {
@@ -714,12 +714,13 @@
           "notNull": true,
           "autoincrement": false
         },
-        "access_control": {
-          "name": "access_control",
-          "type": "text",
+        "is_public": {
+          "name": "is_public",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "is_active": {
           "name": "is_active",
@@ -853,7 +854,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'/user.png'"
+          "default": "'/static/user.png'"
         },
         "profile_banner_image_url": {
           "name": "profile_banner_image_url",

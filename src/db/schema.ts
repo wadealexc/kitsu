@@ -233,7 +233,7 @@ export const models = sqliteTable('model', {
         .references(() => users.id, { onDelete: 'cascade' }),
 
     // Model Reference
-    baseModelId: text('base_model_id'),
+    baseModelId: text('base_model_id').notNull(),
 
     // Content
     name: text('name').notNull(),
@@ -241,7 +241,7 @@ export const models = sqliteTable('model', {
     // Configuration (JSON)
     params: text('params', { mode: 'json' }).$type<ModelParams>().notNull(),
     meta: text('meta', { mode: 'json' }).$type<ModelMeta>().notNull(),
-    accessControl: text('access_control', { mode: 'json' }).$type<AccessControl>(),
+    isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(true),
 
     // Status
     isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),

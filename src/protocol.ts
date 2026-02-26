@@ -1,8 +1,11 @@
+import type { ModelParams } from './routes/types.js';
+
 export interface ModelInfo {
     name: string;
     path: string;                        // required: non-mmproj .gguf
     mmprojPath: string | undefined;      // optional: mmproj-*.gguf
-    params: string[];                    // optional: model.json.params
+    args: string[];                      // CLI args for llama-server
+    params: ModelParams;                 // inference defaults from config
 }
 
 // https://platform.openai.com/docs/api-reference/chat/create
