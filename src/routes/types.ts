@@ -231,68 +231,6 @@ export const UserSettingsSchema = z.object({
 }).passthrough();  // Allow additional properties
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
-// Permission schemas
-export const WorkspacePermissionsSchema = z.object({
-    models: z.boolean().default(false),
-    prompts: z.boolean().default(false),
-    tools: z.boolean().default(false),
-    models_import: z.boolean().default(false),
-    models_export: z.boolean().default(false),
-    prompts_import: z.boolean().default(false),
-    prompts_export: z.boolean().default(false),
-    tools_import: z.boolean().default(false),
-    tools_export: z.boolean().default(false),
-});
-export type WorkspacePermissions = z.infer<typeof WorkspacePermissionsSchema>;
-
-export const SharingPermissionsSchema = z.object({
-    models: z.boolean().default(false),
-    public_models: z.boolean().default(false),
-    prompts: z.boolean().default(false),
-    public_prompts: z.boolean().default(false),
-    tools: z.boolean().default(false),
-    public_tools: z.boolean().default(true),
-});
-export type SharingPermissions = z.infer<typeof SharingPermissionsSchema>;
-
-export const ChatPermissionsSchema = z.object({
-    controls: z.boolean().default(true),
-    system_prompt: z.boolean().default(true),
-    params: z.boolean().default(true),
-    file_upload: z.boolean().default(true),
-    delete: z.boolean().default(true),
-    delete_message: z.boolean().default(true),
-    continue_response: z.boolean().default(true),
-    regenerate_response: z.boolean().default(true),
-    edit: z.boolean().default(true),
-    share: z.boolean().default(true),
-    export: z.boolean().default(true),
-    temporary: z.boolean().default(true),
-    temporary_enforced: z.boolean().default(false),
-});
-export type ChatPermissions = z.infer<typeof ChatPermissionsSchema>;
-
-export const FeaturesPermissionsSchema = z.object({
-    folders: z.boolean().default(true),
-    direct_tool_servers: z.boolean().default(false),
-    web_search: z.boolean().default(true),
-});
-export type FeaturesPermissions = z.infer<typeof FeaturesPermissionsSchema>;
-
-export const SettingsPermissionsSchema = z.object({
-    interface: z.boolean().default(true),
-});
-export type SettingsPermissions = z.infer<typeof SettingsPermissionsSchema>;
-
-export const UserPermissionsSchema = z.object({
-    workspace: WorkspacePermissionsSchema,
-    sharing: SharingPermissionsSchema,
-    chat: ChatPermissionsSchema,
-    features: FeaturesPermissionsSchema,
-    settings: SettingsPermissionsSchema,
-});
-export type UserPermissions = z.infer<typeof UserPermissionsSchema>;
-
 // User model (complete user object)
 export const UserModelSchema = z.object({
     id: UserIdSchema,
@@ -455,12 +393,6 @@ export const ModelsImportFormSchema = z.object({
     models: z.array(z.record(z.string(), z.any())),
 });
 export type ModelsImportForm = z.infer<typeof ModelsImportFormSchema>;
-
-// Sync models form
-export const SyncModelsFormSchema = z.object({
-    models: z.array(ModelModelSchema).default([]),
-});
-export type SyncModelsForm = z.infer<typeof SyncModelsFormSchema>;
 
 // Query parameters for GET /api/v1/models
 export const ModelsQuerySchema = z.object({
@@ -1025,39 +957,3 @@ export const VersionUpdateInfoSchema = z.object({
     latest: z.string(),
 });
 export type VersionUpdateInfo = z.infer<typeof VersionUpdateInfoSchema>;
-
-/* -------------------- PWA SCHEMAS -------------------- */
-
-// PWA icon configuration
-export const PWAIconSchema = z.object({
-    src: z.string(),
-    type: z.string(),
-    sizes: z.string(),
-    purpose: z.string(),
-});
-export type PWAIcon = z.infer<typeof PWAIconSchema>;
-
-// PWA share target configuration
-export const PWAShareTargetSchema = z.object({
-    action: z.string(),
-    method: z.enum(['GET', 'POST']),
-    params: z.object({
-        text: z.string().optional(),
-        title: z.string().optional(),
-        url: z.string().optional(),
-    }),
-});
-export type PWAShareTarget = z.infer<typeof PWAShareTargetSchema>;
-
-// PWA manifest
-export const PWAManifestSchema = z.object({
-    name: z.string(),
-    short_name: z.string(),
-    description: z.string(),
-    start_url: z.string(),
-    display: z.enum(['standalone', 'fullscreen', 'minimal-ui', 'browser']),
-    background_color: z.string(),
-    icons: z.array(PWAIconSchema),
-    share_target: PWAShareTargetSchema.optional(),
-});
-export type PWAManifest = z.infer<typeof PWAManifestSchema>;

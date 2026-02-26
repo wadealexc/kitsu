@@ -12,53 +12,6 @@ import { DEFAULT_USER_IMAGE } from '../db/schema.js';
 
 const router = Router();
 
-/* -------------------- MODULE-LEVEL CONFIG -------------------- */
-
-let defaultPermissions: Types.UserPermissions = {
-    workspace: {
-        models: false,
-        prompts: false,
-        tools: false,
-        models_import: false,
-        models_export: false,
-        prompts_import: false,
-        prompts_export: false,
-        tools_import: false,
-        tools_export: false,
-    },
-    sharing: {
-        models: false,
-        public_models: false,
-        prompts: false,
-        public_prompts: false,
-        tools: false,
-        public_tools: false,
-    },
-    chat: {
-        controls: true,
-        system_prompt: true,
-        params: true,
-        file_upload: true,
-        delete: true,
-        delete_message: true,
-        continue_response: true,
-        regenerate_response: true,
-        edit: true,
-        share: true,
-        export: true,
-        temporary: true,
-        temporary_enforced: false,
-    },
-    features: {
-        folders: true,
-        direct_tool_servers: false,
-        web_search: true,
-    },
-    settings: {
-        interface: true,
-    },
-};
-
 /* -------------------- ADMIN ENDPOINTS -------------------- */
 
 /**
@@ -288,52 +241,6 @@ router.delete('/:user_id', validateUserId, requireAdmin, async (
     }
 });
 
-/**
- * GET /api/v1/users/default/permissions
- * Access Control: Requires HTTPBearer authentication and admin role
- *
- * Get the default permissions template for new users.
- *
- * @returns {Types.UserPermissions} - default permissions
- * 
- * TODO: UNUSED ON FRONTEND
- */
-router.get('/default/permissions', requireAdmin, (
-    req: Types.TypedRequest,
-    res: Response<Types.UserPermissions | Types.ErrorResponse>
-) => {
-    return res.json(defaultPermissions);
-});
-
-/**
- * POST /api/v1/users/default/permissions
- * Access Control: Requires HTTPBearer authentication and admin role
- *
- * Update the default permissions template for new users.
- *
- * @param {Types.UserPermissions} - new default permissions
- * @returns {object} - empty response
- * 
- * TODO: UNUSED ON FRONTEND
- */
-router.post('/default/permissions', requireAdmin, (
-    req: Types.TypedRequest<{}, Types.UserPermissions>,
-    res: Response<Record<string, never> | Types.ErrorResponse>
-) => {
-    const body = Types.UserPermissionsSchema.safeParse(req.body);
-    if (!body.success) {
-        return res.status(400).json({
-            detail: 'Invalid request body',
-            errors: body.error.issues
-        });
-    }
-
-    // Update in-memory config
-    defaultPermissions = { ...defaultPermissions, ...body.data };
-
-    return res.json({});
-});
-
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
 
 /**
@@ -352,14 +259,6 @@ router.get('/:user_id', validateUserId, requireAuth, async (
     let userId = req.params.user_id;
 
     try {
-        // TODO: Special handling for shared chat IDs (implement when chats added)
-        // if (userId.startsWith('shared-')) {
-        //     const chatId = userId.substring(7);
-        //     const chat = await Chats.getChatById(chatId, db);
-        //     if (!chat) return res.status(400).json({ detail: 'User not found' });
-        //     userId = chat.user_id;
-        // }
-
         const user = await Users.getUserById(userId, db);
         if (!user) {
             return res.status(400).json({ detail: 'User not found' });
@@ -379,73 +278,6 @@ router.get('/:user_id', validateUserId, requireAuth, async (
         console.error('Get user by id error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
-});
-
-/**
- * GET /api/v1/users/search
- * Access Control: Requires HTTPBearer authentication (any verified user)
- *
- * Search users with pagination and filtering.
- *
- * @query {Types.UserListQuery} - query parameters for filtering and pagination
- * @returns {Types.UserInfoListResponse} - paginated list of users
- * 
- * TODO: UNUSED ON FRONTEND
- */
-router.get('/search', requireAuth, async (
-    req: Types.TypedRequest<{}, any, Types.UserListQuery>,
-    res: Response<Types.UserInfoListResponse | Types.ErrorResponse>
-) => {
-    const query = Types.UserListQuerySchema.safeParse(req.query);
-    if (!query.success) {
-        return res.status(400).json({
-            detail: 'Invalid query parameters',
-            errors: query.error.issues
-        });
-    }
-
-    const { page, query: searchQuery, order_by: orderBy, direction } = query.data;
-    const pageSize = 30;
-    const skip = (page - 1) * pageSize;
-
-    try {
-        const { users, total } = await Users.getUsers({
-            query: searchQuery,
-            orderBy: orderBy,
-            direction,
-            skip,
-            limit: pageSize,
-        }, db);
-
-        const userInfos: Types.UserInfoResponse[] = users.map(user => ({
-            id: user.id,
-            username: user.username,
-            role: user.role,
-        }));
-
-        return res.json({
-            users: userInfos,
-            total,
-        });
-    } catch (error) {
-        console.error('Search users error:', error);
-        return res.status(500).json({ detail: 'Internal server error' });
-    }
-});
-
-/**
- * GET /api/v1/users/permissions
- * Access Control: Requires HTTPBearer authentication (any verified user)
- *
- * Get the current authenticated user's computed permissions.
- *
- * @returns {Types.UserPermissions} - user permissions
- */
-router.get('/permissions', requireAuth, (
-    req: Types.TypedRequest,
-    res: Response<Types.UserPermissions | Types.ErrorResponse>
-) => {
-    return res.json(getPermissions(req.user!.role));
 });
 
 /**
@@ -488,15 +320,6 @@ router.post('/user/settings/update', requireAuth, async (
     let settings = body.data;
 
     try {
-        // TODO: Check actual permissions when permissions system implemented
-        // Permission check: Remove toolServers if user lacks permission
-        // const userRole = req.user!.role;
-        // if (userRole !== 'admin') {
-        //     if (settings.ui?.toolServers) {
-        //         delete settings.ui.toolServers;
-        //     }
-        // }
-
         const updatedSettings = await Users.updateUserSettings(userId, settings, db);
         return res.json(updatedSettings);
     } catch (error) {
@@ -610,44 +433,6 @@ router.get('/:user_id/profile/image', validateUserId, requireAuth, async (
         return res.status(500).json({ detail: 'Internal server error' });
     }
 });
-
-/* -------------------- HELPER FUNCTIONS -------------------- */
-
-/**
- * Get computed permissions for a user based on their role
- * Merges default permissions with user-specific overrides
- * TODO: Implement database-backed permissions with user overrides
- */
-function getPermissions(role: UserRole): Types.UserPermissions {
-    const isAdmin = role === 'admin';
-
-    // Start with deep copy of default permissions
-    const permissions: Types.UserPermissions = {
-        workspace: { ...defaultPermissions.workspace },
-        sharing: { ...defaultPermissions.sharing },
-        chat: { ...defaultPermissions.chat },
-        features: { ...defaultPermissions.features },
-        settings: { ...defaultPermissions.settings },
-    };
-
-    // Admin overrides
-    if (isAdmin) {
-        permissions.workspace = {
-            models: true,
-            prompts: true,
-            tools: true,
-            models_import: true,
-            models_export: true,
-            prompts_import: true,
-            prompts_export: true,
-            tools_import: true,
-            tools_export: true,
-        };
-        permissions.features.direct_tool_servers = true;
-    }
-
-    return permissions;
-}
 
 /* -------------------- EXPORT -------------------- */
 
