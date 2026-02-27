@@ -120,11 +120,11 @@ router.get('/model', requireAuth, async (
  * Cannot create base models via API - those are configured in config.json.
  *
  * @param {Types.ModelForm} - Model creation data
- * @returns {Types.ModelModel} - Created model
+ * @returns {Types.ModelResponse} - Created model
  */
 router.post('/create', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ModelForm>,
-    res: Response<Types.ModelModel | Types.ErrorResponse>
+    res: Response<Types.ModelResponse | Types.ErrorResponse>
 ) => {
     const body = Types.ModelFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -156,7 +156,7 @@ router.post('/create', requireAuth, async (
             isActive: formData.is_active,
         }, db);
 
-        res.status(200).json(toModelModelResponse(newModel));
+        res.status(200).json(toModelResponse(newModel));
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -226,11 +226,11 @@ router.post('/model/toggle', requireAuth, async (
  * Update a custom model's configuration. Cannot update base models.
  *
  * @param {Types.ModelForm} - Updated model data
- * @returns {Types.ModelModel} - Updated model
+ * @returns {Types.ModelResponse} - Updated model
  */
 router.post('/model/update', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ModelForm>,
-    res: Response<Types.ModelModel | Types.ErrorResponse>
+    res: Response<Types.ModelResponse | Types.ErrorResponse>
 ) => {
     const body = Types.ModelFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -267,7 +267,7 @@ router.post('/model/update', requireAuth, async (
             isPublic: formData.isPublic,
             isActive: formData.is_active,
         }, db);
-        res.status(200).json(toModelModelResponse(updated));
+        res.status(200).json(toModelResponse(updated));
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -403,21 +403,6 @@ router.delete('/delete/all', requireAdmin, async (
 });
 
 function toModelResponse(model: Model): Types.ModelResponse {
-    return {
-        id: model.id,
-        user_id: model.userId,
-        base_model_id: model.baseModelId,
-        name: model.name,
-        params: model.params,
-        meta: model.meta,
-        isPublic: model.isPublic,
-        is_active: model.isActive,
-        updated_at: model.updatedAt,
-        created_at: model.createdAt,
-    };
-}
-
-function toModelModelResponse(model: Model): Types.ModelModel {
     return {
         id: model.id,
         user_id: model.userId,

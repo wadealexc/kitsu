@@ -367,10 +367,6 @@ export const ModelResponseSchema = z.object({
 });
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
-// Model model (alias for ModelResponse - database representation)
-export const ModelModelSchema = ModelResponseSchema;
-export type ModelModel = z.infer<typeof ModelModelSchema>;
-
 // Model access response (includes user info and write access flag)
 export const ModelAccessResponseSchema = ModelResponseSchema.extend({
     user: UserResponseSchema.nullable(),
