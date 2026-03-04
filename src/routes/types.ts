@@ -506,9 +506,17 @@ export const ToolCallBlockSchema = z.object({
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 
+export const ContentBlockSchema = z.object({
+    type: z.literal('content'),
+    content: z.string(),
+    done: z.boolean(),
+});
+export type ContentBlock = z.infer<typeof ContentBlockSchema>;
+
 export const MessageBlockSchema = z.discriminatedUnion('type', [
     ReasoningBlockSchema,
     ToolCallBlockSchema,
+    ContentBlockSchema,
 ]);
 export type MessageBlock = z.infer<typeof MessageBlockSchema>;
 
