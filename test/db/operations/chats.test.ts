@@ -39,6 +39,7 @@ function createChatWithMessage(title: string = 'Test Chat'): Chats.NewChat {
                         parentId: null,
                         childrenIds: [],
                         files: [],
+                        done: false,
                     },
                 },
                 currentId: messageId,

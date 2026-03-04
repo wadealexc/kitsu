@@ -446,9 +446,10 @@ export type FolderChatListItemResponse = z.infer<typeof FolderChatListItemRespon
 export const ChatMessageFileSchema = z.object({
     id: z.string(),
     type: z.string(),
-    name: z.string().optional(),
-    url: z.string().optional(),
-    content_type: z.string().optional(),
+    name: z.string(),
+    url: z.string(),
+    content_type: z.string(),
+    size: z.number(),
 }).passthrough();
 export type ChatMessageFile = z.infer<typeof ChatMessageFileSchema>;
 
@@ -538,8 +539,9 @@ export const ChatMessageSchema = z.object({
     modelName: z.string().optional(),
     statusHistory: z.array(ChatMessageStatusSchema).optional(),
     usage: ChatMessageUsageSchema.optional(),
-    done: z.boolean().optional(),
+    done: z.boolean().default(false),
     blocks: z.array(MessageBlockSchema).optional(),
+    error: z.union([z.boolean(), z.object({ content: z.string() })]).optional(),
 }).passthrough();  // Allow additional fields for extensibility
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
