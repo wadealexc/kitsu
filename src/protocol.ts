@@ -30,28 +30,25 @@ export type ToolDefinition = {
 
 export type Message = BasicMessage | AssistantMessage | ToolMessage;
 
-type BasicMessage = {
+export type BasicMessage = {
     role: 'user' | 'system' | 'developer',
     content: string | ContentPart[],
-    name?: string,
 }
 
-type ToolMessage = {
+export type ToolMessage = {
     role: 'tool',
     tool_call_id: string,
-    content: string | TextContentPart[],
+    content: string,
 };
 
-type AssistantMessage = {
+export type AssistantMessage = {
     role: 'assistant',
-    content: string | TextContentPart[],
+    content: string,
     reasoning_content?: string,        // Not in OAI API docs, but Aldehir's adapter uses it
-    name?: string,
-    refusal?: string,
     tool_calls?: AssistantToolCall[],
 };
 
-type AssistantToolCall = {
+export type AssistantToolCall = {
     index?: number,                    // Not in OAI API docs, but OWU supplies it
     id: string,
     type: 'function',

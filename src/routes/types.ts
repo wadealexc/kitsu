@@ -445,9 +445,10 @@ export type FolderChatListItemResponse = z.infer<typeof FolderChatListItemRespon
 // Chat message file attachment
 export const ChatMessageFileSchema = z.object({
     id: z.string(),
-    type: z.string().optional(),
+    type: z.string(),
     name: z.string().optional(),
     url: z.string().optional(),
+    content_type: z.string().optional(),
 }).passthrough();
 export type ChatMessageFile = z.infer<typeof ChatMessageFileSchema>;
 
@@ -485,6 +486,32 @@ export const ChatMessageUsageSchema = z.object({
 }).passthrough();
 export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
 
+/* -------------------- MESSAGE BLOCKS -------------------- */
+
+export const ReasoningBlockSchema = z.object({
+    type: z.literal('reasoning'),
+    content: z.string(),
+    done: z.boolean(),
+    duration: z.number().optional(),
+});
+export type ReasoningBlock = z.infer<typeof ReasoningBlockSchema>;
+
+export const ToolCallBlockSchema = z.object({
+    type: z.literal('tool_call'),
+    id: z.string(),
+    name: z.string(),
+    arguments: z.string(),
+    result: z.string().optional(),
+    done: z.boolean(),
+});
+export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
+
+export const MessageBlockSchema = z.discriminatedUnion('type', [
+    ReasoningBlockSchema,
+    ToolCallBlockSchema,
+]);
+export type MessageBlock = z.infer<typeof MessageBlockSchema>;
+
 // Individual chat message in history
 export const ChatMessageSchema = z.object({
     id: z.string(),
@@ -492,11 +519,11 @@ export const ChatMessageSchema = z.object({
     childrenIds: z.array(z.string()),
     role: z.enum(['user', 'assistant', 'system']),
     content: z.string(),
-    files: z.array(ChatMessageFileSchema).optional(),
+    files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
 
     // "Optional" fields:
-    // these fields aren't optional, but short of splitting this type into a 
+    // these fields aren't optional, but short of splitting this type into a
     // union of UserMessage and AsstMessage, we're gonna do this for now
     // - role: assistant
     model: z.string().optional(),
@@ -504,6 +531,7 @@ export const ChatMessageSchema = z.object({
     statusHistory: z.array(ChatMessageStatusSchema).optional(),
     usage: ChatMessageUsageSchema.optional(),
     done: z.boolean().optional(),
+    blocks: z.array(MessageBlockSchema).optional(),
 }).passthrough();  // Allow additional fields for extensibility
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
