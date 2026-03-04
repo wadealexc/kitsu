@@ -94,83 +94,12 @@ const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager;
 
 // Store application state in app.locals for access in routers
 app.locals.llama = llama;
+app.locals.tools = tools;
 
 /* -------------------- ROUTES - API -------------------- */
 
-// Temporary stub endpoints (TODO: remove these when frontend is cleaned up)
-app.get('/api/v1/tools', (_req, res) => {
-    res.json([]);
-});
-
-app.get('/api/v1/functions', (_req, res) => {
-    res.json([]);
-});
-
-app.get('/api/v1/chats/all/tags', (_req, res) => {
-    res.json([]);
-});
-
-app.get('/api/v1/chats/:id/tags', validateChatId, (req, res) => {
-    res.json([]);
-});
-
-app.get('/api/v1/chats/:id/pinned', validateChatId, (req, res) => {
-    res.json([]);
-});
-
-app.get('/api/v1/models/tags', (_req, res) => {
-    res.json([]);
-});
-
-app.get('/api/tasks/chat/:chat_id', (req, res) => {
-    res.json({
-        task_ids: [],
-    });
-})
-
-app.get('/api/usage', (req, res) => {
-    res.json({
-        model_ids: [],
-        user_count: 1,
-    })
-});
-
-app.get('/api/v1/chats/pinned', (_req, res) => {
-    res.json([]);
-});
-
 app.get('/api/v1/models/model/profile/image', (_req, res) => {
     return res.redirect(302, '/static/favicon.png');
-});
-
-app.get('/api/changelog', (req, res) => {
-    res.json({
-        "1.0.0": {
-            "date": "2026-01-10",
-            "fixed": [],
-        }
-    })
-});
-
-app.get('/api/v1/notes/search', (req, res) => {
-    res.json({
-        items: [],
-        total: 0,
-    })
-});
-
-app.get('/api/v1/knowledge/search', (req, res) => {
-    res.json({
-        items: [],
-        total: 0,
-    })
-});
-
-app.get('/api/v1/knowledge/search/files', (req, res) => {
-    res.json({
-        items: [],
-        total: 0,
-    })
 });
 
 app.use('/api/v1/auths', authsRouter);

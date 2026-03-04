@@ -11,11 +11,47 @@ export class MockLlama {
 
     models: string[] = ['test model'];
 
+    /** All calls to completions(), in order. Reset with resetQueue(). */
+    requests: LlamaRequest[] = [];
+
+    private queue: Array<(req: LlamaRequest) => LlamaResponse> = [];
+
     constructor(models?: string[]) {
         if (models) this.models = models;
     }
 
+    /** Queue a response factory. Consumed in order by completions(). */
+    enqueue(factory: (req: LlamaRequest) => LlamaResponse): void {
+        this.queue.push(factory);
+    }
+
+    /** Clear the queue and recorded requests. Call in afterEach. */
+    resetQueue(): void {
+        this.queue = [];
+        this.requests = [];
+    }
+
+    /**
+     * Builds a streaming LlamaResponse from an array of chunk objects.
+     * Appends data: [DONE] automatically. Pass req.signal from the factory.
+     */
+    static createSSEResponse(chunks: object[], signal: AbortSignal): LlamaResponse {
+        const frames = chunks.map(c => `data: ${JSON.stringify(c)}\n\n`);
+        frames.push('data: [DONE]\n\n');
+        return {
+            status: 200,
+            headers: new Headers({ 'content-type': 'text/event-stream' }),
+            stream: new LlamaStream(Readable.from(frames), true, signal),
+        };
+    }
+
     completions(req: LlamaRequest): Promise<LlamaResponse> {
+        this.requests.push(req);
+
+        if (this.queue.length > 0) {
+            return Promise.resolve(this.queue.shift()!(req));
+        }
+
         const lastMessage = req.body.messages.at(-1);
         const lastMessageInfo: string = lastMessage
             ? `${lastMessage.role} says: ${lastMessage.content}`

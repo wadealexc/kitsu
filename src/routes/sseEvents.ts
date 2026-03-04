@@ -76,6 +76,27 @@ export type SseNotificationPayload = {
     };
 };
 
+/** Emitted when the LLM requests a tool call */
+export type SseToolCallStartPayload = {
+    type: 'tool_call:start';
+    data: {
+        id: string;
+        name: string;
+        arguments: string;
+    };
+};
+
+/** Emitted when a tool call finishes executing */
+export type SseToolCallResultPayload = {
+    type: 'tool_call:result';
+    data: {
+        id: string;
+        name: string;
+        arguments: string;
+        result: string;
+    };
+};
+
 /* -------------------- UNION & TOP-LEVEL -------------------- */
 
 export type SseEventPayload =
@@ -84,7 +105,9 @@ export type SseEventPayload =
     | SseMessageErrorPayload
     | SseTitlePayload
     | SseCitationPayload
-    | SseNotificationPayload;
+    | SseNotificationPayload
+    | SseToolCallStartPayload
+    | SseToolCallResultPayload;
 
 export type SseEvent = {
     chat_id: string;

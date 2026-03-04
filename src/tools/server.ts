@@ -1,10 +1,22 @@
 import express from 'express';
 import chalk from 'chalk';
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
+import { toJSONSchema } from 'zod';
 
 import loadTools from './loader.js';
 import type { Tool, ToolContext } from './types.js';
 import * as proto from '../protocol.js';
+
+export type ToolCallResult =
+    | { ok: true; output: string }
+    | { ok: false; error: string };
+
+export type ToolRoundResult = {
+    id: string;
+    name: string;
+    arguments: string;
+    result: ToolCallResult;
+};
 
 export class ToolServer {
 
@@ -46,6 +58,63 @@ export class ToolServer {
         }
 
         return req;
+    }
+
+    getToolDefinitions(): proto.ToolDefinition[] {
+        return [...this.tools.values()].map(tool => ({
+            type: 'function' as const,
+            function: {
+                name: tool.name(),
+                description: tool.description(),
+                parameters: toJSONSchema(tool.inputSchema()),
+                strict: tool.strict() || undefined,
+            },
+        }));
+    }
+
+    async call(name: string, args: string): Promise<ToolCallResult> {
+        const tool = this.tools.get(name);
+        if (!tool) return { ok: false, error: `Unknown tool: ${name}` };
+
+        let parsed: unknown;
+        try { parsed = JSON.parse(args); }
+        catch { return { ok: false, error: `Invalid JSON arguments for ${name}` }; }
+
+        const validated = tool.inputSchema().safeParse(parsed);
+        if (!validated.success) {
+            return { ok: false, error: `Validation failed: ${JSON.stringify(validated.error.issues)}` };
+        }
+
+        try {
+            const result = await tool.call(validated.data);
+            return { ok: true, output: JSON.stringify(result) };
+        } catch (err: any) {
+            return { ok: false, error: err?.message ?? String(err) };
+        }
+    }
+
+    /**
+     * Runs all tool calls in a single round in parallel.
+     * Uses Promise.allSettled so one failure doesn't block the others.
+     */
+    async executeToolRound(toolCalls: proto.ToolCall[]): Promise<ToolRoundResult[]> {
+        const promiseResults = await Promise.allSettled(
+            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments))
+        );
+
+        return toolCalls.map((tc, i) => {
+            const promise = promiseResults[i]!;
+            const result: ToolCallResult = promise.status === 'fulfilled'
+                ? promise.value
+                : { ok: false, error: String(promise.reason) };
+
+            return {
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+                result,
+            };
+        });
     }
 
     serve() {

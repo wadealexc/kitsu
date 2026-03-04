@@ -674,24 +674,17 @@ export const ChatCompletionFormSchema = z.object({
     presence_penalty: z.number().optional(),
     frequency_penalty: z.number().optional(),
     logit_bias: z.record(z.string(), z.number()).optional(),
-    user: z.string().optional(),
 
     // OpenWebUI extensions
-    chat_id: ChatIdSchema.optional(),
-    id: MessageIdSchema.optional(),
+    chat_id: ChatIdSchema,
+    id: MessageIdSchema,
     parent_id: MessageIdSchema.optional(),
     parent_message: z.record(z.string(), z.any()).optional(),
-    session_id: z.string().optional(),
-    tool_ids: z.array(z.string()).optional(),
-    tool_servers: z.array(z.any()).optional(),
     files: z.array(z.any()).optional(),
-    filter_ids: z.array(z.string()).optional(),
-    features: z.record(z.string(), z.any()).optional(),
     variables: z.record(z.string(), z.any()).optional(),
     model_item: z.object({
         // direct: z.boolean().optional(),
     }).passthrough().optional(),
-    background_tasks: z.any().optional(),
     params: ModelParamsSchema.optional(),
 }).passthrough();  // Allow additional OpenAI extensions
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;

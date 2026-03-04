@@ -1,8 +1,7 @@
 import { type Response } from 'node-fetch';
-import { PassThrough } from 'stream';
+import { PassThrough, Transform, type TransformCallback } from 'stream';
 
 import * as proto from '../protocol.js';
-import { Router } from 'express';
 
 type LlamaStreamEvents = {
     response: (response: Response) => void,
@@ -15,8 +14,14 @@ export default class LlamaStream extends PassThrough {
 
     private chunks: Buffer<any>[] = [];
 
+    // Eagerly captures the stop event so callers can await finished() to
+    // get the result of the stream.
+    private result: Promise<proto.Result<proto.CompletionResponse, Error>>;
+
     constructor(stream: NodeJS.ReadableStream, expectSSE: boolean, signal: AbortSignal) {
         super({ signal: signal });
+
+        this.result = new Promise(resolve => this.once('stop', resolve));
 
         super.on('data', chunk => this.chunks.push(Buffer.from(chunk)));
 
@@ -57,6 +62,60 @@ export default class LlamaStream extends PassThrough {
     once(event: string | symbol, listener: (...args: any[]) => void): this {
         super.once(event as string | symbol, listener as (...args: any[]) => void);
         return this;
+    }
+
+    /* -------------------- HELPERS -------------------- */
+
+    /**
+     * Creates a Transform that filters out `data: [DONE]` SSE frames, pipes
+     * this stream into it, and returns it ready to pipe to the client.
+     *
+     * Used by the tool loop to strip [DONE] between rounds so it can send
+     * a single [DONE] after all rounds complete.
+     */
+    withDoneFilter(): Transform {
+        let buffer = '';
+
+        const filter = new Transform({
+            transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+                buffer += chunk.toString('utf8');
+
+                // Split on double-newline SSE boundaries. The last element may be
+                // an incomplete frame, so we keep it buffered.
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() ?? '';
+
+                // Forward complete frames downstream, unless the frame is [DONE],
+                // which gets dropped.
+                for (const part of parts) {
+                    if (part.trim() === '' || part.trim() === 'data: [DONE]') continue;
+                    this.push(part + '\n\n');
+                }
+
+                callback();
+            },
+
+            // Called when the source closes. Anything left in the buffer gets forwarded
+            // (unless it's [DONE]).
+            flush(callback: TransformCallback) {
+                if (buffer.trim() !== '' && buffer.trim() !== 'data: [DONE]') {
+                    this.push(buffer);
+                }
+
+                buffer = '';
+                callback();
+            },
+        });
+
+        this.pipe(filter);
+        return filter;
+    }
+
+    /**
+     * Promisifies the `stop` event. Resolves once the stream finishes.
+     */
+    finished(): Promise<proto.Result<proto.CompletionResponse, Error>> {
+        return this.result;
     }
 }
 
