@@ -4,15 +4,13 @@ import path from 'path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import chalk from 'chalk';
-import bytes from 'bytes';
 
 import { readConfig } from './config.js';
 import * as proto from './protocol.js';
 import * as middleware from './server/middleware.js';
-import { type RequestBody } from './server/middleware.js';
 import { LlamaManager, type LlamaResponse } from './llama/llamaManager.js';
 import * as Browser from './browser/browser.js';
-import { ToolServer } from './tools/server.js';
+import { ToolRegistry } from './tools/registry.js';
 import authsRouter from './routes/auths.js';
 import configsRouter from './routes/configs.js';
 import usersRouter from './routes/users.js';
@@ -23,7 +21,6 @@ import foldersRouter from './routes/folders.js';
 import filesRouter from './routes/files.js';
 import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
-import { validateChatId } from './routes/middleware.js';
 import { MockLlama } from '../test/mockLlama.js';
 import { RoutedLlama } from '../test/routedLlama.js';
 
@@ -73,9 +70,8 @@ if (cfg.web.enable) {
     browser.serve();
 }
 
-// Start tool server and tool server API
-const tools = new ToolServer(app, { browser: browser });
-tools.serve();
+// Initialize tool registry
+const tools = new ToolRegistry({ browser });
 
 // Note - temp/routed llamas for testing while prod is running
 const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager; 

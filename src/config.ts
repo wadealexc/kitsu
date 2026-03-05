@@ -3,9 +3,6 @@ import { stat } from 'fs/promises';
 import path from 'path';
 
 import { z } from 'zod';
-import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
-extendZodWithOpenApi(z);
-export { z };
 
 const LlamaCppSchema = z.object({
     sleepAfterXSeconds: z.number().min(0).default(600),

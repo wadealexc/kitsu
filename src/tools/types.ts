@@ -1,4 +1,4 @@
-import { z } from '../config.js';
+import { z } from 'zod';
 
 import type { Browser } from '../browser/browser.js';
 import * as proto from '../protocol.js';
@@ -6,18 +6,11 @@ import * as proto from '../protocol.js';
 export interface Tool<Input = unknown, Output = unknown> {
     name: () => string;
     description: () => string;
-    strict: () => boolean;
-
     /**
      * What the LLM will send. For tools with no parameters, return
      * an empty object schema.
      */
     inputSchema: () => z.ZodType<Input>;
-
-    /**
-     * What the tool returns to the LLM.
-     */
-    outputSchema: () => z.ZodType<Output>;
 
     /**
      * Calls the tool at runtime

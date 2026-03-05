@@ -2,7 +2,7 @@ import { writeFile } from "fs/promises";
 
 import sharp from 'sharp';
 
-import { z } from '../../config.js';
+import { z } from 'zod';
 import type { Tool, ToolContext } from '../types.js';
 import * as proto from '../../protocol.js';
 
@@ -152,16 +152,8 @@ class PreprocessImage implements Tool<Input, Output> {
         );
     }
 
-    strict(): boolean {
-        return true;
-    }
-
     inputSchema(): z.ZodType<Input> {
         return InputSchema;
-    }
-
-    outputSchema(): z.ZodType<Output> {
-        return OutputSchema;
     }
 
     // The actual preprocessing happens in `beforeRequest`, because

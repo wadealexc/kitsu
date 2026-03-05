@@ -8,7 +8,7 @@ import * as proto from '../protocol.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
 import * as Models from '../db/operations/models.js';
-import { ToolServer } from '../tools/server.js';
+import { ToolRegistry } from '../tools/registry.js';
 import type { SseEvent, SseEventPayload, SseUsage } from './sseEvents.js';
 
 const router = Router();
@@ -231,7 +231,7 @@ router.post('/custom-completions', requireAuth, async (
 
     const { chatId, messageId, completionBody: rawBody } = ctx.value;
     const llama = req.app.locals.llama as LlamaManager;
-    const toolServer = req.app.locals.tools as ToolServer;
+    const toolRegistry = req.app.locals.tools as ToolRegistry;
 
     // AbortController will cancel request if the client aborts
     const ctrl = new AbortController();
@@ -244,9 +244,9 @@ router.post('/custom-completions', requireAuth, async (
     // Inject tool definitions and run beforeRequest hooks once before the loop
     let body: Types.ChatCompletionForm & Record<string, any> = {
         ...rawBody,
-        tools: toolServer.getToolDefinitions(),
+        tools: toolRegistry.getToolDefinitions(),
     };
-    body = await toolServer.beforeRequest(body) as typeof body;
+    body = await toolRegistry.beforeRequest(body) as typeof body;
 
     let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
     let headersCommitted = false;
@@ -299,7 +299,7 @@ router.post('/custom-completions', requireAuth, async (
             }
 
             // Execute all tool calls, then emit results
-            const roundResults = await toolServer.executeToolRound(toolCalls);
+            const roundResults = await toolRegistry.executeToolRound(toolCalls);
             for (const r of roundResults) {
                 const resultText = r.result.ok ? r.result.output : `Error: ${r.result.error}`;
                 emitSseEvent(res, chatId, messageId, {

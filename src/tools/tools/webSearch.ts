@@ -1,4 +1,4 @@
-import { z } from '../../config.js';
+import { z } from 'zod';
 
 import type { Tool, ToolContext } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
@@ -52,16 +52,8 @@ class WebSearch implements Tool<Input, Output> {
         );
     }
 
-    strict(): boolean {
-        return false;
-    }
-
     inputSchema(): z.ZodType<Input> {
         return InputSchema;
-    }
-
-    outputSchema(): z.ZodType<Output> {
-        return OutputSchema;
     }
 
     beforeRequest(req: proto.CompletionRequest): proto.CompletionRequest {

@@ -1,7 +1,7 @@
 import os from 'os';
 import bytes from 'bytes';
 
-import { z } from '../../config.js';
+import { z } from 'zod';
 import type { Tool, ToolContext } from '../types.js';
 
 const InputSchema = z.object();
@@ -38,16 +38,8 @@ class SystemInfo implements Tool<Input, Output> {
         );
     }
 
-    strict(): boolean {
-        return true;
-    }
-
     inputSchema(): z.ZodType<Input> {
         return InputSchema;
-    }
-
-    outputSchema(): z.ZodType<Output> {
-        return OutputSchema;
     }
 
     call(): Output {

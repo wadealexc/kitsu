@@ -24,7 +24,6 @@ export type ToolDefinition = {
         name: string,
         description?: string,
         parameters?: any,
-        strict?: boolean,
     }
 };
 
