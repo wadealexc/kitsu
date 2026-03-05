@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { Tool, ToolContext } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
+import * as proto from '../../protocol.js';
 
 const MAX_PAGES_ALLOWED = 3;
 
@@ -42,6 +43,13 @@ class LoadWebpage implements Tool<Input, Output> {
 
     inputSchema(): z.ZodType<Input> {
         return InputSchema;
+    }
+
+    beforeRequest(req: proto.CompletionRequest): proto.CompletionRequest {
+        if (!req.webSearchEnabled) {
+            return { ...req, tools: req.tools?.filter(t => t.function.name !== 'loadWebpage') };
+        }
+        return req;
     }
 
     async call(input: Input): Promise<Output> {

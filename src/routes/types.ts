@@ -542,6 +542,7 @@ export interface ChatObject {
     // TODO: we need to separate API schema from DB schema
     model: string;
     params?: ModelParams;
+    webSearchEnabled?: boolean;
     history: ChatHistory;
     messages: FlattenedMessage[];
     files: ChatMessageFile[];
@@ -557,6 +558,7 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     messages: z.array(FlattenedMessageSchema),
     files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
+    webSearchEnabled: z.boolean().optional(),
 }).passthrough();
 
 // TODO - somehow there's a way to apply .partial to ChatObjectSchema, but
@@ -570,6 +572,7 @@ export const ChatObjectUpdateSchema = z.object({
     messages: z.array(FlattenedMessageSchema),
     files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
+    webSearchEnabled: z.boolean(),
 }).partial();
 
 // export const ChatUpdateSchema: z.ZodType<Partial<ChatObject>> = ChatObjectSchema.partial()
@@ -697,6 +700,7 @@ export const ChatCompletionFormSchema = z.object({
         // direct: z.boolean().optional(),
     }).passthrough().optional(),
     params: ModelParamsSchema.optional(),
+    webSearchEnabled: z.boolean().optional().default(false),
 }).passthrough();  // Allow additional OpenAI extensions
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 

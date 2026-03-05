@@ -57,6 +57,10 @@ class WebSearch implements Tool<Input, Output> {
     }
 
     beforeRequest(req: proto.CompletionRequest): proto.CompletionRequest {
+        if (!req.webSearchEnabled) {
+            return { ...req, tools: req.tools?.filter(t => t.function.name !== 'webSearch') };
+        }
+
         let newReq: proto.CompletionRequest = req;
 
         const snippet = this.systemPromptSnippet();

@@ -15,6 +15,7 @@ export type CompletionRequest = {
     model: string,
     messages: Message[],
     tools?: ToolDefinition[],
+    webSearchEnabled?: boolean,
 };
 
 // Top-level tool definition provided to assistant

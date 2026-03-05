@@ -114,6 +114,7 @@ function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm
         id: crypto.randomUUID(),
         model_item: {},
         stream: true,
+        webSearchEnabled: false,
         ...overrides,
     };
 }
