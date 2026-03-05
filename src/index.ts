@@ -112,42 +112,12 @@ app.use('/health', healthRouter);
 // Backend config endpoint (temporary inline implementation)
 app.get('/api/config', (_req, res) => {
     res.json({
-        status: true,
         name: 'Open WebUI',
-        version: '0.3.9',
         default_locale: 'en-US',
-        oauth: {
-            providers: {},
-        },
         features: {
             auth: true,
-            auth_trusted_header: false,
             enable_signup: true,
-            enable_login_form: true,
-            enable_api_keys: false,
-            enable_websocket: false,
-            enable_version_update_check: true,
-            enable_folders: true,
-            enable_web_search: true,
-            enable_image_generation: false,
-            enable_community_sharing: false,
-            enable_memories: false,
-            enable_admin_export: true,
-            enable_admin_chat_access: true,
-            enable_google_drive_integration: false,
-            enable_onedrive_integration: false,
         },
-        default_models: '',
-        default_prompt_suggestions: [
-            {
-                content: 'Help me brainstorm',
-                title: ['Creative', 'Help me brainstorm'],
-            },
-            {
-                content: 'Explain a concept',
-                title: ['Learning', 'Explain a concept'],
-            },
-        ],
     });
 });
 

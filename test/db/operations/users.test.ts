@@ -349,26 +349,11 @@ describe('updateProfile', () => {
             user.id,
             {
                 profileImageUrl: 'https://new-avatar.jpg',
-                profileBannerImageUrl: 'https://new-banner.jpg',
             },
             db
         );
 
         assert.strictEqual(updated.profileImageUrl, 'https://new-avatar.jpg');
-        assert.strictEqual(updated.profileBannerImageUrl, 'https://new-banner.jpg');
-    });
-
-    test('filters out undefined values', async () => {
-        const original = await Users.createUser(newUserParams(), db);
-
-        const updated = await Users.updateProfile(
-            original.id,
-            { profileImageUrl: 'https://updated.jpg', profileBannerImageUrl: undefined },
-            db
-        );
-
-        assert.strictEqual(updated.profileImageUrl, 'https://updated.jpg');
-        assert.strictEqual(updated.profileBannerImageUrl, original.profileBannerImageUrl);
     });
 });
 

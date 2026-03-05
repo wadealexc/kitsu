@@ -32,7 +32,6 @@ export const users = sqliteTable('user', {
 
     // Profile
     profileImageUrl: text('profile_image_url').notNull().default(DEFAULT_USER_IMAGE),
-    profileBannerImageUrl: text('profile_banner_image_url'),
 
     // Settings & Metadata (JSON)
     info: text('info', { mode: 'json' }).$type<Record<string, any>>(),
