@@ -311,35 +311,6 @@ router.post('/update/timezone', requireAuth, (
     return res.json({ status: true });
 });
 
-/**
- * GET /api/v1/auths/admin/details
- * Access Control: Requires HTTPBearer authentication (JWT token)
- *
- * Get the admin's username for display purposes
- *
- * @returns {Types.AdminDetailsResponse} - admin username
- */
-router.get('/admin/details', requireAuth, async (
-    req: Request,
-    res: Response<Types.AdminDetailsResponse | Types.ErrorResponse>
-) => {
-    try {
-        const firstUser = await Users.getFirstUser(db);
-        if (!firstUser) {
-            throw NotFoundError('No users found');
-        }
-
-        return res.json({ username: firstUser.username });
-    } catch (error: unknown) {
-        if (error instanceof HttpError) {
-            return res.status(error.statusCode).json({ detail: error.message });
-        }
-
-        console.error('Get admin details error:', error);
-        return res.status(500).json({ detail: 'Internal server error' });
-    }
-});
-
 /* -------------------- ADMIN ENDPOINTS -------------------- */
 
 /**

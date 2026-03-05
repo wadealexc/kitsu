@@ -73,12 +73,6 @@ export const StatusResponseSchema = z.object({
 });
 export type StatusResponse = z.infer<typeof StatusResponseSchema>;
 
-// Admin details response
-export const AdminDetailsResponseSchema = z.object({
-    username: z.string(),
-});
-export type AdminDetailsResponse = z.infer<typeof AdminDetailsResponseSchema>;
-
 /* -------------------- AUTH SCHEMAS -------------------- */
 
 // User role enum

@@ -10,7 +10,7 @@ import { db } from '../../src/db/client.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as schema from '../../src/db/schema.js';
 import chatRouter from '../../src/routes/chat.js';
-import { ToolServer } from '../../src/tools/server.js';
+import { ToolRegistry } from '../../src/tools/registry.js';
 import { MockLlama } from '../mockLlama.js';
 import type { SseEvent } from '../../src/routes/sseEvents.js';
 import * as Types from '../../src/routes/types.js';
@@ -30,7 +30,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 const mock = new MockLlama();
-const toolServer = new ToolServer(app, { browser: undefined });
+const toolServer = new ToolRegistry({ browser: undefined });
 
 app.locals.llama = mock;
 app.locals.tools = toolServer;
