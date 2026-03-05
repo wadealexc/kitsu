@@ -17,28 +17,10 @@ const router = Router();
 /* -------------------- MODULE-LEVEL CONFIG -------------------- */
 
 let adminConfig: Types.AdminConfig = {
-    SHOW_ADMIN_DETAILS: true,
-    ADMIN_USERNAME: null,
     WEBUI_URL: 'http://192.168.87.30:5050',
     ENABLE_SIGNUP: true,
-    ENABLE_API_KEYS: false,
-    ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-    API_KEYS_ALLOWED_ENDPOINTS: '',
     DEFAULT_USER_ROLE: DEFAULT_USER_ROLE,
-    DEFAULT_GROUP_ID: '',
     JWT_EXPIRES_IN: '7d',
-    ENABLE_COMMUNITY_SHARING: true,
-    ENABLE_MESSAGE_RATING: false,
-    ENABLE_FOLDERS: true,
-    FOLDER_MAX_FILE_COUNT: null,
-    ENABLE_CHANNELS: false,
-    ENABLE_MEMORIES: false,
-    ENABLE_NOTES: false,
-    ENABLE_USER_WEBHOOKS: false,
-    ENABLE_USER_STATUS: false,
-    PENDING_USER_OVERLAY_TITLE: null,
-    PENDING_USER_OVERLAY_CONTENT: null,
-    RESPONSE_WATERMARK: null,
 };
 
 /* -------------------- PUBLIC ENDPOINTS -------------------- */

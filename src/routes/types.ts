@@ -159,41 +159,23 @@ export type SigninResponse = z.infer<typeof SigninResponseSchema>;
 
 // Admin config
 const MsStringValueSchema = z.custom<StringValue>((v) => {
-  if (v === '-1') return true;
+    if (v === '-1') return true;
 
-  try {
-    const n = parse(v as StringValue);
-    return typeof n === "number" && Number.isFinite(n);
-  } catch {
-    return false;
-  }
+    try {
+        const n = parse(v as StringValue);
+        return typeof n === "number" && Number.isFinite(n);
+    } catch {
+        return false;
+    }
 }, {
-  message: 'Must be a valid ms time string (e.g. "1d", "2h", "30m", "2 days", "1 mo")',
+    message: 'Must be a valid ms time string (e.g. "1d", "2h", "30m", "2 days", "1 mo")',
 });
 
 export const AdminConfigSchema = z.object({
-    SHOW_ADMIN_DETAILS: z.boolean(),
-    ADMIN_USERNAME: z.string().nullable().optional(),
     WEBUI_URL: z.string(),
     ENABLE_SIGNUP: z.boolean(),
-    ENABLE_API_KEYS: z.boolean(),
-    ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: z.boolean(),
-    API_KEYS_ALLOWED_ENDPOINTS: z.string(),
     DEFAULT_USER_ROLE: z.enum(['pending', 'user', 'admin']),
-    DEFAULT_GROUP_ID: z.string(),
     JWT_EXPIRES_IN: MsStringValueSchema,
-    ENABLE_COMMUNITY_SHARING: z.boolean(),
-    ENABLE_MESSAGE_RATING: z.boolean(),
-    ENABLE_FOLDERS: z.boolean(),
-    FOLDER_MAX_FILE_COUNT: z.number().int().nullable().optional(),
-    ENABLE_CHANNELS: z.boolean(),
-    ENABLE_MEMORIES: z.boolean(),
-    ENABLE_NOTES: z.boolean(),
-    ENABLE_USER_WEBHOOKS: z.boolean(),
-    ENABLE_USER_STATUS: z.boolean(),
-    PENDING_USER_OVERLAY_TITLE: z.string().nullable().optional(),
-    PENDING_USER_OVERLAY_CONTENT: z.string().nullable().optional(),
-    RESPONSE_WATERMARK: z.string().nullable().optional(),
 });
 export type AdminConfig = z.infer<typeof AdminConfigSchema>;
 
@@ -313,26 +295,26 @@ export type AccessControl = z.infer<typeof AccessControlSchema>;
 // Model parameters
 export const ModelParamsSchema = z.object({
     // Sampling
-    temperature:       z.number().optional(),
-    top_p:             z.number().optional(),
-    top_k:             z.number().optional(),
-    min_p:             z.number().optional(),
-    max_tokens:        z.number().optional(),
-    seed:              z.number().optional(),
+    temperature: z.number().optional(),
+    top_p: z.number().optional(),
+    top_k: z.number().optional(),
+    min_p: z.number().optional(),
+    max_tokens: z.number().optional(),
+    seed: z.number().optional(),
     frequency_penalty: z.number().optional(),
-    presence_penalty:  z.number().optional(),
-    repeat_penalty:    z.number().optional(),
-    repeat_last_n:     z.number().optional(),
-    mirostat:          z.number().optional(),
-    mirostat_eta:      z.number().optional(),
-    mirostat_tau:      z.number().optional(),
-    tfs_z:             z.number().optional(),
+    presence_penalty: z.number().optional(),
+    repeat_penalty: z.number().optional(),
+    repeat_last_n: z.number().optional(),
+    mirostat: z.number().optional(),
+    mirostat_eta: z.number().optional(),
+    mirostat_tau: z.number().optional(),
+    tfs_z: z.number().optional(),
     // Control
-    stop:             z.union([z.string(), z.array(z.string())]).optional(),
-    system:           z.string().optional(),
-    stream_response:  z.boolean().optional(),
+    stop: z.union([z.string(), z.array(z.string())]).optional(),
+    system: z.string().optional(),
+    stream_response: z.boolean().optional(),
     reasoning_effort: z.string().optional(),
-    logit_bias:       z.string().optional(),
+    logit_bias: z.string().optional(),
 });  // Allow additional model-specific params
 export type ModelParams = z.infer<typeof ModelParamsSchema>;
 

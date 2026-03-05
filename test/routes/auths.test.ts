@@ -1394,11 +1394,7 @@ describe('GET /api/v1/auths/admin/config', () => {
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
-        assert.ok(typeof res.body.SHOW_ADMIN_DETAILS === 'boolean');
         assert.ok(typeof res.body.ENABLE_SIGNUP === 'boolean');
-        assert.ok(typeof res.body.ENABLE_API_KEYS === 'boolean');
-        assert.ok(typeof res.body.ENABLE_COMMUNITY_SHARING === 'boolean');
-        assert.ok(typeof res.body.ENABLE_MESSAGE_RATING === 'boolean');
         assert.ok(res.body.WEBUI_URL);
         assert.ok(res.body.JWT_EXPIRES_IN);
         assert.ok(res.body.DEFAULT_USER_ROLE);
@@ -1410,19 +1406,10 @@ describe('GET /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`);
 
         assert.strictEqual(res.status, 200);
-        assert.ok(res.body.SHOW_ADMIN_DETAILS !== undefined);
-        assert.ok(res.body.ADMIN_USERNAME !== undefined);
         assert.ok(res.body.WEBUI_URL !== undefined);
         assert.ok(res.body.ENABLE_SIGNUP !== undefined);
-        assert.ok(res.body.ENABLE_API_KEYS !== undefined);
         assert.ok(res.body.JWT_EXPIRES_IN !== undefined);
         assert.ok(res.body.DEFAULT_USER_ROLE !== undefined);
-        assert.ok(res.body.ENABLE_COMMUNITY_SHARING !== undefined);
-        assert.ok(res.body.ENABLE_MESSAGE_RATING !== undefined);
-        assert.ok(res.body.ENABLE_FOLDERS !== undefined);
-        assert.ok(res.body.ENABLE_CHANNELS !== undefined);
-        assert.ok(res.body.ENABLE_MEMORIES !== undefined);
-        assert.ok(res.body.ENABLE_NOTES !== undefined);
     });
 
     test('rejects non-admin user', async () => {
@@ -1482,28 +1469,10 @@ describe('POST /api/v1/auths/admin/config', () => {
 
     test('updates admin config', async () => {
         const newConfig = {
-            SHOW_ADMIN_DETAILS: false,
-            ADMIN_USERNAME: 'admin',
             WEBUI_URL: 'http://localhost:8080',
             ENABLE_SIGNUP: false,
-            ENABLE_API_KEYS: true,
-            ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-            API_KEYS_ALLOWED_ENDPOINTS: '',
             DEFAULT_USER_ROLE: 'pending' as const,
-            DEFAULT_GROUP_ID: '',
             JWT_EXPIRES_IN: '30d',
-            ENABLE_COMMUNITY_SHARING: true,
-            ENABLE_MESSAGE_RATING: true,
-            ENABLE_FOLDERS: true,
-            FOLDER_MAX_FILE_COUNT: null,
-            ENABLE_CHANNELS: false,
-            ENABLE_MEMORIES: false,
-            ENABLE_NOTES: false,
-            ENABLE_USER_WEBHOOKS: false,
-            ENABLE_USER_STATUS: false,
-            PENDING_USER_OVERLAY_TITLE: null,
-            PENDING_USER_OVERLAY_CONTENT: null,
-            RESPONSE_WATERMARK: null,
         };
 
         const res = await request(app)
@@ -1512,15 +1481,10 @@ describe('POST /api/v1/auths/admin/config', () => {
             .send(newConfig);
 
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.SHOW_ADMIN_DETAILS, false);
-        assert.strictEqual(res.body.ADMIN_USERNAME, 'admin');
         assert.strictEqual(res.body.WEBUI_URL, 'http://localhost:8080');
         assert.strictEqual(res.body.ENABLE_SIGNUP, false);
-        assert.strictEqual(res.body.ENABLE_API_KEYS, true);
         assert.strictEqual(res.body.DEFAULT_USER_ROLE, 'pending');
         assert.strictEqual(res.body.JWT_EXPIRES_IN, '30d');
-        assert.strictEqual(res.body.ENABLE_COMMUNITY_SHARING, true);
-        assert.strictEqual(res.body.ENABLE_MESSAGE_RATING, true);
     });
 
     test('updates persist across requests', async () => {
@@ -1529,28 +1493,10 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                SHOW_ADMIN_DETAILS: false,
-                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://updated.com',
                 ENABLE_SIGNUP: false,
-                ENABLE_API_KEYS: false,
-                ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                API_KEYS_ALLOWED_ENDPOINTS: '',
                 DEFAULT_USER_ROLE: 'pending' as const,
-                DEFAULT_GROUP_ID: '',
                 JWT_EXPIRES_IN: '14d',
-                ENABLE_COMMUNITY_SHARING: false,
-                ENABLE_MESSAGE_RATING: false,
-                ENABLE_FOLDERS: true,
-                FOLDER_MAX_FILE_COUNT: null,
-                ENABLE_CHANNELS: false,
-                ENABLE_MEMORIES: false,
-                ENABLE_NOTES: false,
-                ENABLE_USER_WEBHOOKS: false,
-                ENABLE_USER_STATUS: false,
-                PENDING_USER_OVERLAY_TITLE: null,
-                PENDING_USER_OVERLAY_CONTENT: null,
-                RESPONSE_WATERMARK: null,
             });
 
         // Get config to verify persistence
@@ -1572,28 +1518,10 @@ describe('POST /api/v1/auths/admin/config', () => {
                 .post('/api/v1/auths/admin/config')
                 .set('Authorization', `Bearer ${adminToken}`)
                 .send({
-                    SHOW_ADMIN_DETAILS: true,
-                    ADMIN_USERNAME: null,
                     WEBUI_URL: 'http://localhost:3000',
                     ENABLE_SIGNUP: true,
-                    ENABLE_API_KEYS: false,
-                    ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                    API_KEYS_ALLOWED_ENDPOINTS: '',
                     DEFAULT_USER_ROLE: 'user' as const,
-                    DEFAULT_GROUP_ID: '',
                     JWT_EXPIRES_IN: format,
-                    ENABLE_COMMUNITY_SHARING: false,
-                    ENABLE_MESSAGE_RATING: false,
-                    ENABLE_FOLDERS: true,
-                    FOLDER_MAX_FILE_COUNT: null,
-                    ENABLE_CHANNELS: false,
-                    ENABLE_MEMORIES: false,
-                    ENABLE_NOTES: false,
-                    ENABLE_USER_WEBHOOKS: false,
-                    ENABLE_USER_STATUS: false,
-                    PENDING_USER_OVERLAY_TITLE: null,
-                    PENDING_USER_OVERLAY_CONTENT: null,
-                    RESPONSE_WATERMARK: null,
                 });
 
             assert.strictEqual(res.status, 200, `Failed for format: ${format}`);
@@ -1606,28 +1534,10 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                SHOW_ADMIN_DETAILS: true,
-                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
-                ENABLE_API_KEYS: false,
-                ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                API_KEYS_ALLOWED_ENDPOINTS: '',
                 DEFAULT_USER_ROLE: 'user',
-                DEFAULT_GROUP_ID: '',
                 JWT_EXPIRES_IN: 'invalid-format',
-                ENABLE_COMMUNITY_SHARING: false,
-                ENABLE_MESSAGE_RATING: false,
-                ENABLE_FOLDERS: true,
-                FOLDER_MAX_FILE_COUNT: null,
-                ENABLE_CHANNELS: false,
-                ENABLE_MEMORIES: false,
-                ENABLE_NOTES: false,
-                ENABLE_USER_WEBHOOKS: false,
-                ENABLE_USER_STATUS: false,
-                PENDING_USER_OVERLAY_TITLE: null,
-                PENDING_USER_OVERLAY_CONTENT: null,
-                RESPONSE_WATERMARK: null,
             });
 
         assert.strictEqual(res.status, 400);
@@ -1639,28 +1549,10 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                SHOW_ADMIN_DETAILS: true,
-                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
-                ENABLE_API_KEYS: false,
-                ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                API_KEYS_ALLOWED_ENDPOINTS: '',
                 DEFAULT_USER_ROLE: 'superuser', // Invalid role
-                DEFAULT_GROUP_ID: '',
                 JWT_EXPIRES_IN: '7d',
-                ENABLE_COMMUNITY_SHARING: false,
-                ENABLE_MESSAGE_RATING: false,
-                ENABLE_FOLDERS: true,
-                FOLDER_MAX_FILE_COUNT: null,
-                ENABLE_CHANNELS: false,
-                ENABLE_MEMORIES: false,
-                ENABLE_NOTES: false,
-                ENABLE_USER_WEBHOOKS: false,
-                ENABLE_USER_STATUS: false,
-                PENDING_USER_OVERLAY_TITLE: null,
-                PENDING_USER_OVERLAY_CONTENT: null,
-                RESPONSE_WATERMARK: null,
             });
 
         assert.strictEqual(res.status, 400);
@@ -1685,28 +1577,10 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${userToken}`)
             .send({
-                SHOW_ADMIN_DETAILS: true,
-                ADMIN_USERNAME: null,
                 WEBUI_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: false,
-                ENABLE_API_KEYS: false,
-                ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                API_KEYS_ALLOWED_ENDPOINTS: '',
                 DEFAULT_USER_ROLE: 'user',
-                DEFAULT_GROUP_ID: '',
                 JWT_EXPIRES_IN: '7d',
-                ENABLE_COMMUNITY_SHARING: false,
-                ENABLE_MESSAGE_RATING: false,
-                ENABLE_FOLDERS: true,
-                FOLDER_MAX_FILE_COUNT: null,
-                ENABLE_CHANNELS: false,
-                ENABLE_MEMORIES: false,
-                ENABLE_NOTES: false,
-                ENABLE_USER_WEBHOOKS: false,
-                ENABLE_USER_STATUS: false,
-                PENDING_USER_OVERLAY_TITLE: null,
-                PENDING_USER_OVERLAY_CONTENT: null,
-                RESPONSE_WATERMARK: null,
             });
 
         assert.strictEqual(res.status, 403);
@@ -1722,40 +1596,6 @@ describe('POST /api/v1/auths/admin/config', () => {
 
         assert.strictEqual(res.status, 401);
         assert.strictEqual(res.body.detail, 'Not authenticated');
-    });
-
-    test('accepts null values for optional fields', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/admin/config')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-                SHOW_ADMIN_DETAILS: true,
-                ADMIN_USERNAME: null,
-                WEBUI_URL: 'http://localhost:3000',
-                ENABLE_SIGNUP: true,
-                ENABLE_API_KEYS: false,
-                ENABLE_API_KEYS_ENDPOINT_RESTRICTIONS: false,
-                API_KEYS_ALLOWED_ENDPOINTS: '',
-                DEFAULT_USER_ROLE: 'user',
-                DEFAULT_GROUP_ID: '',
-                JWT_EXPIRES_IN: '7d',
-                ENABLE_COMMUNITY_SHARING: false,
-                ENABLE_MESSAGE_RATING: false,
-                ENABLE_FOLDERS: true,
-                FOLDER_MAX_FILE_COUNT: null,
-                ENABLE_CHANNELS: false,
-                ENABLE_MEMORIES: false,
-                ENABLE_NOTES: false,
-                ENABLE_USER_WEBHOOKS: false,
-                ENABLE_USER_STATUS: false,
-                PENDING_USER_OVERLAY_TITLE: null,
-                PENDING_USER_OVERLAY_CONTENT: null,
-                RESPONSE_WATERMARK: null,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.ADMIN_USERNAME, null);
-        assert.strictEqual(res.body.FOLDER_MAX_FILE_COUNT, null);
     });
 });
 
