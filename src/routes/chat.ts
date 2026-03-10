@@ -8,6 +8,8 @@ import * as proto from '../protocol.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
 import * as Models from '../db/operations/models.js';
+import * as Files from '../db/operations/files.js';
+import { StorageProvider } from '../storage/provider.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { SseEvent, SseEventPayload, SseUsage } from './sseEvents.js';
 
@@ -106,6 +108,51 @@ async function preprocessChatRequest(
     };
 }
 
+/**
+ * Walks messages and resolves any `image_url` content parts whose URL is a bare
+ * file UUID (not a data: or http(s): URL) into base64 data URLs.
+ *
+ * The frontend uploads images and stores the returned file ID as `image_url.url`.
+ * llama-server only accepts `data:` or `http(s)://` URLs, so we must resolve
+ * the ID → file record → filesystem bytes → base64 before forwarding.
+ *
+ * Mutates the messages array in-place. Parts that cannot be resolved are
+ * replaced with a text marker so the request still succeeds.
+ */
+async function resolveFileIdImages(messages: proto.Message[]): Promise<void> {
+    for (const message of messages) {
+        if (typeof message.content === 'string') continue;
+
+        const parts = message.content as proto.ContentPart[];
+        for (let i = 0; i < parts.length; i++) {
+            const part: proto.ContentPart | undefined = parts[i];
+            if (!part || part.type !== 'image_url') continue;
+
+            const imagePart: proto.ImageContentPart = part;
+            const url = imagePart.image_url.url;
+            if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+                continue; // already a valid URL
+            }
+
+            // Treat as file ID
+            const file = await Files.getFileById(url, db);
+            if (!file || !file.path) {
+                console.warn(`[resolveFileIdImages] file not found for id: ${url}`);
+                parts[i] = { type: 'text', text: '[image unavailable]' };
+                continue;
+            }
+
+            const buffer = await StorageProvider.downloadFile(file.path);
+            const contentType = file.meta?.contentType ?? 'image/png';
+            const base64 = buffer.toString('base64');
+            parts[i] = {
+                type: 'image_url',
+                image_url: { url: `data:${contentType};base64,${base64}` },
+            };
+        }
+    }
+}
+
 /* -------------------- CHAT COMPLETION -------------------- */
 
 /**
@@ -134,6 +181,8 @@ router.post('/completions', requireAuth, async (
 
     const { chatId, messageId, completionBody: body } = ctx.value;
     const llama = req.app.locals.llama as LlamaManager;
+
+    await resolveFileIdImages(body.messages as proto.Message[]);
 
     // AbortController will cancel request if the client aborts
     const ctrl = new AbortController();
@@ -246,6 +295,8 @@ router.post('/custom-completions', requireAuth, async (
         ctrl.abort();
     });
     res.once('close', () => ctrl.abort());
+
+    await resolveFileIdImages(rawBody.messages as proto.Message[]);
 
     // Inject tool definitions and run beforeRequest hooks once before the loop
     let body: Types.ChatCompletionForm & Record<string, any> = {

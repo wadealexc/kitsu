@@ -100,16 +100,7 @@ router.get('/banners', requireAuth, (
     req: Request,
     res: Response<Types.BannerModel[] | Types.ErrorResponse>
 ) => {
-    res.status(200).json([
-        {
-            id: 'banner-1',
-            type: 'info',
-            title: 'Welcome',
-            content: 'Welcome to the mock API!',
-            dismissible: true,
-            timestamp: Math.floor(Date.now() / 1000),
-        },
-    ]);
+    res.status(200).json([]);
 });
 
 /* -------------------- EXPORT -------------------- */
