@@ -10,28 +10,11 @@ export type SseUsage = {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    completion_tokens_per_second?: number;
+    prompt_tokens_per_second?: number;
 };
 
 /* -------------------- EVENT PAYLOAD TYPES -------------------- */
-
-export type SseStatusItem = {
-    description?: string;
-    done?: boolean;
-    hidden?: boolean;
-    query?: string;
-} & (
-    | { action: 'web_search'; urls?: string[]; items?: unknown[]; query?: string }
-    | { action: 'knowledge_search'; query: string }
-    | { action: 'web_search_queries_generated'; queries: string[] }
-    | { action: 'queries_generated'; queries: string[] }
-    | { action: 'sources_retrieved'; count: number }
-);
-
-/** Emitted during tool call execution to show progress in the UI */
-export type SseStatusPayload = {
-    type: 'status';
-    data: SseStatusItem;
-};
 
 /** Emitted once when generation is complete */
 export type SseCompletionPayload = {
@@ -54,26 +37,6 @@ export type SseMessageErrorPayload = {
 export type SseTitlePayload = {
     type: 'chat:title';
     data: string;
-};
-
-type SseSource = {
-    type?: string;
-    [key: string]: unknown;
-};
-
-/** Emitted for each web search result or code execution result */
-export type SseCitationPayload = {
-    type: 'source' | 'citation';
-    data: SseSource;
-};
-
-/** Emitted to display a toast notification in the UI */
-export type SseNotificationPayload = {
-    type: 'notification';
-    data: {
-        type: 'success' | 'error' | 'warning' | 'info';
-        content: string;
-    };
 };
 
 /** Emitted when the LLM requests a tool call */
@@ -100,12 +63,9 @@ export type SseToolCallResultPayload = {
 /* -------------------- UNION & TOP-LEVEL -------------------- */
 
 export type SseEventPayload =
-    | SseStatusPayload
     | SseCompletionPayload
     | SseMessageErrorPayload
     | SseTitlePayload
-    | SseCitationPayload
-    | SseNotificationPayload
     | SseToolCallStartPayload
     | SseToolCallResultPayload;
 

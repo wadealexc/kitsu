@@ -168,6 +168,10 @@ router.post('/completions', requireAuth, async (
                 const cacheIn = result.value.timings?.cache_n ?? 0;
                 const promptIn = result.value.timings?.prompt_n ?? 0;
                 const tokensIn = cacheIn + promptIn;
+                const predictedMs = result.value.timings?.predicted_ms ?? 0;
+                const promptMs = result.value.timings?.prompt_ms ?? 0;
+                const completionTps = predictedMs > 0 ? (tokensOut / predictedMs) * 1000 : undefined;
+                const promptTps = promptMs > 0 ? (promptIn / promptMs) * 1000 : undefined;
 
                 console.log(` - result: ${JSON.stringify(result.value, null, 2)}`);
 
@@ -179,6 +183,8 @@ router.post('/completions', requireAuth, async (
                             prompt_tokens: tokensIn,
                             completion_tokens: tokensOut,
                             total_tokens: tokensIn + tokensOut,
+                            ...(completionTps !== undefined ? { completion_tokens_per_second: completionTps } : {}),
+                            ...(promptTps !== undefined ? { prompt_tokens_per_second: promptTps } : {}),
                         },
                     },
                 });
@@ -249,6 +255,8 @@ router.post('/custom-completions', requireAuth, async (
     body = await toolRegistry.beforeRequest(body) as typeof body;
 
     let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    let totalPredictedMs = 0;
+    let totalPromptMs = 0;
     let headersCommitted = false;
 
     try {
@@ -282,6 +290,8 @@ router.post('/custom-completions', requireAuth, async (
             }
 
             totalUsage = accumulateUsage(totalUsage, result.value);
+            totalPredictedMs += result.value.timings?.predicted_ms ?? 0;
+            totalPromptMs += result.value.timings?.prompt_ms ?? 0;
             // Model gave a final text response - no more looping required
             if (!hasToolCalls(result.value)) break;
 
@@ -342,10 +352,24 @@ router.post('/custom-completions', requireAuth, async (
             }
         }
 
+        const completionTps = totalPredictedMs > 0
+            ? (totalUsage.completion_tokens / totalPredictedMs) * 1000
+            : undefined;
+        const promptTps = totalPromptMs > 0
+            ? (totalUsage.prompt_tokens / totalPromptMs) * 1000
+            : undefined;
+
         res.write('data: [DONE]\n\n');
         emitSseEvent(res, chatId, messageId, {
             type: 'chat:completion',
-            data: { done: true, usage: totalUsage },
+            data: {
+                done: true,
+                usage: {
+                    ...totalUsage,
+                    ...(completionTps !== undefined ? { completion_tokens_per_second: completionTps } : {}),
+                    ...(promptTps !== undefined ? { prompt_tokens_per_second: promptTps } : {}),
+                },
+            },
         });
         res.end();
     } catch (err: any) {

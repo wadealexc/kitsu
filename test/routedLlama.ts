@@ -34,12 +34,18 @@ export class RoutedLlama {
                 : path.join(basePath, model.mmproj + '.gguf')
                 : undefined);
 
+            const args = model.args ?? [];
+            const ctxIdx = args.indexOf('--ctx-size');
+            const contextLength = ctxIdx !== -1 ? Number(args[ctxIdx + 1]) || undefined : undefined;
+            console.log(`ctx of ${name}: ${contextLength}`)
+
             return [name, {
                 name: name,
                 path: modelPath,
                 mmprojPath: mmprojPath,
-                args: model.args ?? [],
+                args: args,
                 params: model.params ?? {},
+                contextLength,
             }];
         }))
     }
@@ -51,10 +57,11 @@ export class RoutedLlama {
 
         let stream: LlamaStream | null = null;
 
+        const body = { ...req.body, timings_per_token: true, return_progress: true };
         const response = await fetch(shimUrl, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(req.body),
+            body: JSON.stringify(body),
             signal: req.signal,
         });
 

@@ -122,13 +122,18 @@ export class LlamaManager {
                 : path.join(basePath, model.mmproj + '.gguf')
                 : undefined);
 
+            const args = model.args ?? [];
+            const ctxIdx = args.indexOf('--ctx-size');
+            const contextLength = ctxIdx !== -1 ? Number(args[ctxIdx + 1]) || undefined : undefined;
+
             return [name, {
                 model: {
                     name: name,
                     path: modelPath,
                     mmprojPath: mmprojPath,
-                    args: model.args ?? [],
+                    args: args,
                     params: model.params ?? {},
+                    contextLength,
                 },
                 pending: [],
                 active: null,
@@ -283,10 +288,11 @@ export class LlamaManager {
         llama.active.proc.once('exit', prematureExit);
 
         try {
+            const body = { ...req.body, timings_per_token: true, return_progress: true };
             const response = await fetch(llamaURL, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(req.body),
+                body: JSON.stringify(body),
                 signal: req.signal,
             });
 
@@ -519,7 +525,20 @@ export class LlamaManager {
         // Poll llama-server instance
         return new Promise<void>((resolve, reject) => {
             this.#pollServer(llama)
-                .then(() => {
+                .then(async () => {
+                    // Fetch context window size from /props
+                    try {
+                        const propsRes = await fetch(`${this.llamaServerURL}/props`);
+                        if (propsRes.ok) {
+                            const props = await propsRes.json() as Record<string, unknown>;
+                            if (typeof props.n_ctx === 'number') {
+                                llama.model.contextLength = props.n_ctx;
+                                console.log(chalk.dim(` - n_ctx: ${props.n_ctx}`));
+                            }
+                        }
+                    } catch {
+                        // Non-critical — proceed without context length
+                    }
                     resolve();
                     this.#doPending(llama as ActiveLlama);
                 })

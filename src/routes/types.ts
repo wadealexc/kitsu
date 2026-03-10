@@ -337,6 +337,7 @@ export const ModelResponseSchema = z.object({
     is_active: z.boolean(),
     updated_at: z.number(),
     created_at: z.number(),
+    context_length: z.number().optional(),
 });
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
@@ -434,29 +435,13 @@ export const ChatMessageSourceSchema = z.object({
 }).passthrough();
 export type ChatMessageSource = z.infer<typeof ChatMessageSourceSchema>;
 
-// Chat message status history entry
-export const ChatMessageStatusSchema = z.object({
-    description: z.string().optional(),
-    done: z.stringbool().optional(),
-    hidden: z.stringbool().optional(),
-    action: z.string().optional(),
-    // many
-    query: z.string().optional(),
-    // web search
-    urls: z.array(z.string()).optional(),
-    items: z.array(z.any()).optional(),
-    // queries generated
-    queries: z.array(z.string()).optional(),
-    // sources retrieved
-    count: z.number().optional(),
-}).passthrough();
-export type ChatMessageStatus = z.infer<typeof ChatMessageStatusSchema>;
-
 // Chat message usage stats
 export const ChatMessageUsageSchema = z.object({
     prompt_tokens: z.number().optional(),
     completion_tokens: z.number().optional(),
     total_tokens: z.number().optional(),
+    completion_tokens_per_second: z.number().optional(),
+    prompt_tokens_per_second: z.number().optional(),
 }).passthrough();
 export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
 
@@ -510,12 +495,11 @@ export const ChatMessageSchema = z.object({
     // - role: assistant
     model: z.string().optional(),
     modelName: z.string().optional(),
-    statusHistory: z.array(ChatMessageStatusSchema).optional(),
     usage: ChatMessageUsageSchema.optional(),
     done: z.boolean().default(false),
     blocks: z.array(MessageBlockSchema).optional(),
     error: z.union([z.boolean(), z.object({ content: z.string() })]).optional(),
-}).passthrough();  // Allow additional fields for extensibility
+});
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 // Chat history structure (tree-structured messages)

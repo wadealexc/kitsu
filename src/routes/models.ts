@@ -49,7 +49,7 @@ router.get('/', requireAuth, async (
         const availableModels: Types.ModelResponse[] = allCustomModels
             .filter(model => baseModelNames.some(base => base === model.baseModelId))
             .filter(model => Models.hasAccess(model, userId, 'read'))
-            .map(toModelResponse);
+            .map(model => toModelResponse(model, llama.getModelInfo(model.baseModelId)?.contextLength));
 
         res.status(200).json(availableModels);
     } catch (err) {
@@ -370,7 +370,7 @@ router.get('/base', requireAdmin, async (
                 isActive: true,
                 updatedAt: 0,
                 createdAt: 0,
-            });
+            }, modelInfo?.contextLength);
         });
 
         res.status(200).json(baseModels);
@@ -402,7 +402,7 @@ router.delete('/delete/all', requireAdmin, async (
     }
 });
 
-function toModelResponse(model: Model): Types.ModelResponse {
+function toModelResponse(model: Model, contextLength?: number): Types.ModelResponse {
     return {
         id: model.id,
         user_id: model.userId,
@@ -414,6 +414,7 @@ function toModelResponse(model: Model): Types.ModelResponse {
         is_active: model.isActive,
         updated_at: model.updatedAt,
         created_at: model.createdAt,
+        ...(contextLength !== undefined ? { context_length: contextLength } : {}),
     };
 }
 
