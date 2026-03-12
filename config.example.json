@@ -50,13 +50,21 @@
         ],
         "taskModel": {
             "gguf": "taskModels/Qwen3.5-0.8B-Q8_0.gguf",
-            "alias": "task-model",
+            "alias": "qwen3.5-0.8b",
             "args": [
                 "--ctx-size",
                 8192
             ],
             "params": {
-                "chat_template_kwargs": {"enable_thinking": false}
+                "temperature": 1.0,
+                "top_p": 1.00,
+                "top_k": 20,
+                "min_p": 0.0,
+                "presence_penalty": 2.0,
+                "repetition_penalty": 1.0,
+                "chat_template_kwargs": {
+                    "enable_thinking": false
+                }
             }
         }
     }

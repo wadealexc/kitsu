@@ -283,7 +283,7 @@ router.post('/custom-completions', requireAuth, async (
     res: Response<any | Types.ErrorResponse>,
     next: NextFunction,
 ) => {
-    console.log(`[custom-completions] body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
+    // console.log(`[custom-completions] body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
 
     const ctx = await preprocessChatRequest(req);
     if (!ctx.ok) {
@@ -321,16 +321,23 @@ router.post('/custom-completions', requireAuth, async (
     };
     body = await toolRegistry.beforeRequest(body) as typeof body;
 
+    // Commit SSE headers before any writes (doTasks may write before the main loop's
+    // first response arrives, which would implicitly commit default headers)
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.status(200);
+    res.flushHeaders();
+
     // Dispatch task model, if configured
     const taskModel = llama.getTaskModel();
-    const taskPromise = taskModel 
-        ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal) 
+    const taskPromise = taskModel
+        ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
         : Promise.resolve();
 
     let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
     let totalPredictedMs = 0;
     let totalPromptMs = 0;
-    let headersCommitted = false;
 
     try {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -338,14 +345,6 @@ router.post('/custom-completions', requireAuth, async (
 
             const response = await llama.completions({ body, signal: ctrl.signal });
             const stream = response.stream;
-
-            // Commit response headers on the first round. completions() is already
-            // awaited, so response.status and response.headers are immediately available.
-            if (!headersCommitted) {
-                response.headers.forEach((v, k) => res.setHeader(k, v));
-                res.status(response.status);
-                headersCommitted = true;
-            }
 
             // Pipe llama -> done filter -> res (keep res open between rounds)
             stream.withDoneFilter().pipe(res, { end: false });
@@ -369,7 +368,7 @@ router.post('/custom-completions', requireAuth, async (
             if (!hasToolCalls(result.value)) break;
 
             // Model ended with tool calls. Emit start event
-            const toolCalls: proto.ToolCall[] = result.value.choices.flatMap(c => c.delta.tool_calls ?? []);
+            const toolCalls: proto.ToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
             for (const tc of toolCalls) {
                 emitSseEvent(res, chatId, messageId, {
                     type: 'tool_call:start',
@@ -397,11 +396,11 @@ router.post('/custom-completions', requireAuth, async (
             }
 
             // Build assistant turn + tool result messages and append to history.
-            const delta = result.value.choices[0]?.delta;
+            const message = result.value.choices[0]?.message;
             const assistantTurn: proto.Message = {
                 role: 'assistant',
-                content: delta?.content ?? '',
-                reasoning_content: delta?.reasoning_content || undefined,
+                content: message?.content ?? '',
+                reasoning_content: message?.reasoning_content || undefined,
                 tool_calls: toolCalls.map(tc => ({
                     id: tc.id,
                     type: 'function' as const,
@@ -450,20 +449,26 @@ router.post('/custom-completions', requireAuth, async (
         });
         res.end();
     } catch (err: any) {
-        if (headersCommitted) {
-            console.error(`[custom-completions] mid-stream error:`, err);
-            emitSseEvent(res, chatId, messageId, {
-                type: 'chat:message:error',
-                data: { error: { content: err?.message ?? String(err) } },
-            });
-            res.end();
-        } else {
-            return next(err);
-        }
+        // Headers are always committed at this point (we flush them before the loop)
+        console.error(`[custom-completions] mid-stream error:`, err);
+        emitSseEvent(res, chatId, messageId, {
+            type: 'chat:message:error',
+            data: { error: { content: err?.message ?? String(err) } },
+        });
+        res.end();
     }
 });
 
 /* -------------------- TASKS -------------------- */
+
+const SYSTEM_PROMPT_TITLEGEN = `You are a helpful assistant.
+
+Your primary role is to come up with a short, memorable phrase to serve as the "title" of a chat initiated by the user.
+
+You should adhere to the following guidelines:
+- Respond to the user's message with a phrase that summarizes the user's message
+- Your response should contain 5 or fewer words
+`;
 
 async function doTasks(
     llama: LlamaManager,
@@ -488,64 +493,60 @@ async function doTasks(
     }
 
     const startTime = performance.now();
-    // TODO - this breaks if firstUserMessage has content parts and task model
-    // does not have mmproj
-    const titleTask = llama.completions({
-        body: {
-            stream: false,
-            model: taskModel,
-            messages: [
-                {
-                    role: 'system',
-                    content: 'Create a memorable title for the following chat message. Use fewer than 5 words. Do not use emojis.',
-                },
-                ctx.firstUserMessage,
-            ]
-        },
-        signal: signal
-    }, { taskModel: true });
+    try {
+        // TODO - this breaks if firstUserMessage has content parts and task model
+        // does not have mmproj
+        const taskResponse = await llama.completions({
+            body: {
+                stream: false,
+                model: taskModel,
+                messages: [
+                    {
+                        role: 'system',
+                        content: SYSTEM_PROMPT_TITLEGEN,
+                    },
+                    ctx.firstUserMessage,
+                ]
+            },
+            signal: signal
+        }, { taskModel: true });
 
-    titleTask.catch((err) => {
-        const title = fallbackTitle(ctx);
-
-        log(`title generation failed: ${err}`);
-        log(`fallback title: ${title}`);
-        emitTitle(title);
-    });
-
-    titleTask.then(async (taskResponse) => {
         const result = await taskResponse.stream.finished();
 
         let title: string = fallbackTitle(ctx);
         if (!result.ok) {
             log(`title generation received failing response: ${result.value}`);
         } else {
-            const taskResult = result.value.choices.at(0)?.delta;
-            log(`response from model: ${JSON.stringify(result.value, null, 2)}`);
+            const taskResult = result.value.choices.at(0)?.message;
             if (!taskResult) {
                 log(`malformed response from model`);
             } else {
-                log(`reasoning: ${taskResult.reasoning_content}`);
-                log(`content: ${taskResult.content}`);
-                title = taskResult.content ?? title;
+                // Fall back to reasoning_content if content is empty — some chat
+                // templates put the entire response inside <think> tags, leaving
+                // content empty. (Qwen3-4b-Instruct-2507).
+                //
+                // Why? This is supposed to be a non-thinking model!
+                // 
+                // ... I have no idea. It's also fixed by adding a param to 
+                // disable thinking in config.json:
+                // 
+                // "chat_template_kwargs": { "enable_thinking": false }
+                title = taskResult.content || taskResult.reasoning_content || title;
             }
         }
 
-        log(`title: ${title}`);
+        log(`generated title: ${title}`);
         emitTitle(title);
-    });
-
-    titleTask.finally(() => {
+    } catch (err) {
+        const title = fallbackTitle(ctx);
+        log(`title generation failed: ${err}`);
+        log(`using fallback title: ${title}`);
+        emitTitle(title);
+    } finally {
         const endTime = performance.now();
         const seconds = (endTime - startTime) / 1000;
         log(`(title generation) time elapsed: ${seconds} sec`);
-    });
-
-    // Return a promise that's resolved when tasks are complete
-    return new Promise(async (resolve) => {
-        await Promise.allSettled([titleTask]);
-        resolve();
-    });
+    }
 }
 
 /* -------------------- HELPERS -------------------- */
@@ -588,7 +589,7 @@ function accumulateUsage(total: SseUsage, response: proto.CompletionResponse): S
  */
 function hasToolCalls(response: proto.CompletionResponse): boolean {
     return response.choices.some(
-        c => c.finish_reason === 'tool_calls' || (c.delta.tool_calls && c.delta.tool_calls.length > 0),
+        c => c.finish_reason === 'tool_calls' || (c.message.tool_calls && c.message.tool_calls.length > 0),
     );
 }
 

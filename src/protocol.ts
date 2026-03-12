@@ -74,6 +74,32 @@ export type ImageContentPart = {
     },
 };
 
+// Streaming SSE chunk — what llama-server sends token-by-token
+export type CompletionChunk = {
+    created: number,
+    id: string,
+    model: string,
+    system_fingerprint: string,
+    object: string,
+    choices: ChatChoiceChunk[],
+};
+
+export type ChatChoiceChunk = {
+    finish_reason?: string,
+    index: number,
+    delta: ChatDelta,
+};
+
+// Incremental content from a streaming chunk
+export type ChatDelta = {
+    role?: string,
+    content?: string,
+    reasoning_content?: string,
+    refusal?: string,
+    tool_calls?: ToolCall[],
+};
+
+// Fully accumulated response — what LlamaStream returns after the stream ends
 export type CompletionResponse = {
     created: number,
     id: string,
@@ -102,10 +128,11 @@ export type CompletionResponse = {
 export type ChatChoice = {
     finish_reason?: string,
     index: number,
-    delta: ChatDelta,
+    message: ChatMessage,
 };
 
-export type ChatDelta = {
+// Complete message content in a non-streamed (final) response
+export type ChatMessage = {
     role?: string,
     content?: string,
     reasoning_content?: string,

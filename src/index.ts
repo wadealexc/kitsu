@@ -150,6 +150,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
     if (res.headersSent) {
         console.error(`reached error handler but headers already sent`);
+        console.error(`error: ${err}`)
         return next(err);
     }
 
