@@ -54,7 +54,10 @@
             "args": [
                 "--ctx-size",
                 8192
-            ]
+            ],
+            "params": {
+                "chat_template_kwargs": {"enable_thinking": false}
+            }
         }
     }
 }

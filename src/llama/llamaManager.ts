@@ -350,7 +350,8 @@ export class LlamaManager {
 
         try {
             console.log(`starting request to llama: ${llama.model.name}`)
-            const body = { ...req.body, timings_per_token: true, return_progress: true };
+            const { system: _system, ...inferenceParams } = llama.model.params;
+            const body = { ...inferenceParams, ...req.body, timings_per_token: true, return_progress: true };
             const response = await fetch(llamaURL, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -359,9 +360,6 @@ export class LlamaManager {
             });
 
             console.log(`got res from llama: ${llama.model.name}`)
-            if (llama === this.taskLlama) {
-                console.log(JSON.stringify(await response.json(), null, 2));
-            }
             const contentType: string | null = response.headers.get('content-type');
 
             if (!response.ok) {

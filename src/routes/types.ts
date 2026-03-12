@@ -302,11 +302,12 @@ export const ModelParamsSchema = z.object({
     tfs_z: z.number().optional(),
     // Control
     stop: z.union([z.string(), z.array(z.string())]).optional(),
-    system: z.string().optional(),
-    stream_response: z.boolean().optional(),
-    reasoning_effort: z.string().optional(),
-    logit_bias: z.string().optional(),
-});  // Allow additional model-specific params
+    system: z.string().optional(),           // TODO - not OAI
+    stream_response: z.boolean().optional(), // TODO - remove
+    reasoning_effort: z.string().optional(), // TODO - remove
+    logit_bias: z.union([z.array(z.any()), z.record(z.string(), z.any())]).optional(),
+    chat_template_kwargs: z.record(z.string(), z.any()).optional(),
+});
 export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata

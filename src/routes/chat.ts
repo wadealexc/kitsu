@@ -521,6 +521,7 @@ async function doTasks(
             log(`title generation received failing response: ${result.value}`);
         } else {
             const taskResult = result.value.choices.at(0)?.delta;
+            log(`response from model: ${JSON.stringify(result.value, null, 2)}`);
             if (!taskResult) {
                 log(`malformed response from model`);
             } else {
