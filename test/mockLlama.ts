@@ -127,6 +127,10 @@ export class MockLlama {
         return Promise.resolve(response);
     }
 
+    hasTaskModel(): boolean {
+        return false;
+    }
+
     getModelInfo(name: string): proto.ModelInfo | undefined {
         if (this.models.includes(name)) {
             return {

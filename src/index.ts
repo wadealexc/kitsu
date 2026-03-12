@@ -74,17 +74,19 @@ if (cfg.web.enable) {
 const tools = new ToolRegistry({ browser });
 
 // Note - temp/routed llamas for testing while prod is running
-const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager; 
+// const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager; 
 // const llama = new MockLlama() as unknown as LlamaManager;
 
 // Start llama-server
-// const llama = new LlamaManager({
-//     ports: cfg.ports.llamaCpp, llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-//     logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-//     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-//     models: cfg.models,
-// });
-// await llama.startDefault();
+const llama = new LlamaManager({
+    ports: cfg.ports.llamaCpp,
+    taskModelPorts: cfg.ports.taskModel,
+    llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
+    logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
+    sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
+    models: cfg.models,
+});
+await llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */
 

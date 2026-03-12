@@ -16,6 +16,10 @@
         "shim": {
             "port": 8081,
             "host": "192.168.87.30"
+        },
+        "taskModel": {
+            "port": 8090,
+            "host": "192.168.87.30"
         }
     },
     "logs": {
@@ -43,6 +47,14 @@
                     0
                 ]
             }
-        ]
+        ],
+        "taskModel": {
+            "gguf": "taskModels/Qwen3.5-0.8B-Q8_0.gguf",
+            "alias": "task-model",
+            "args": [
+                "--ctx-size",
+                8192
+            ]
+        }
     }
 }

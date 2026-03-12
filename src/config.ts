@@ -56,6 +56,10 @@ const PortSchema = z.object({
         port: z.coerce.number().default(8081),
         host: z.string().default('0.0.0.0'),
     }),
+    taskModel: z.object({
+        port: z.coerce.number().default(8090),
+        host: z.string().default('0.0.0.0'),
+    }).optional(),
 });
 
 /**
@@ -66,9 +70,13 @@ const PortSchema = z.object({
  *     "llamaCpp": {
  *         port: number,                             // default: 8080
  *         host: string                              // default: '0.0.0.0'
- *     },                           
+ *     },
  *     "shim": {
  *         port: number,                             // default: 8081
+ *         host: string                              // default: '0.0.0.0'
+ *     },
+ *     "taskModel": {                                // OPTIONAL
+ *         port: number,                             // default: 8090
  *         host: string                              // default: '0.0.0.0'
  *     },
  * }
@@ -93,21 +101,26 @@ const LogSchema = z.object({
  */
 export type LogConfig = z.infer<typeof LogSchema>;
 
+const ModelEntrySchema = z.object({
+    gguf: z.string(),
+    mmproj: z.optional(z.string()),
+    alias: z.optional(z.string()),
+    args: z.optional(z.array(z.coerce.string())),
+    params: z.record(z.string(), z.any()).optional(),
+});
+
+export type ModelEntry = z.infer<typeof ModelEntrySchema>;
+
 const ModelSchema = z.object({
     path: z.string().default('./models'),
-    onStart: z.string().min(1, { message: "Startup model required - this should be the name of a directory within your models folder" }),
-    models: z.array(z.object({
-        gguf: z.string(),
-        mmproj: z.optional(z.string()),
-        alias: z.optional(z.string()),
-        args: z.optional(z.array(z.coerce.string())),
-        params: z.record(z.string(), z.any()).optional(),
-    })).min(1),
+    onStart: z.string().min(1, { message: "Startup model required - this should be the alias of one of the models you defined in config" }),
+    models: z.array(ModelEntrySchema).min(1),
+    taskModel: ModelEntrySchema.optional(),
 });
 
 /**
  * Model settings:
- * 
+ *
  * ```json
  * "models": {
  *     "path": string,                               // default: './models'
@@ -128,7 +141,12 @@ const ModelSchema = z.object({
  *             // OPTIONAL: Inference defaults (temperature, system prompt, etc.)
  *             "params": { "temperature": 0.7, "system": "You are a helpful assistant." }
  *         }
- *     ]
+ *     ],
+ *     "taskModel": {                                // OPTIONAL; dedicated task model (title gen, etc.)
+ *         "gguf": "...",
+ *         "alias": "task-model",
+ *         ...
+ *     }
  * }
  * ```
  */
@@ -163,6 +181,30 @@ export async function readConfig(path: string): Promise<Config> {
     return config;
 }
 
+async function validateModelFiles(basePath: string, model: z.infer<typeof ModelEntrySchema>) {
+    // Validate GGUF file exists
+    let ggufPath = path.join(basePath, model.gguf);
+    if (!ggufPath.endsWith('.gguf')) ggufPath += '.gguf';
+
+    try {
+        await stat(ggufPath);
+    } catch (err: any) {
+        throw new Error(`config error; could not find model.gguf: ${ggufPath}; err: ${err}`);
+    }
+
+    // Validate MMProj exists if specified
+    if (model.mmproj) {
+        let mmprojPath = path.join(basePath, model.mmproj);
+        if (!mmprojPath.endsWith('.gguf')) mmprojPath += '.gguf';
+
+        try {
+            await stat(mmprojPath);
+        } catch (err: any) {
+            throw new Error(`config error; could not find model.mmproj: ${mmprojPath}; err: ${err}`);
+        }
+    }
+}
+
 async function validateFilesExist(config: Config) {
     try {
         const stats = await stat(config.logs.path);
@@ -175,26 +217,10 @@ async function validateFilesExist(config: Config) {
     const basePath = path.resolve(modelConfig.path);
 
     for (const model of modelConfig.models) {
-        // Validate GGUF file exists
-        let ggufPath = path.join(basePath, model.gguf);
-        if (!ggufPath.endsWith('.gguf')) ggufPath += '.gguf';
+        await validateModelFiles(basePath, model);
+    }
 
-        try {
-            await stat(ggufPath);
-        } catch (err: any) {
-            throw new Error(`config error; could not find model.gguf: ${ggufPath}; err: ${err}`);
-        }
-
-        // Validate MMProj exists if specified
-        if (model.mmproj) {
-            let mmprojPath = path.join(basePath, model.mmproj);
-            if (!mmprojPath.endsWith('.gguf')) mmprojPath += '.gguf';
-
-            try {
-                await stat(mmprojPath);
-            } catch (err: any) {
-                throw new Error(`config error; could not find model.mmproj: ${mmprojPath}; err: ${err}`);
-            }
-        }
+    if (modelConfig.taskModel) {
+        await validateModelFiles(basePath, modelConfig.taskModel);
     }
 }

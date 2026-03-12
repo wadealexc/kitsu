@@ -22,6 +22,7 @@ type ChatRequestContext = {
     chatId: string;
     messageId: string;
     parentMessage: any;
+    firstUserMessage: proto.BasicMessage;
     resolvedModel: string;
     messages: proto.Message[];
     completionBody: Types.ChatCompletionForm & Record<string, any>;
@@ -66,6 +67,12 @@ async function preprocessChatRequest(
         messages.unshift({ role: 'system', content: systemPrompt });
     }
 
+    // At this point, we should have a user message at [1] no matter what
+    const firstUserMessage = messages[1];
+    if (!firstUserMessage || firstUserMessage.role !== 'user') {
+        console.error(`Expected user message at messages[1]`);
+        throw new Error(`no user message found`);
+    }
 
     const completionBody = { ...parsed.data, model: resolvedModel, messages };
 
@@ -101,6 +108,7 @@ async function preprocessChatRequest(
             chatId,
             messageId,
             parentMessage,
+            firstUserMessage,
             resolvedModel,
             messages,
             completionBody
@@ -290,11 +298,19 @@ router.post('/custom-completions', requireAuth, async (
 
     // AbortController will cancel request if the client aborts
     const ctrl = new AbortController();
+    const taskCtrl = new AbortController();
+
+    // Abort taskCtrl if parent aborts
+    ctrl.signal.addEventListener('abort', () => {
+        taskCtrl.abort();
+    }, { once: true });
+
+    // Abort ctrl if client/request aborts or finishes
+    res.once('close', () => ctrl.abort());
     req.once('aborted', () => {
         console.log(chalk.dim.yellow(`[custom-completions] client aborted request`));
         ctrl.abort();
     });
-    res.once('close', () => ctrl.abort());
 
     await resolveFileIdImages(rawBody.messages as proto.Message[]);
 
@@ -304,6 +320,12 @@ router.post('/custom-completions', requireAuth, async (
         tools: toolRegistry.getToolDefinitions(),
     };
     body = await toolRegistry.beforeRequest(body) as typeof body;
+
+    // Dispatch task model, if configured
+    const taskModel = llama.getTaskModel();
+    const taskPromise = taskModel 
+        ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal) 
+        : Promise.resolve();
 
     let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
     let totalPredictedMs = 0;
@@ -403,6 +425,10 @@ router.post('/custom-completions', requireAuth, async (
             }
         }
 
+        console.log(`waiting for tasks...`);
+        await taskPromise;
+        console.log(`done!`);
+
         const completionTps = totalPredictedMs > 0
             ? (totalUsage.completion_tokens / totalPredictedMs) * 1000
             : undefined;
@@ -436,6 +462,90 @@ router.post('/custom-completions', requireAuth, async (
         }
     }
 });
+
+/* -------------------- TASKS -------------------- */
+
+async function doTasks(
+    llama: LlamaManager,
+    taskModel: string,
+    res: Response,
+    ctx: ChatRequestContext,
+    signal: AbortSignal
+): Promise<void> {
+
+    const log = (str: string) => {
+        console.log(chalk.dim.yellow(`[custom-completions::doTasks]: ${str}`));
+    };
+
+    // 1. Title generation
+    log(`starting title generation request`);
+
+    const emitTitle = (title: string) => {
+        emitSseEvent(res, ctx.chatId, ctx.messageId, {
+            type: 'chat:title',
+            data: title,
+        });
+    }
+
+    const startTime = performance.now();
+    // TODO - this breaks if firstUserMessage has content parts and task model
+    // does not have mmproj
+    const titleTask = llama.completions({
+        body: {
+            stream: false,
+            model: taskModel,
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Create a memorable title for the following chat message. Use fewer than 5 words. Do not use emojis.',
+                },
+                ctx.firstUserMessage,
+            ]
+        },
+        signal: signal
+    }, { taskModel: true });
+
+    titleTask.catch((err) => {
+        const title = fallbackTitle(ctx);
+
+        log(`title generation failed: ${err}`);
+        log(`fallback title: ${title}`);
+        emitTitle(title);
+    });
+
+    titleTask.then(async (taskResponse) => {
+        const result = await taskResponse.stream.finished();
+
+        let title: string = fallbackTitle(ctx);
+        if (!result.ok) {
+            log(`title generation received failing response: ${result.value}`);
+        } else {
+            const taskResult = result.value.choices.at(0)?.delta;
+            if (!taskResult) {
+                log(`malformed response from model`);
+            } else {
+                log(`reasoning: ${taskResult.reasoning_content}`);
+                log(`content: ${taskResult.content}`);
+                title = taskResult.content ?? title;
+            }
+        }
+
+        log(`title: ${title}`);
+        emitTitle(title);
+    });
+
+    titleTask.finally(() => {
+        const endTime = performance.now();
+        const seconds = (endTime - startTime) / 1000;
+        log(`(title generation) time elapsed: ${seconds} sec`);
+    });
+
+    // Return a promise that's resolved when tasks are complete
+    return new Promise(async (resolve) => {
+        await Promise.allSettled([titleTask]);
+        resolve();
+    });
+}
 
 /* -------------------- HELPERS -------------------- */
 
@@ -479,6 +589,27 @@ function hasToolCalls(response: proto.CompletionResponse): boolean {
     return response.choices.some(
         c => c.finish_reason === 'tool_calls' || (c.delta.tool_calls && c.delta.tool_calls.length > 0),
     );
+}
+
+/**
+ * Generate a title for a chat if no task model is available
+ */
+function fallbackTitle(ctx: ChatRequestContext): string {
+    // Fallback: send "first 3 words" of user message
+    let message = ctx.firstUserMessage.content;
+    let title: string | undefined;
+    if (Array.isArray(message)) {
+        title = message.find((msg) => msg.type === 'text')?.text;
+        if (!title) {
+            title = 'New Chat';
+        } else {
+            title = title.split(' ').slice(0, 3).join(' ');
+        }
+    } else {
+        title = message.split(' ').slice(0, 3).join(' ');
+    }
+
+    return title;
 }
 
 export default router;

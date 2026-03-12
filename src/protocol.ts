@@ -16,7 +16,7 @@ export type CompletionRequest = {
     model: string,
     messages: Message[],
     tools?: ToolDefinition[],
-    webSearchEnabled?: boolean,
+    webSearchEnabled?: boolean, // TODO - not a real field, temp
 };
 
 // Top-level tool definition provided to assistant

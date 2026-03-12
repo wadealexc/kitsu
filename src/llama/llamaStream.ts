@@ -34,6 +34,7 @@ export default class LlamaStream extends PassThrough {
 
         super.once('end', () => {
             const responseString = Buffer.concat(this.chunks).toString('utf8');
+            console.log(`LlamaStream::end: ${responseString}`);
 
             // Handle streamed vs static response
             const result: proto.Result<proto.CompletionResponse, Error> = expectSSE
@@ -126,6 +127,8 @@ function handleStaticResponse(responseString: string): proto.Result<proto.Comple
             value: JSON.parse(responseString),
         }
     } catch (err: any) {
+        console.log(`handleStaticResponse: error decoding response: ${err}`);
+        console.log(`responseString: ${responseString}`)
         return {
             ok: false,
             value: new Error(`handleStaticResponse: error decoding response: ${err}`)
