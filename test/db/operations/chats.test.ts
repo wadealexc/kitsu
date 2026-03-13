@@ -427,6 +427,24 @@ describe('Chat Operations', () => {
             assert.strictEqual(updated.folderId, folder.id);
         });
 
+        it('should update only the title when chat contains only a new title', async () => {
+            const chat = await Chats.createChat(userId, createChatWithMessage('Original Title'), db);
+            const originalChat = chat.chat;
+            const originalMessageId = Object.keys(originalChat.history!.messages)[0]!;
+
+            const updated = await Chats.updateChat(chat.id, { chat: { title: 'New Title' } }, db);
+
+            // Title updated on both top-level column and inside the JSON blob
+            assert.strictEqual(updated.title, 'New Title');
+            assert.strictEqual(updated.chat.title, 'New Title');
+
+            // Everything else in the chat object is preserved
+            assert.strictEqual(updated.chat.model, originalChat.model);
+            assert.deepStrictEqual(updated.chat.history, originalChat.history);
+            assert.ok(updated.chat.history!.messages[originalMessageId], 'original message should still exist');
+            assert.strictEqual(updated.folderId, chat.folderId);
+        });
+
         it('should throw for non-existent chat', async () => {
             await assert.rejects(
                 async () => await Chats.updateChat('non-existent-id', { chat: {} }, db),

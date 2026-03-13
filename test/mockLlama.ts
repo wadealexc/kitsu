@@ -131,6 +131,10 @@ export class MockLlama {
         return false;
     }
 
+    getTaskModel(): string | undefined {
+        return undefined;
+    }
+
     getModelInfo(name: string): proto.ModelInfo | undefined {
         if (this.models.includes(name)) {
             return {

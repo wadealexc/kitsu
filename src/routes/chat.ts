@@ -331,7 +331,7 @@ router.post('/custom-completions', requireAuth, async (
 
     // Dispatch task model, if configured
     const taskModel = llama.getTaskModel();
-    const taskPromise = taskModel
+    const taskPromise = (taskModel && rawBody.generateTitle)
         ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
         : Promise.resolve();
 
@@ -494,6 +494,11 @@ async function doTasks(
 
     const startTime = performance.now();
     try {
+        if (ctx.chatId.startsWith('local:')) {
+            log(`local chat - skipping title generation`);
+            return;
+        }
+
         // TODO - this breaks if firstUserMessage has content parts and task model
         // does not have mmproj
         const taskResponse = await llama.completions({
@@ -536,6 +541,7 @@ async function doTasks(
         }
 
         log(`generated title: ${title}`);
+        await Chats.updateChat(ctx.chatId, { chat: { title } });
         emitTitle(title);
     } catch (err) {
         const title = fallbackTitle(ctx);

@@ -200,12 +200,10 @@ export class LlamaManager {
         if (this.taskLlama) {
             console.log(`starting task model: ${this.taskLlama.model.name}`);
             await this.#start(this.taskLlama, { isTaskModel: true });
-            this.#logVRAM();
         }
 
         console.log(`starting main model: ${this.defaultLlama.model.name}`);
         await this.#start(this.defaultLlama);
-        this.#logVRAM();
 
         this.sleepTimer = this.#newSleepTimer(this.sleepAfterMs);
     }
@@ -349,7 +347,6 @@ export class LlamaManager {
         llama.active.proc.once('exit', prematureExit);
 
         try {
-            console.log(`starting request to llama: ${llama.model.name}`)
             const { system: _system, ...inferenceParams } = llama.model.params;
             const body = { ...inferenceParams, ...req.body, timings_per_token: true, return_progress: true };
             const response = await fetch(llamaURL, {
@@ -359,7 +356,6 @@ export class LlamaManager {
                 signal: req.signal,
             });
 
-            console.log(`got res from llama: ${llama.model.name}`)
             const contentType: string | null = response.headers.get('content-type');
 
             if (!response.ok) {
@@ -372,7 +368,6 @@ export class LlamaManager {
             }
 
             const expectSSE = contentType.includes('text/event-stream');
-            console.log(`llamaStream for: ${llama.model.name}, expectSSE: ${expectSSE}`);
             stream = new LlamaStream(
                 response.body,
                 expectSSE,
@@ -380,7 +375,6 @@ export class LlamaManager {
             );
 
             stream.once('stop', () => {
-                console.log(`stop: ${llama.model.name}`);
                 if (llama.active) {
                     llama.active.requests--;
                     llama.active.proc.removeListener('exit', prematureExit);
@@ -409,6 +403,7 @@ export class LlamaManager {
             };
         } catch (err: any) {
             llama.active.requests--;
+            llama.active.proc.removeListener('exit', prematureExit);
             throw new Error(err);
         }
     }
@@ -668,6 +663,7 @@ export class LlamaManager {
                             `(pid ${llama.active.proc.pid}) ` +
                             '\n'
                         );
+                        this.#logVRAM();
                         resolve();
                         return;
                     }

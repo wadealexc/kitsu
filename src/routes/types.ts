@@ -686,6 +686,7 @@ export const ChatCompletionFormSchema = z.object({
     }).passthrough().optional(),
     params: ModelParamsSchema.optional(),
     webSearchEnabled: z.boolean().optional().default(false),
+    generateTitle: z.boolean().optional(),
 }).passthrough();  // Allow additional OpenAI extensions
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 
