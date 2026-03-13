@@ -423,7 +423,7 @@ export const ChatMessageFileSchema = z.object({
     type: z.string(),
     name: z.string(),
     url: z.string(),
-    content_type: z.string(),
+    contentType: z.string(),
     size: z.number(),
 }).passthrough();
 export type ChatMessageFile = z.infer<typeof ChatMessageFileSchema>;

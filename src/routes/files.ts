@@ -337,11 +337,11 @@ router.delete('/all', requireAdmin, async (
  * Get file metadata by ID.
  *
  * @param {Types.FileIdParams} - path parameters with file ID
- * @returns {Types.FileModel} - full file metadata including internal path
+ * @returns {Types.FileModelResponse} - full file metadata including internal path
  */
 router.get('/:file_id', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
-    res: Response<Types.FileModel | Types.ErrorResponse>
+    res: Response<Types.FileModelResponse | Types.ErrorResponse>
 ) => {
     const { file_id: fileId } = req.params;
     const userId = req.user!.id;
@@ -361,10 +361,8 @@ router.get('/:file_id', validateFileId, requireAuth, async (
             user_id: file.userId,
             hash: file.hash,
             filename: file.filename,
-            path: file.path,
             data: file.data,
             meta: file.meta,
-            access_control: file.accessControl,
             created_at: file.createdAt,
             updated_at: file.updatedAt,
         });

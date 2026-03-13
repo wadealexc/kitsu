@@ -549,7 +549,6 @@ describe('File Routes', () => {
             assert.strictEqual(response.body.id, file.id);
             assert.strictEqual(response.body.user_id, userId);
             assert.strictEqual(response.body.filename, 'test.txt');
-            assert.ok(response.body.path);
             assert.ok(response.body.hash);
             assert.ok(response.body.data);
             assert.ok(response.body.meta);
