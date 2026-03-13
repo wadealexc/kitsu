@@ -21,7 +21,6 @@ function _createChatObject(title: string = 'Chat'): ChatObject {
         history: {
             messages: {},
         },
-        files: [],
         timestamp: currentUnixTimestamp()
     }
 }
@@ -192,13 +191,11 @@ describe('Database Cascade Deletion', () => {
                     userId: user.id,
                     filename: 'document1.pdf',
                     path: '/path/to/doc1.pdf',
-                    hash: '',
                     data: {},
                     meta: {
                         name: 'document1.pdf',
                         contentType: '',
                         size: 0,
-                        data: {},
                     },
                 },
                 db
@@ -208,21 +205,21 @@ describe('Database Cascade Deletion', () => {
                     userId: user.id,
                     filename: 'document2.jpeg',
                     path: '/path/to/doc2.jpeg',
-                    hash: '',
                     data: {},
                     meta: {
                         name: 'document2.jpeg',
                         contentType: '',
                         size: 0,
-                        data: {},
                     },
                 },
                 db
             );
 
             // Verify files exist
-            const filesBefore = await Files.getFilesByUserId(user.id, {}, db);
-            assert.strictEqual(filesBefore.total, 2);
+            const file1Before = await Files.getFileById(file1.id, db);
+            assert.ok(file1Before);
+            const file2Before = await Files.getFileById(file2.id, db);
+            assert.ok(file2Before);
 
             // Delete user
             await Users.deleteUser(user.id, db);
@@ -280,13 +277,11 @@ describe('Database Cascade Deletion', () => {
                     userId: user.id,
                     filename: 'important.pdf',
                     path: '/path/to/important.pdf',
-                    hash: '',
                     data: {},
                     meta: {
                         name: 'important.pdf',
                         contentType: '',
                         size: 0,
-                        data: {},
                     },
                 },
                 db
@@ -305,8 +300,8 @@ describe('Database Cascade Deletion', () => {
             const chatsBefore = await Chats.getChatsByUserId(user.id, db);
             assert.strictEqual(chatsBefore.length, 2);
 
-            const filesBefore = await Files.getFilesByUserId(user.id, {}, db);
-            assert.strictEqual(filesBefore.total, 1);
+            const fileBefore = await Files.getFileById(file.id, db);
+            assert.ok(fileBefore);
 
             // Delete user
             await Users.deleteUser(user.id, db);
@@ -408,13 +403,11 @@ describe('Database Cascade Deletion', () => {
                     userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
-                    hash: '',
                     data: {},
                     meta: {
                         name: 'document.pdf',
                         contentType: '',
                         size: 0,
-                        data: {},
                     },
                 },
                 db
@@ -469,13 +462,11 @@ describe('Database Cascade Deletion', () => {
                     userId: user.id,
                     filename: 'document.pdf',
                     path: '/path/to/document.pdf',
-                    hash: '',
                     data: {},
                     meta: {
                         name: 'document.pdf',
                         contentType: '',
                         size: 0,
-                        data: {},
                     },
                 },
                 db

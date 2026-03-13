@@ -1,9 +1,9 @@
-import { eq, desc, asc, like, inArray, sql, and } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '../client.js';
 import { files } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { FileData, AccessControl } from '../../routes/types.js';
+import type { FileData } from '../../routes/types.js';
 import * as Chats from './chats.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
@@ -43,7 +43,6 @@ export async function createFile(
             userId: data.userId,
             filename: data.filename,
             path: data.path,
-            hash: data.hash,
             data: data.data,
             meta: data.meta,
             accessControl: {},
@@ -120,20 +119,6 @@ export async function deleteFile(
     if (result.rowsAffected === 0) throw new RecordNotFoundError(TABLE, id);
 }
 
-/**
- * Deletes all file records from the database. Corresponding chat_file records are
- * deleted by cascade.
- * @note this does NOT delete files from the storage provider; that is the caller's
- * responsibility.
- * 
- * @param txOrDb
- */
-export async function deleteAllFiles(
-    txOrDb: DbOrTx = db
-): Promise<void> {
-    await txOrDb.delete(files);
-}
-
 /* -------------------- READ -------------------- */
 
 /**
@@ -176,110 +161,6 @@ export async function getFilesByIds(
         .from(files)
         .where(inArray(files.id, ids))
         .orderBy(desc(files.updatedAt));
-}
-
-/**
- * Admin only: Retrieves ALL files from ALL users (no filtering).
- * Used for admin data export/backup.
- */
-export async function getFiles(
-    txOrDb: DbOrTx = db
-): Promise<File[]> {
-    return await txOrDb
-        .select()
-        .from(files)
-        .orderBy(desc(files.updatedAt));
-}
-
-/**
- * Pagination options.
- */
-export type PaginationOptions = {
-    skip?: number;
-    limit?: number;
-    orderBy?: 'createdAt' | 'updatedAt';
-    direction?: 'asc' | 'desc';
-};
-
-/**
- * Retrieves all files for a specific user with pagination and sorting.
- */
-export async function getFilesByUserId(
-    userId: string,
-    options: PaginationOptions = {},
-    txOrDb: DbOrTx = db
-): Promise<{ items: File[]; total: number }> {
-    const {
-        skip = 0,
-        limit,
-        orderBy = 'updatedAt',
-        direction = 'desc',
-    } = options;
-
-    // Determine sort column
-    const sortColumn = orderBy === 'createdAt' ? files.createdAt : files.updatedAt;
-    const sortFn = direction === 'asc' ? asc : desc;
-
-    // Execute query
-    const items = await txOrDb
-        .select()
-        .from(files)
-        .where(eq(files.userId, userId))
-        .orderBy(sortFn(sortColumn))
-        .limit(limit ?? 999999)
-        .offset(skip);
-
-    // Get total count
-    const countResult = await txOrDb
-        .select({ count: sql<number>`count(*)` })
-        .from(files)
-        .where(eq(files.userId, userId));
-
-    const total = countResult[0]?.count ?? 0;
-
-    return { items, total };
-}
-
-/* -------------------- SEARCH & FILTERING -------------------- */
-
-/**
- * Search a user's files by filename with glob pattern matching. Orders results
- * by updatedAt DESC.
- * 
- * @param userId - the user whose files will be searched
- * @param filename - Glob pattern: * matches any, ? matches one char
- * @param skip - pagination offset
- * @param limit - page size
- * 
- * @returns a list of file records matching the search
- */
-export async function searchFiles(
-    userId: string,
-    filename: string,
-    skip: number = 0,
-    limit: number = 100,
-    txOrDb: DbOrTx = db
-): Promise<File[]> {
-    // Convert glob patterns to SQL LIKE patterns
-    const pattern = filename
-        .replace(/\*/g, '%')
-        .replace(/\?/g, '_');
-
-    // Build where conditions
-    const whereClause = and(
-        like(files.filename, pattern),
-        eq(files.userId, userId)
-    );
-
-    // Enforce max limit
-    const effectiveLimit = Math.min(limit, 1000);
-    return await txOrDb
-        .select()
-        .from(files)
-        .where(whereClause)
-        .orderBy(desc(files.updatedAt))
-        .limit(effectiveLimit)
-        .offset(skip);
 }
 
 /* -------------------- ACCESS CONTROL -------------------- */
@@ -327,33 +208,3 @@ export async function hasFileAccess(
     return false;
 }
 
-/**
- * Updates file's granular access control permissions.
- * 
- * @param id - file id
- * @param accessControl - the new permissions
- * @param txOrDb
- * 
- * @returns the updated file record
- * 
- * @throws if the update fails
- */
-export async function updateFileAccessControl(
-    id: string,
-    accessControl: AccessControl,
-    txOrDb: DbOrTx = db
-): Promise<File> {
-    const now = currentUnixTimestamp();
-
-    const [updated] = await txOrDb
-        .update(files)
-        .set({
-            accessControl: accessControl,
-            updatedAt: now,
-        })
-        .where(eq(files.id, id))
-        .returning();
-
-    if (!updated) throw new RecordNotFoundError(TABLE, id);
-    return updated;
-}

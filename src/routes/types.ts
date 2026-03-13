@@ -56,7 +56,6 @@ export type FolderIdParams = { folder_id: FolderId };
 export type FileIdParams = { file_id: FileId };
 export type ShareIdParams = { share_id: ShareId };
 export type MessageIdParams = { id: ChatId; message_id: MessageId };
-export type NamedFileParams = { file_id: FileId; file_name: string };
 
 /* -------------------- COMMON SCHEMAS -------------------- */
 
@@ -425,6 +424,7 @@ export const ChatMessageFileSchema = z.object({
     url: z.string(),
     contentType: z.string(),
     size: z.number(),
+    content: z.string().optional(),
 }).passthrough();
 export type ChatMessageFile = z.infer<typeof ChatMessageFileSchema>;
 
@@ -530,7 +530,6 @@ export interface ChatObject {
     webSearchEnabled?: boolean;
     history: ChatHistory;
     messages: FlattenedMessage[];
-    files: ChatMessageFile[];
     timestamp: number;
 }
 
@@ -541,7 +540,6 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     params: ModelParamsSchema.default({}),
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
-    files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
 }).passthrough();
@@ -555,7 +553,6 @@ export const ChatObjectUpdateSchema = z.object({
     params: ModelParamsSchema,
     history: ChatHistorySchema,
     messages: z.array(FlattenedMessageSchema),
-    files: z.array(ChatMessageFileSchema).default([]),
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
 }).partial();
@@ -679,7 +676,6 @@ export const ChatCompletionFormSchema = z.object({
     id: MessageIdSchema,
     parent_id: MessageIdSchema.optional(),
     parent_message: z.record(z.string(), z.any()).optional(),
-    files: z.array(z.any()).optional(),
     variables: z.record(z.string(), z.any()).optional(),
     model_item: z.object({
         // direct: z.boolean().optional(),
@@ -828,38 +824,19 @@ export const FileMetaSchema = z.object({
     name: z.string(),
     contentType: z.string(),
     size: z.number(),
-    data: z.record(z.string(), z.any()),
 });
 export type FileMeta = z.infer<typeof FileMetaSchema>;
 
 // File data structure (processing status and content)
 export const FileDataSchema = z.object({
-    status: z.enum(['pending', 'completed', 'failed']).optional(),
-    error: z.string().optional(),
     content: z.string().optional(),
 });
 export type FileData = z.infer<typeof FileDataSchema>;
 
-// Full file model (includes internal path field)
-export const FileModelSchema = z.object({
-    id: FileIdSchema,
-    user_id: UserIdSchema,
-    hash: z.string().nullable(),
-    filename: z.string(),
-    path: z.string().nullable(),
-    data: FileDataSchema.nullable(),
-    meta: FileMetaSchema.nullable(),
-    access_control: AccessControlSchema,
-    created_at: z.number().nullable(),
-    updated_at: z.number().nullable(),
-});
-export type FileModel = z.infer<typeof FileModelSchema>;
-
-// File model response (excludes internal path field)
+// File model response (excludes internal path, hash, and access_control fields)
 export const FileModelResponseSchema = z.object({
     id: FileIdSchema,
     user_id: UserIdSchema,
-    hash: z.string().nullable(),
     filename: z.string(),
     data: FileDataSchema.nullable(),
     meta: FileMetaSchema,
@@ -868,74 +845,12 @@ export const FileModelResponseSchema = z.object({
 });
 export type FileModelResponse = z.infer<typeof FileModelResponseSchema>;
 
-// Upload file form (multipart form-data)
-// Note: Actual file upload validation happens in express middleware, via multer
-export const UploadFileFormSchema = z.object({
-    file: z.any(),
-    metadata: z.union([
-        z.string(),
-        z.record(z.string(), z.any()),
-    ]).nullable().optional(),
-});
-export type UploadFileForm = z.infer<typeof UploadFileFormSchema>;
-
-// Query parameters for POST /api/v1/files/
-export const UploadFileQuerySchema = z.object({
-    process: z.stringbool().optional().default(true),
-    process_in_background: z.stringbool().optional().default(true),
-});
-export type UploadFileQuery = z.infer<typeof UploadFileQuerySchema>;
-
-// Content form (for updating file content)
-export const ContentFormSchema = z.object({
-    content: z.string(),
-});
-export type ContentForm = z.infer<typeof ContentFormSchema>;
-
-// Query parameters for GET /api/v1/files/
-export const FileListQuerySchema = z.object({
-    content: z.stringbool().optional(),
-});
-export type FileListQuery = z.infer<typeof FileListQuerySchema>;
-
-// Query parameters for GET /api/v1/files/search
-export const FileSearchQuerySchema = z.object({
-    filename: z.string(),
-    content: z.stringbool().optional().default(true),
-    skip: z.coerce.number().int().min(0).optional().default(0),
-    limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
-});
-export type FileSearchQuery = z.infer<typeof FileSearchQuerySchema>;
-
 // Query parameters for GET /api/v1/files/{id}/content
 export const FileContentQuerySchema = z.object({
     attachment: z.stringbool().default(false),
 });
 export type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
 
-// Query parameters for GET /api/v1/files/{id}/process/status
-export const FileProcessStatusQuerySchema = z.object({
-    stream: z.stringbool().default(false),
-});
-export type FileProcessStatusQuery = z.infer<typeof FileProcessStatusQuerySchema>;
-
-// Response for /api/v1/files/all DELETE and file delete operations
-export const FileDeleteResponseSchema = z.object({
-    message: z.string(),
-});
-export type FileDeleteResponse = z.infer<typeof FileDeleteResponseSchema>;
-
-// Response for /api/v1/files/{id}/data/content GET
-export const FileDataContentResponseSchema = z.object({
-    content: z.string(),
-});
-export type FileDataContentResponse = z.infer<typeof FileDataContentResponseSchema>;
-
-// Response for /api/v1/files/{id}/process/status GET (non-streaming)
-export const FileProcessStatusResponseSchema = z.object({
-    status: z.string(),
-});
-export type FileProcessStatusResponse = z.infer<typeof FileProcessStatusResponseSchema>;
 
 /* -------------------- VERSION SCHEMAS -------------------- */
 

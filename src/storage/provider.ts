@@ -6,7 +6,7 @@
  */
 
 export interface StorageProvider {
-    uploadFile(buffer: Buffer, metadata: any): Promise<string>;
+    uploadFile(buffer: Buffer): Promise<string>;
     downloadFile(path: string): Promise<Buffer>;
     deleteFile(path: string): Promise<void>;
 }

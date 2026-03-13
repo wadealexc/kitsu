@@ -100,18 +100,16 @@ export function createTestFileForm(
     userId: string,
     filename: string = 'test-file.pdf',
     meta?: FileMeta,
-    data: FileData = { status: 'completed' },
+    data: FileData = { },
 ): Files.NewFile {
     return {
         userId: userId,
         filename: filename,
         path: `${crypto.randomUUID()}_${filename}`,
-        hash: '',
         meta: meta || {
             name: filename,
             contentType: '',
             size: 0,
-            data: {},
         },
         data: data,
     };
@@ -131,7 +129,6 @@ export function createTestChatObject(
             messages: {},
             currentId: null,
         },
-        files: [],
         messages: [],
         timestamp: currentUnixTimestamp(),
     };

@@ -202,7 +202,6 @@ export const files = sqliteTable('file', {
         .references(() => users.id, { onDelete: 'cascade' }),
 
     // File Info
-    hash: text('hash').notNull(),
     filename: text('filename').notNull(),
     path: text('path').notNull(),
 
@@ -219,7 +218,6 @@ export const files = sqliteTable('file', {
     index('idx_file_user_id').on(table.userId),
     index('idx_file_created_at').on(table.createdAt),
     index('idx_file_updated_at').on(table.updatedAt),
-    index('idx_file_hash').on(table.hash),
 ]);
 
 /* -------------------- MODEL TABLE -------------------- */
