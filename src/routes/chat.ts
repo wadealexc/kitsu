@@ -468,6 +468,9 @@ Your primary role is to come up with a short, memorable phrase to serve as the "
 You should adhere to the following guidelines:
 - Respond to the user's message with a phrase that summarizes the user's message
 - Your response should contain 5 or fewer words
+- Your response should never attempt to answer the user's question, or respond to the user's message directly
+
+Create a chat title that summarizes the following user message:
 `;
 
 async function doTasks(
