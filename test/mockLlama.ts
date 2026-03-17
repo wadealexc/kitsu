@@ -1,7 +1,6 @@
 import { Readable } from 'stream';
 import { Headers } from 'node-fetch';
 
-import { type ModelConfig } from '../src/config.js';
 import type { LlamaRequest, LlamaResponse } from '../src/llama/llamaManager.js';
 import LlamaStream from '../src/llama/llamaStream.js';
 
@@ -126,6 +125,10 @@ export class MockLlama {
 
         return Promise.resolve(response);
     }
+
+    wake(_model: string): void {}
+
+    isAwake(_model: string): boolean { return true; }
 
     hasTaskModel(): boolean {
         return false;

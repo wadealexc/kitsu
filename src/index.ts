@@ -86,7 +86,7 @@ const llama = new LlamaManager({
     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
     models: cfg.models,
 });
-await llama.startDefault();
+llama.startDefault();
 
 /* -------------------- APP STATE -------------------- */
 

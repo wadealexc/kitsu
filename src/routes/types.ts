@@ -341,6 +341,12 @@ export const ModelResponseSchema = z.object({
 });
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
+// Model status response (extends ModelResponse with wake status — only used by GET /api/v1/models)
+export const ModelStatusResponseSchema = ModelResponseSchema.extend({
+    isAwake: z.boolean(),
+});
+export type ModelStatusResponse = z.infer<typeof ModelStatusResponseSchema>;
+
 // Model access response (includes user info and write access flag)
 export const ModelAccessResponseSchema = ModelResponseSchema.extend({
     user: UserResponseSchema.nullable(),

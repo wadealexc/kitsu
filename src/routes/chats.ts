@@ -200,7 +200,7 @@ router.post('/new', requireAuth, async (
             chat: body.data.chat,
             folderId: body.data.folder_id,
         }, db);
-        console.log(`POST chats/new:\n${JSON.stringify(newChat, null, 2)}`);
+        // console.log(`POST chats/new:\n${JSON.stringify(newChat, null, 2)}`);
 
         const response: Types.ChatResponse = {
             id: newChat.id,
@@ -263,7 +263,7 @@ router.post('/:id', validateChatId, requireAuth, async (
 
         // Update chat
         const updatedChat = await Chats.updateChat(chatId, body.data, db);
-        console.log(`POST chats/${chatId}:\n${JSON.stringify(updatedChat, null, 2)}`);
+        // console.log(`POST chats/${chatId}:\n${JSON.stringify(updatedChat, null, 2)}`);
 
         const response: Types.ChatResponse = {
             id: updatedChat.id,

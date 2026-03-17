@@ -40,6 +40,7 @@ type PreprocessError = {
  */
 async function preprocessChatRequest(
     req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
+    llama: LlamaManager,
 ): Promise<proto.Result<ChatRequestContext, PreprocessError>> {
     const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -57,6 +58,11 @@ async function preprocessChatRequest(
             return { ok: false, value: { status: 403, detail: 'No access to this model' } };
         }
         resolvedModel = customModel.baseModelId;
+    }
+
+    // Ensure base model exists
+    if (!llama.getModelInfo(resolvedModel)) {
+        return { ok: false, value: { status: 404, detail: `Model not found: ${resolvedModel}` }};
     }
 
     // Oh god it's horrible
@@ -180,7 +186,8 @@ router.post('/completions', requireAuth, async (
 ) => {
     console.log(`body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
 
-    const ctx = await preprocessChatRequest(req);
+    const llama = req.app.locals.llama as LlamaManager;
+    const ctx = await preprocessChatRequest(req, llama);
     if (!ctx.ok) {
         return res
             .status(ctx.value.status)
@@ -188,7 +195,6 @@ router.post('/completions', requireAuth, async (
     }
 
     const { chatId, messageId, completionBody: body } = ctx.value;
-    const llama = req.app.locals.llama as LlamaManager;
 
     await resolveFileIdImages(body.messages as proto.Message[]);
 
@@ -285,7 +291,8 @@ router.post('/custom-completions', requireAuth, async (
 ) => {
     // console.log(`[custom-completions] body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
 
-    const ctx = await preprocessChatRequest(req);
+    const llama = req.app.locals.llama as LlamaManager;
+    const ctx = await preprocessChatRequest(req, llama);
     if (!ctx.ok) {
         return res
             .status(ctx.value.status)
@@ -293,7 +300,6 @@ router.post('/custom-completions', requireAuth, async (
     }
 
     const { chatId, messageId, completionBody: rawBody } = ctx.value;
-    const llama = req.app.locals.llama as LlamaManager;
     const toolRegistry = req.app.locals.tools as ToolRegistry;
 
     // AbortController will cancel request if the client aborts

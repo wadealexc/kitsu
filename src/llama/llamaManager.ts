@@ -1,8 +1,7 @@
 import path from 'path';
 import * as fs from 'node:fs';
 import { spawn, execSync, ChildProcess } from 'child_process';
-import fetch, { type RequestInit, Response, Headers } from 'node-fetch';
-import type { IncomingHttpHeaders } from 'node:http';
+import fetch, { Headers } from 'node-fetch';
 
 import chalk from 'chalk';
 
@@ -27,34 +26,19 @@ const POLL_INTERVAL_MS = 500;
 // (total wait time ms: NUM_RETRIES * POLL_INTERVAL_MS -> 20 seconds)
 const NUM_RETRIES = 40;
 
+// How often the main dispatch loop ticks
+const LOOP_INTERVAL_MS = 100;
+
 type Llama = {
     model: proto.ModelInfo,
     serverHost: string,
     serverPort: string,
-    pending: PendingJob[],
     active: {
         requests: number,
         proc: ChildProcess,
         exited: Promise<void>,
     } | null,
 };
-
-type ActiveLlama = {
-    [K in keyof Llama]: K extends 'active'
-    ? Exclude<Llama[K], null>
-    : Llama[K];
-}
-
-type InactiveLlama = {
-    [K in keyof Llama]: K extends 'active'
-    ? Extract<Llama[K], null>
-    : Llama[K];
-}
-
-type PendingJob = {
-    request: LlamaRequest,
-    onResponse: (result: proto.Result<LlamaResponse, Error>) => void,
-}
 
 export type LlamaRequest = {
     body: proto.CompletionRequest,
@@ -69,15 +53,31 @@ export type LlamaResponse = {
 
 // VRAM usage
 type VRAM = {
-    used: number;
-    total: number;
-}
+    used: number,
+    total: number,
+};
+
+type Job = {
+    request: LlamaRequest,
+    promise: Promise<LlamaResponse>,
+    resolve: (value: LlamaResponse) => void,
+    reject: (err: unknown) => void,
+};
+
+type RequestQueueItem = {
+    llama: Llama,
+    jobs: Job[],
+};
 
 /**
  * LlamaManager manages llamas.
  *
- * This thing is basically "in charge" of a single llama.cpp process. It creates the process,
- * handles prompts while the process is alive, and tears down the process when requested.
+ * This thing is in charge of llama.cpp processes. It shells out to spawn llama-server
+ * instances, handles prompts while the process is alive, and tears down the process 
+ * when requested.
+ * 
+ * A single global `requestQueue` is driven by a polling loop (`startLoop`). The loop
+ * handles model start/stop/swap and job dispatch.
  *
  * An optional task model runs on a dedicated port alongside the main model. It never
  * participates in swap/queue logic and is started/stopped with the main model.
@@ -85,23 +85,22 @@ type VRAM = {
 export class LlamaManager {
 
     private defaultLlama: Llama;
-    private taskLlama: Llama | null = null;
 
-    // `llamas` maps model names to a Llama we can spin up to handle requests
-    // `waitingLlamas` is the set of models that have requests waiting
-    // `activeLlama` holds the name of our currently-active llama-server process
+    // Main models we can spin up to handle requests
     private llamas: Map<string, Llama>;
-    private waitingLlamas: string[] = [];
-    private activeLlama: string | null = null;
+    private requestQueue: RequestQueueItem[] = [];
 
+    // Optional task model to handle tasks
+    private taskLlama: Llama | null = null;
+    private taskQueue: Job[] = [];
+
+    private loopTimer: NodeJS.Timeout | null = null;
     private sleepAfterMs: number;
     private sleepTimer: { reset: () => void, clear: () => void } | null = null;
 
-    // Number of times we have instantiated a `llama-server` process
+    // Logging
     private runCounter = 0;
     private logDirectory: string;
-    private logFilePrefix: string;
-
     private llamaServerVerboseLogs: boolean;
 
     constructor(params: {
@@ -150,7 +149,6 @@ export class LlamaManager {
                 },
                 serverHost: host,
                 serverPort: port.toString(),
-                pending: [],
                 active: null,
             };
         };
@@ -167,7 +165,7 @@ export class LlamaManager {
         this.defaultLlama = this.llamas.get(defaultModelName)
             ?? (() => { throw new Error(`LlamaManager: configured onStart model not found: ${defaultModelName}`) })();
 
-        // Build task llama if configured — both taskModel and taskModelPorts must be provided together
+        // Build task llama if configured - both taskModel and taskModelPorts must be provided together
         const hasTaskModel = !!params.models.taskModel;
         const hasTaskPorts = !!params.taskModelPorts;
         if (hasTaskModel !== hasTaskPorts) {
@@ -185,101 +183,213 @@ export class LlamaManager {
         this.sleepAfterMs = params.sleepAfterXSeconds * 1000;
 
         this.logDirectory = params.logDirectory;
-        this.logFilePrefix = params.logFilePrefix;
-
         this.llamaServerVerboseLogs = params.llamaServerVerbose;
+    }
+
+    /* -------------------- MAIN LOOP -------------------- */
+
+    /**
+     * Dispatch loop. Loads/swaps models if needed, then dispatches tasks to models.
+     * 
+     * Waits for models to be loaded before task dispatch.
+     */
+    async #loop(): Promise<void> {
+        await this.#startModels();
+        await this.#swapOnIdle();
+
+        const jobsDispatched = this.#dispatchJobs();
+        const tasksDispatched = this.#dispatchTasks();
+        if (jobsDispatched || tasksDispatched) this.sleepTimer?.reset();
+    }
+
+    /**
+     * Start any inactive models, if needed. Starts both the current
+     * requested model and the task model. Does nothing if a model is
+     * already running.
+     */
+    async #startModels(): Promise<void> {
+        const promises: Promise<void>[] = [];
+        const cur = this.requestQueue.at(0);
+        
+        if (cur && !cur.llama.active) 
+            promises.push(this.#start(cur.llama));
+
+        if (this.taskLlama && !this.taskLlama.active)
+            promises.push(this.#start(this.taskLlama));
+
+        await Promise.all(promises);
+    }
+
+    /**
+     * If the currently-requested model is idle and we have a model queued up,
+     * stop the current model and start the queued model.
+     * 
+     * Waits until the "next" model is running before returning.
+     */
+    async #swapOnIdle(): Promise<void> {
+        const cur = this.requestQueue.at(0);
+        const next = this.requestQueue.at(1);
+        if (!cur || !next) return;
+
+        // Current model is busy - don't swap
+        if (cur.jobs.length > 0) return;
+        if (cur.llama.active && cur.llama.active.requests !== 0) return;
+
+        // Current model is idle - shift it off and swap to next
+        this.requestQueue.shift();
+
+        await this.#stop(cur.llama);
+        this.#logVRAM();
+        await this.#start(next.llama);
+        this.#logVRAM();
+    }
+
+    /**
+     * Dispatch all queued jobs for the current model to llama-server
+     * 
+     * @returns true if any jobs were dispatched
+     */
+    #dispatchJobs(): boolean {
+        const cur = this.requestQueue.at(0);
+        if (!cur || !cur.llama.active || cur.jobs.length === 0) 
+            return false;
+
+        const jobs = cur.jobs;
+        cur.jobs = [];
+        for (const job of jobs) {
+            this.#send(cur.llama, job);
+        }
+
+        return jobs.length > 0;
+    }
+
+    /**
+     * Dispatch all queued tasks for the task model to llama-server
+     * 
+     * @returns true if any tasks were dispatched
+     */
+    #dispatchTasks(): boolean {
+        if (!this.taskLlama || !this.taskLlama.active || this.taskQueue.length === 0) 
+            return false;
+
+        const tasks = this.taskQueue;
+        this.taskQueue = [];
+        for (const task of tasks) {
+            this.#send(this.taskLlama, task);
+        }
+
+        return tasks.length > 0;
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
 
-    // Start llama-server with default model (and task model if configured)
-    async startDefault(): Promise<void> {
-        console.log(`LlamaManager: starting models`);
+    /**
+     * Push the default model into the queue and start the dispatch loop.
+     * Models are loaded asynchronously by the first loop tick.
+     */
+    startDefault(): void {
+        console.log(`LlamaManager: starting`);
         this.#logVRAM();
 
-        if (this.taskLlama) {
-            console.log(`starting task model: ${this.taskLlama.model.name}`);
-            await this.#start(this.taskLlama, { isTaskModel: true });
-        }
-
-        console.log(`starting main model: ${this.defaultLlama.model.name}`);
-        await this.#start(this.defaultLlama);
-
+        this.requestQueue.push({ llama: this.defaultLlama, jobs: [] });
         this.sleepTimer = this.#newSleepTimer(this.sleepAfterMs);
-    }
 
-    completions(req: LlamaRequest, opts?: { taskModel?: boolean }): Promise<LlamaResponse> {
-
-        let llama: Llama | undefined;
-        if (opts?.taskModel) {
-            if (!this.taskLlama) throw new Error(`LlamaManager: task model not configured`);
-            llama = this.taskLlama;
-        } else {
-            llama = this.getLlamaForModel(req.body.model, req.body.messages);
-        }
-
-        // Create a promise that will be resolved when we get a response
-        const promise = new Promise<LlamaResponse>((resolve, reject) => {
-            llama.pending.push({
-                request: req,
-                onResponse: (result) => result.ok ? resolve(result.value) : reject(result.value),
-            });
-        });
-
-        // If our requested llama is currently active, tell it about the new work
-        if (llama.active) {
-            this.#doPending(llama as ActiveLlama);
-            return promise;
-        }
-
-        // Regardless of which model was requested, wake the task model if it's inactive
-        // #start will have it work on any pending tasks immediately
-        //
-        // If we were specifically trying to reach the task model, we're done.
-        if (this.taskLlama && !this.taskLlama.active) {
-            this.#start(this.taskLlama, { isTaskModel: true });
-            if (opts?.taskModel) return promise;
-        }
-
-        // From here on, we were trying to reach a non-task model. If there's no llama active,
-        // start the requested model. #start will give it its pending tasks.
-        if (!this.activeLlama) {
-            this.#start(llama);
-            return promise;
-        }
-
-        // If there's a different llama active:
-        // - if it's working on something, just add our llama to `this.waitingLlamas`
-        // - otherwise, swap the active llama for ours
-        if (this.isBusy(this.activeLlama)) {
-            if (!this.waitingLlamas.includes(llama.model.name)) {
-                this.waitingLlamas.push(llama.model.name);
+        const tick = async () => {
+            try {
+                await this.#loop();
+            } catch (err) {
+                console.error(`LlamaManager: loop error: ${err}`);
             }
-        } else {
-            this.#swap(llama);
-        }
-
-        return promise;
+            this.loopTimer = setTimeout(tick, LOOP_INTERVAL_MS);
+        };
+        tick();
     }
 
     /**
-     * Kill the llama-server process, if it's running. Attempts a graceful shutdown,
-     * using SIGTERM and waiting `SHUTDOWN_GRACE_MS`. If this does not succeed, this
-     * method sends SIGKILL and waits `2 * SHUTDOWN_GRACE_MS`.
-     *
-     * If the process is still running, throws an error.
+     * Request that a model should be made active. Pushes the model into the queue,
+     * to be picked up by the main loop. No-op if the model is already in the queue.
      */
-    async stopServer() {
+    wake(modelName: string): void {
+        const llama = this.llamas.get(modelName);
+        if (!llama) throw new Error(`wake: model not found: ${modelName}`);
+        
+        // Already in queue - no action needed
+        if (this.requestQueue.some(item => item.llama === llama)) 
+            return;
+
+        // Add to queue - loop will handle start/swap
+        this.requestQueue.push({ llama, jobs: [] });
+        this.sleepTimer?.reset();
+    }
+
+    /**
+     * Submit a completion request. Returns a promise that resolves with the response
+     * once the model is active and the request is dispatched.
+     */
+    completions(req: LlamaRequest, opts?: { taskModel?: boolean }): Promise<LlamaResponse> {
+        const job: Job = initJob(req);
+
+        // For tasks, ensure we have a task model configured, then push to its queue
+        if (opts?.taskModel) {
+            if (!this.taskLlama) throw new Error(`LlamaManager: task model not configured`);
+            this.taskQueue.push(job);
+            return job.promise;
+        }
+
+        const llama: Llama | undefined = this.llamas.get(req.body.model);
+        if (!llama) throw new Error(`LlamaManager: model not found: ${req.body.model}`);
+
+        // Push job to existing queue entry or create a new one
+        let found = false;
+        for (const item of this.requestQueue) {
+            if (item.llama === llama) {
+                found = true;
+                item.jobs.push(job);
+                break;
+            }
+        }
+
+        // Model not in queue: push job as new queue entry
+        if (!found) this.requestQueue.push({ llama, jobs: [job] });
+
+        return job.promise;
+    }
+
+    /**
+     * Stop all active llama-server processes. Clears all queues and rejects any
+     * pending jobs.
+     */
+    async stopServer(): Promise<void> {
+        // Stop the dispatch loop
+        if (this.loopTimer !== null) {
+            clearTimeout(this.loopTimer);
+            this.loopTimer = null;
+        }
+
+        // Reject all pending jobs before clearing queues
+        for (const item of this.requestQueue) {
+            for (const job of item.jobs) {
+                job.reject(new Error(`LlamaManager: server stopped`));
+            }
+        }
+
+        for (const job of this.taskQueue) {
+            job.reject(new Error(`LlamaManager: server stopped`));
+        }
+
+        this.requestQueue = [];
+        this.taskQueue = [];
+
         const allLlamas = [...this.llamas.values()];
         if (this.taskLlama) allLlamas.push(this.taskLlama);
         await Promise.all(allLlamas.map(llama => this.#stop(llama)));
     }
 
     /**
-     * Immediately SIGKILL any llama-server process (or its children), if they exist
+     * Immediately SIGKILL any llama-server process (or its children), if they exist.
      * Returns without cleanup/checking to see if the process ended.
      */
-    forceStopServer() {
+    forceStopServer(): void {
         const allLlamas = [...this.llamas.values()];
         if (this.taskLlama) allLlamas.push(this.taskLlama);
 
@@ -289,52 +399,33 @@ export class LlamaManager {
             const pid = llama.active.proc.pid!;
             // we need an immediate exit, show no mercy
             console.log(chalk.dim(`killing llama-server process (pid ${pid}) (${chalk.yellow('SIGKILL')})...`));
-            try { process.kill(-pid, 'SIGKILL') } catch { };
+            try { process.kill(-pid, 'SIGKILL') } catch { }
         }
     }
 
     /* -------------------- PRIVATE METHODS -------------------- */
 
-    async #doPending(llama: ActiveLlama) {
-        const allPending = llama.pending;
-        llama.pending = [];
-
-        for (const pending of allPending) {
-            let response: LlamaResponse;
-            try {
-                response = await this.#send(llama, pending.request);
-            } catch (err: any) {
-                pending.onResponse({
-                    ok: false,
-                    value: err,
-                });
-
-                continue;
-            }
-
-            pending.onResponse({ ok: true, value: response });
-        }
-    }
-
     /**
      * Given a running llama-server process, sends an HTTP request to the server and
-     * returns the server's response.
-     *
-     * @throws if the request to llama-server fails
+     * resolves/rejects the job with the result.
      */
-    async #send(llama: Llama, req: LlamaRequest): Promise<LlamaResponse> {
-        if (!llama.active) throw new Error(`LlamaManager.#send: llama not active`);
+    async #send(llama: Llama, job: Job): Promise<void> {
+        if (!llama.active) return;
 
-        // TODO - hardcoded completions
         const llamaURL = `http://${llama.serverHost}:${llama.serverPort}` + '/v1/chat/completions';
 
-        // Increment active requests, preventing calls to `prepareModel` until this request is processed
-        // Note: this does NOT prevent direct calls to `stopServer` or `forceStopServer`, as we don't want
-        // to block shutdown.
+        // Increment active requests, preventing model swaps until this request is processed
         llama.active.requests++;
-        this.sleepTimer?.reset();
 
         let stream: LlamaStream | null = null;
+
+        const { system: _system, ...inferenceParams } = llama.model.params;
+        const body = {
+            ...inferenceParams,
+            ...job.request.body,
+            timings_per_token: true,
+            return_progress: true,
+        };
 
         // When running close to context window limit, a prompt will sometimes crash
         // the llama-server process without correctly closing the response.
@@ -347,13 +438,11 @@ export class LlamaManager {
         llama.active.proc.once('exit', prematureExit);
 
         try {
-            const { system: _system, ...inferenceParams } = llama.model.params;
-            const body = { ...inferenceParams, ...req.body, timings_per_token: true, return_progress: true };
             const response = await fetch(llamaURL, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(body),
-                signal: req.signal,
+                signal: job.request.signal,
             });
 
             const contentType: string | null = response.headers.get('content-type');
@@ -368,64 +457,28 @@ export class LlamaManager {
             }
 
             const expectSSE = contentType.includes('text/event-stream');
-            stream = new LlamaStream(
-                response.body,
-                expectSSE,
-                req.signal,
-            );
+            stream = new LlamaStream(response.body, expectSSE, job.request.signal);
 
             stream.once('stop', () => {
                 if (llama.active) {
                     llama.active.requests--;
                     llama.active.proc.removeListener('exit', prematureExit);
                 }
-
-                // Only check swap queue for main models
-                if (llama === this.taskLlama) return;
-
-                const activeRequests = llama.active?.requests ?? 0;
-                if (activeRequests === 0 && this.waitingLlamas.length !== 0) {
-                    const waitingLlama = this.waitingLlamas.shift()!;
-                    const nextLlama = this.llamas.get(waitingLlama)
-                        ?? (() => { throw new Error(`LlamaManager.#send: nextLlama not found: ${waitingLlama}`) })();
-                    console.log(chalk.dim(
-                        ` -> switching to next llama: ${chalk.magenta(nextLlama)} (${nextLlama.pending.length} pending requests)`
-                    ));
-
-                    this.#swap(nextLlama);
-                }
             });
 
-            return {
+            job.resolve({
                 status: response.status,
                 headers: response.headers,
-                stream: stream,
-            };
+                stream,
+            });
         } catch (err: any) {
-            llama.active.requests--;
-            llama.active.proc.removeListener('exit', prematureExit);
-            throw new Error(err);
+            if (llama.active) {
+                llama.active.requests--;
+                llama.active.proc.removeListener('exit', prematureExit);
+            }
+            
+            job.reject(new Error(err));
         }
-    }
-
-    #swap(newLlama: Llama) {
-        if (newLlama.active) throw new Error(`LlamaManager.#swap: newLlama is already active: ${newLlama.model.name}`);
-        if (!this.activeLlama) throw new Error(`LlamaManager.#swap: expected existing active llama`);
-
-        const curLlama = this.llamas.get(this.activeLlama)!;
-        console.log(`curLlama: ${curLlama.model.name} | active: ${curLlama.active === null}`);
-
-        curLlama.active?.exited
-            .then(() => this.#start(newLlama))
-            .catch((err: any) => {
-                console.error(`LlamaManager.#swap: error starting new llama: ${newLlama.model.name}; err: ${err}`);
-            });
-
-        this.#stop(curLlama)
-            .catch((err: any) => {
-                console.error(`LlamaManager.#swap: error stopping existing llama: ${curLlama.model.name}; err: ${err}`);
-            });
-
     }
 
     async #stop(llama: Llama): Promise<void> {
@@ -434,30 +487,28 @@ export class LlamaManager {
         // Shutdown handler that sends a kill signal to the process group, then waits
         // for a grace period. Resolves with `true` if shutdown occurred, `false` if
         // the grace period expired.
-        const shutdownWithgracePeriod = (async (
-            llama: ActiveLlama,
-            signal: string,
+        const shutdownWithGracePeriod = async (
             pid: number,
-            gracePeriodMS: number
-        ) => {
-            try { process.kill(-pid, signal) } catch { };
+            exited: Promise<void>,
+            signal: string,
+            gracePeriodMS: number,
+        ): Promise<boolean> => {
+            try { process.kill(-pid, signal) } catch { }
 
             return Promise.race([
-                new Promise<boolean>(async (resolve) => {
-                    await llama.active.exited;
-                    resolve(true);
-                }),
+                exited.then(() => true),
                 new Promise<boolean>((resolve) => {
                     setTimeout(() => resolve(false), gracePeriodMS);
-                })
-            ])
-        });
+                }),
+            ]);
+        };
 
         const pid = llama.active.proc.pid!;
+        const exited = llama.active.exited;
 
         // try a graceful shutdown first (SIGTERM)
         console.log(chalk.dim(`killing llama-server process (pid ${pid}) (${chalk.yellow('SIGTERM')})...`));
-        if (await shutdownWithgracePeriod(llama as ActiveLlama, 'SIGTERM', pid, SHUTDOWN_GRACE_MS)) {
+        if (await shutdownWithGracePeriod(pid, exited, 'SIGTERM', SHUTDOWN_GRACE_MS)) {
             console.log(chalk.green('done! (graceful shutdown)'));
             return;
         }
@@ -466,7 +517,7 @@ export class LlamaManager {
         //
         // *teleports behind you* "nothin personnel, kid"
         console.log(`failed to stop process gracefully, sending ${chalk.yellow('SIGKILL')}...`);
-        if (await shutdownWithgracePeriod(llama as ActiveLlama, 'SIGKILL', pid, 2 * SHUTDOWN_GRACE_MS)) {
+        if (await shutdownWithGracePeriod(pid, exited, 'SIGKILL', 2 * SHUTDOWN_GRACE_MS)) {
             console.log(chalk.yellow(`done! (forced shutdown)`));
             return;
         }
@@ -483,33 +534,23 @@ export class LlamaManager {
      * `llama-server` is started as a detached process in its own process group. A logfile
      * is opened that collects stdout/stderr; this is closed when the process exits.
      *
+     * Sets `llama.active` synchronously, then polls until ready. On failure, kills the
+     * process and resets `llama.active = null` before rejecting.
+     *
      * @param llama The llama to start
-     * @param opts.isTaskModel If true, this is the task model — skips activeLlama guards
      */
-    #start(llama: Llama, opts?: { isTaskModel?: boolean }): Promise<void> {
-        if (this.activeLlama && !opts?.isTaskModel) {
-            throw new Error(`LlamaManager.#startLlama: llama process already running!`);
-        }
+    #start(llama: Llama): Promise<void> {
+        if (llama.active) throw new Error(`LlamaManager.#start: llama ${llama.model.name} already running`);
 
         const model: proto.ModelInfo = llama.model;
 
         // Open log file for `llama-server` stdout/stderr
-        // File name example: `llama-{timestamp}_r0_gpt-oss-20b.log` or `..._task_...`
         this.runCounter++;
-        const taskSuffix = opts?.isTaskModel ? '_task' : '';
-        const logFileName =
-            this.logFilePrefix +
-            '_r' + this.runCounter.toString() +
-            taskSuffix +
-            '_' + model.name + '.log';
-        const logPath = path.join(this.logDirectory, logFileName);
+        const [logPath, out, err] = createLogFiles(this.logDirectory, this.runCounter, llama);
 
-        // Open log file for child process stdout/stderr
         console.log(`\n[Run: ${this.runCounter}] starting llama-server with model: ${chalk.magenta(model.name)}`);
         console.log(chalk.dim(` - using log file: ${logPath}`));
         console.log(chalk.dim(` - llama server command: ${LLAMA_SERVER_BIN}`));
-        const out = fs.openSync(logPath, 'a');
-        const err = fs.openSync(logPath, 'a');
 
         let args = [
             '--host', llama.serverHost,
@@ -554,12 +595,11 @@ export class LlamaManager {
         //
         // ... since this handles a lot of scenarios, we just log here.
         proc.once('error', (err) => {
-            console.error('llama-server process error:', err);
+            console.error(`llama-server proc (${model.name}) err: ${err}`);
         });
 
-        // Activate llama:
-        // - create a promise that resolves and cleans up when the process exits
-        if (!opts?.isTaskModel) this.activeLlama = llama.model.name;
+        // Activate llama synchronously: create a promise that resolves and cleans up
+        // when the process exits.
         llama.active = {
             requests: 0,
             proc: proc,
@@ -568,17 +608,15 @@ export class LlamaManager {
             //
             // `exit` will always be emitted before `close`. If we run into issues with zombies,
             // resolving/cleaning up on `close` might be better, as it should guarantee no I/O
-            // is occuring.
+            // is occurring.
             exited: new Promise<void>((resolve) => {
-                // proc.once('close', () => resolve());
                 proc.once('exit', (code, signal) => {
                     console.log(`llama-server exited code=${code} signal=${signal}`);
 
                     // clean up log files
-                    try { fs.closeSync(out) } catch { };
-                    try { fs.closeSync(err) } catch { };
+                    try { fs.closeSync(out) } catch { }
+                    try { fs.closeSync(err) } catch { }
 
-                    if (!opts?.isTaskModel) this.activeLlama = null;
                     llama.active = null;
                     resolve();
                 });
@@ -600,29 +638,27 @@ export class LlamaManager {
                             }
                         }
                     } catch {
-                        // Non-critical — proceed without context length
+                        // Non-critical - proceed without context length
                     }
                     resolve();
-                    this.#doPending(llama as ActiveLlama);
                 })
                 .catch((err: any) => {
-                    console.error(`LlamaManager.#start: error when polling: ${err}`);
-                    if (!opts?.isTaskModel) this.activeLlama = null;
+                    console.error(`LlamaManager.#start(${llama.model.name}): error when polling: ${err}`);
+                    // Kill the process and reset active so the model can be retried
+                    if (llama.active) {
+                        try { process.kill(-llama.active.proc.pid!, 'SIGKILL') } catch { }
+                    }
+                    llama.active = null;
                     reject(err);
                 });
         });
     }
 
     /**
-     * Ping llama-server until we get a success, indicating the HTTP server is running
+     * Ping llama-server until we get a success, indicating the HTTP server is running.
      */
     async #pollServer(llama: Llama): Promise<void> {
         return new Promise<void>(async (resolve, reject) => {
-            if (!llama.active) {
-                reject(`LlamaManager.#pollServer: process died before polling`);
-                return;
-            }
-
             process.stdout.write(chalk.dim(` - loading model: ${chalk.magenta(llama.model.name)}\n`));
 
             let retriesLeft = NUM_RETRIES;
@@ -653,9 +689,6 @@ export class LlamaManager {
                     // Clean up timeout
                     clearTimeout(reqTimeout);
 
-                    // Add a '.' to output for each time we ping
-                    process.stdout.write(chalk.dim('.'));
-
                     if (success) {
                         process.stdout.write(
                             `${chalk.dim.green(`model loaded!`)} ${chalk.magenta(llama.model.name)} ` +
@@ -663,16 +696,17 @@ export class LlamaManager {
                             `(pid ${llama.active.proc.pid}) ` +
                             '\n'
                         );
-                        this.#logVRAM();
                         resolve();
                         return;
                     }
                 }
 
                 // sleep half a second, then retry
-                await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS)).then(() => undefined);
+                await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
                 retriesLeft--;
             }
+
+            reject(`LlamaManager.#pollServer: timed out waiting for ${llama.model.name}`);
         });
     }
 
@@ -698,19 +732,17 @@ export class LlamaManager {
                 if (timer !== null) clearTimeout(timer);
                 timer = null;
             },
-        }
+        };
     }
 
-    async #sleep() {
-        // Check if any llama (main or task) is busy
-        const allLlamas = [...this.llamas.values()];
-        if (this.taskLlama) allLlamas.push(this.taskLlama);
-
-        const anyBusy = allLlamas.some(llama =>
-            llama.pending.length !== 0 || (llama.active?.requests ?? 0) !== 0
+    async #sleep(): Promise<void> {
+        // Check if any queued model is busy (has jobs or active requests)
+        const mainBusy = this.requestQueue.some(item =>
+            item.jobs.length > 0 || (item.llama.active?.requests ?? 0) > 0
         );
+        const taskBusy = this.taskQueue.length > 0 || (this.taskLlama?.active?.requests ?? 0) > 0;
 
-        if (anyBusy) {
+        if (mainBusy || taskBusy) {
             console.log(`sleep timer elapsed, but a llama seems busy; skipping`);
             return;
         }
@@ -748,7 +780,7 @@ export class LlamaManager {
             if (used === undefined || total === undefined) return null;
             return { used, total };
         } catch {
-            // nvidia-smi unavailable — skip silently
+            // nvidia-smi unavailable - skip silently
             return null;
         }
     }
@@ -775,7 +807,7 @@ export class LlamaManager {
         return [
             ...this.getBaseLlamas().map(llama => llama.model.name),
             ...this.getVisionLlamas().map(llama => llama.model.name),
-        ]
+        ];
     }
 
     getBaseLlamas(): Llama[] {
@@ -792,34 +824,42 @@ export class LlamaManager {
         ];
     }
 
-    getLlamaForModel(modelName: string, messages: proto.Message[], opts?: { taskModel?: boolean }): Llama {
-        if (opts?.taskModel) {
-            if (!this.taskLlama) throw new Error('task model requested but not configured');
-            return this.taskLlama;
-        }
-
-        if (modelName === 'auto') {
-            if (proto.hasVisionContent(messages)) {
-                return this.getVisionLlamas().at(0)
-                    ?? (() => { throw new Error(`getLlamaForModel: vision model required, but none loaded`) })();
-            } else if (this.activeLlama) {
-                return this.llamas.get(this.activeLlama)
-                    ?? (() => { throw new Error(`getLlamaForModel: this.activeLlama not found in this.llamas: ${this.activeLlama}`) })();
-            } else {
-                return this.defaultLlama;
-            }
-        } else {
-            return this.llamas.get(modelName)
-                ?? (() => { throw new Error(`getLlamaForModel: requested model not found: ${modelName}`) })();
-        }
+    /**
+     * Returns true if the model is currently loaded and ready to serve.
+     */
+    isAwake(model: Llama | string): boolean {
+        const llama = typeof model === 'string' ? this.llamas.get(model) : model;
+        if (!llama) return false;
+        return llama.active !== null;
     }
+}
 
-    isBusy(model: Llama | string): boolean {
-        const llama: Llama | undefined = typeof model === 'string'
-            ? this.llamas.get(model)
-            : model;
+function initJob(request: LlamaRequest): Job {
+    let resolve!: (value: LlamaResponse) => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<LlamaResponse>((res, rej) => { resolve = res; reject = rej });
 
-        return llama !== undefined &&
-            (llama.pending.length !== 0 || llama.active?.requests !== 0);
-    }
+    return {
+        request,
+        promise,
+        resolve,
+        reject,
+    };
+}
+
+// File name example: `llama-{timestamp}_r0_gpt-oss-20b.log`
+function createLogFiles(
+    logDirectory: string,
+    runCounter: number,
+    llama: Llama,
+): [string, number, number] {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    const logFileName = `llama-${timestamp}_r${runCounter}_${llama.model.name}.log`;
+    const logPath = path.join(logDirectory, logFileName);
+
+    const out = fs.openSync(logPath, 'a');
+    const err = fs.openSync(logPath, 'a');
+
+    return [logPath, out, err];
 }

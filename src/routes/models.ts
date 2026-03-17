@@ -21,15 +21,13 @@ const router = Router();
  * models currently served by LlamaManager. i.e. if you remove a base model from
  * LlamaManager, any custom models in the DB using it as the base will not be
  * returned here.
- *
- * TODO - implement memory cache and use query.refresh to fetch from DB
  * 
  * @query {Types.ModelsQuery}
  * @returns {{Types.ModelResponse[]}}
  */
 router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.ModelsQuery>,
-    res: Response<Types.ModelResponse[] | Types.ErrorResponse>,
+    res: Response<Types.ModelStatusResponse[] | Types.ErrorResponse>,
     next: NextFunction
 ) => {
     const query = Types.ModelsQuerySchema.safeParse(req.query);
@@ -46,10 +44,14 @@ router.get('/', requireAuth, async (
 
         // Fetch custom models accessible to this user, filtered to those with available base models
         const allCustomModels = await Models.getCustomModels(db);
-        const availableModels: Types.ModelResponse[] = allCustomModels
+        const availableModels: Types.ModelStatusResponse[] = allCustomModels
             .filter(model => baseModelNames.some(base => base === model.baseModelId))
             .filter(model => Models.hasAccess(model, userId, 'read'))
-            .map(model => toModelResponse(model, llama.getModelInfo(model.baseModelId)?.contextLength));
+            .map(model => toModelStatusResponse(
+                model,
+                llama.getModelInfo(model.baseModelId)?.contextLength,
+                llama.isAwake(model.baseModelId),
+            ));
 
         res.status(200).json(availableModels);
     } catch (err) {
@@ -109,6 +111,47 @@ router.get('/model', requireAuth, async (
         }
 
         return res.status(500).json({ detail: `Failed to get model: ${error}` });
+    }
+});
+
+/**
+ * POST /api/v1/models/:modelId/wake
+ * Access Control: Any authenticated user
+ *
+ * Pre-load the model so it's ready when the user submits a prompt.
+ * Blocks until the model is loaded, then returns 200.
+ */
+router.post('/:modelId/wake', requireAuth, async (
+    req: Types.TypedRequest<{ modelId: string }>,
+    res: Response<Types.ErrorResponse | void>
+) => {
+    const { modelId } = req.params;
+
+    try {
+        const llama = req.app.locals.llama as LlamaManager;
+
+        // Resolve custom model -> base model
+        let resolvedModel: string = modelId;
+        const customModel = await Models.getModelById(resolvedModel, db);
+        if (customModel) {
+            if (!Models.hasAccess(customModel, req.user!.id, 'read')) {
+                return res.status(403).json({ detail: `User does not have access to model: ${customModel.name}` });
+            }
+            resolvedModel = customModel.baseModelId;
+        }
+
+        console.log(`wake request: ${resolvedModel}`);
+
+        // Ensure base model exists
+        if (!llama.getModelInfo(resolvedModel)) {
+            return res.status(404).json({ detail: `Model not found: ${modelId}` });
+        }
+
+        // Fire-and-forget: loop handles start/swap asynchronously
+        llama.wake(resolvedModel);
+        return res.status(200).end();
+    } catch (err) {
+        return res.status(500).json({ detail: `Wake failed: ${err}` });
     }
 });
 
@@ -401,6 +444,13 @@ router.delete('/delete/all', requireAdmin, async (
         return res.status(500).json({ detail: `Failed to delete all models: ${err}` });
     }
 });
+
+function toModelStatusResponse(model: Model, contextLength: number | undefined, isAwake: boolean): Types.ModelStatusResponse {
+    return {
+        ...toModelResponse(model, contextLength),
+        isAwake,
+    };
+}
 
 function toModelResponse(model: Model, contextLength?: number): Types.ModelResponse {
     return {
