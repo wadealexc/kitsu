@@ -307,17 +307,18 @@ export class LlamaManager {
      * Request that a model should be made active. Pushes the model into the queue,
      * to be picked up by the main loop. No-op if the model is already in the queue.
      */
-    wake(modelName: string): void {
+    wake(modelName: string): 'idle' | 'queued' | 'active' {
         const llama = this.llamas.get(modelName);
         if (!llama) throw new Error(`wake: model not found: ${modelName}`);
         
         // Already in queue - no action needed
         if (this.requestQueue.some(item => item.llama === llama)) 
-            return;
+            return 'queued';
 
         // Add to queue - loop will handle start/swap
         this.requestQueue.push({ llama, jobs: [] });
         this.sleepTimer?.reset();
+        return this.getStatus(llama);
     }
 
     /**
@@ -827,14 +828,18 @@ export class LlamaManager {
 
     getStatus(model: Llama | string): 'idle' | 'queued' | 'active' {
         const llama = typeof model === 'string' ? this.llamas.get(model) : model;
-        if (!llama) return 'idle';
+        if (!llama) {
+            return 'idle';
+        }
 
-        if (llama.active) 
+        if (llama.active) {
             return 'active';
+        }
 
-        if (this.requestQueue.some(l => l.llama === llama))
+        if (this.requestQueue.some(l => l.llama === llama)) {
             return 'queued';
-
+        }
+        
         return 'idle';
     }
 }

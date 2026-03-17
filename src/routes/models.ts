@@ -123,7 +123,7 @@ router.get('/model', requireAuth, async (
  */
 router.post('/:modelId/wake', requireAuth, async (
     req: Types.TypedRequest<{ modelId: string }>,
-    res: Response<Types.ErrorResponse | void>
+    res: Response<{ status: 'idle' | 'queued' | 'active' } | Types.ErrorResponse>
 ) => {
     const { modelId } = req.params;
 
@@ -148,8 +148,8 @@ router.post('/:modelId/wake', requireAuth, async (
         }
 
         // Fire-and-forget: loop handles start/swap asynchronously
-        llama.wake(resolvedModel);
-        return res.status(200).end();
+        const status = llama.wake(resolvedModel);
+        return res.status(200).json({ status: status });
     } catch (err) {
         return res.status(500).json({ detail: `Wake failed: ${err}` });
     }
