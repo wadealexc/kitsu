@@ -343,7 +343,7 @@ export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
 // Model status response (extends ModelResponse with wake status — only used by GET /api/v1/models)
 export const ModelStatusResponseSchema = ModelResponseSchema.extend({
-    isAwake: z.boolean(),
+    status: z.enum(['idle', 'queued', 'active']),
 });
 export type ModelStatusResponse = z.infer<typeof ModelStatusResponseSchema>;
 

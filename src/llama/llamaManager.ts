@@ -239,9 +239,7 @@ export class LlamaManager {
         this.requestQueue.shift();
 
         await this.#stop(cur.llama);
-        this.#logVRAM();
         await this.#start(next.llama);
-        this.#logVRAM();
     }
 
     /**
@@ -510,6 +508,7 @@ export class LlamaManager {
         console.log(chalk.dim(`killing llama-server process (pid ${pid}) (${chalk.yellow('SIGTERM')})...`));
         if (await shutdownWithGracePeriod(pid, exited, 'SIGTERM', SHUTDOWN_GRACE_MS)) {
             console.log(chalk.green('done! (graceful shutdown)'));
+            this.#logVRAM();
             return;
         }
 
@@ -519,6 +518,7 @@ export class LlamaManager {
         console.log(`failed to stop process gracefully, sending ${chalk.yellow('SIGKILL')}...`);
         if (await shutdownWithGracePeriod(pid, exited, 'SIGKILL', 2 * SHUTDOWN_GRACE_MS)) {
             console.log(chalk.yellow(`done! (forced shutdown)`));
+            this.#logVRAM();
             return;
         }
 
@@ -641,6 +641,7 @@ export class LlamaManager {
                         // Non-critical - proceed without context length
                     }
                     resolve();
+                    this.#logVRAM();
                 })
                 .catch((err: any) => {
                     console.error(`LlamaManager.#start(${llama.model.name}): error when polling: ${err}`);
@@ -824,13 +825,17 @@ export class LlamaManager {
         ];
     }
 
-    /**
-     * Returns true if the model is currently loaded and ready to serve.
-     */
-    isAwake(model: Llama | string): boolean {
+    getStatus(model: Llama | string): 'idle' | 'queued' | 'active' {
         const llama = typeof model === 'string' ? this.llamas.get(model) : model;
-        if (!llama) return false;
-        return llama.active !== null;
+        if (!llama) return 'idle';
+
+        if (llama.active) 
+            return 'active';
+
+        if (this.requestQueue.some(l => l.llama === llama))
+            return 'queued';
+
+        return 'idle';
     }
 }
 

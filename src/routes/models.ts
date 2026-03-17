@@ -50,7 +50,7 @@ router.get('/', requireAuth, async (
             .map(model => toModelStatusResponse(
                 model,
                 llama.getModelInfo(model.baseModelId)?.contextLength,
-                llama.isAwake(model.baseModelId),
+                llama.getStatus(model.baseModelId),
             ));
 
         res.status(200).json(availableModels);
@@ -445,10 +445,14 @@ router.delete('/delete/all', requireAdmin, async (
     }
 });
 
-function toModelStatusResponse(model: Model, contextLength: number | undefined, isAwake: boolean): Types.ModelStatusResponse {
+function toModelStatusResponse(
+    model: Model, 
+    contextLength: number | undefined, 
+    status: 'idle' | 'queued' | 'active'
+): Types.ModelStatusResponse {
     return {
         ...toModelResponse(model, contextLength),
-        isAwake,
+        status,
     };
 }
 

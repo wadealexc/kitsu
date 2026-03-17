@@ -59,7 +59,7 @@ export const logging = ((req: express.Request, res: express.Response, next: expr
                 + ` (elapsed: ${durationStr})`
                 + ` (HTTP ${res.statusCode})`;
 
-            console.log(requestInfo);
+            if (req.method !== 'GET') console.log(requestInfo);
 
             // // TODO - better typing instead of if/else hell
             // if (res.locals.error) {

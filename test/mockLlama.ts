@@ -128,7 +128,7 @@ export class MockLlama {
 
     wake(_model: string): void {}
 
-    isAwake(_model: string): boolean { return true; }
+    getStatus(_model: string): 'idle' | 'queued' | 'active' { return 'active'; }
 
     hasTaskModel(): boolean {
         return false;
