@@ -96,10 +96,6 @@ app.locals.tools = tools;
 
 /* -------------------- ROUTES - API -------------------- */
 
-app.get('/api/v1/models/model/profile/image', (_req, res) => {
-    return res.redirect(302, '/static/favicon.png');
-});
-
 app.use('/api/v1/auths', authsRouter);
 app.use('/api/v1/configs', configsRouter);
 app.use('/api/v1/users', usersRouter);

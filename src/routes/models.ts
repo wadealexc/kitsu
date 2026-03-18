@@ -406,9 +406,7 @@ router.get('/base', requireAdmin, async (
                 baseModelId: name,
                 name: name,
                 params: modelInfo?.params ?? {},
-                meta: {
-                    profile_image_url: '/static/favicon.png',
-                },
+                meta: {},
                 isPublic: false,
                 isActive: true,
                 updatedAt: 0,

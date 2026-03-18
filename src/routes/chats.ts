@@ -33,13 +33,11 @@ router.get(['/', '/list'], requireAuth, async (
     }
 
     const userId = req.user!.id;
-    const { page, include_pinned: includePinned, include_folders: includeFolders } = query.data;
+    const { page, include_folders: includeFolders } = query.data;
 
     try {
         const options: Chats.ListOptions = {
-            includeArchived: false,
             includeFolders: includeFolders,
-            includePinned: includePinned,
         };
 
         // Apply pagination if page is provided
@@ -99,8 +97,6 @@ router.get('/all', requireAuth, async (
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
             share_id: chat.shareId || undefined,
-            archived: chat.archived,
-            pinned: chat.pinned ?? false,
             meta: chat.meta || {},
             folder_id: chat.folderId || undefined,
         }));
@@ -148,8 +144,6 @@ router.get('/:id', validateChatId, requireAuth, async (
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
             share_id: chat.shareId || undefined,
-            archived: chat.archived,
-            pinned: chat.pinned ?? false,
             meta: chat.meta || {},
             folder_id: chat.folderId || undefined,
         };
@@ -210,8 +204,6 @@ router.post('/new', requireAuth, async (
             updated_at: newChat.updatedAt,
             created_at: newChat.createdAt,
             share_id: newChat.shareId || undefined,
-            archived: newChat.archived,
-            pinned: newChat.pinned ?? false,
             meta: newChat.meta || {},
             folder_id: newChat.folderId || undefined,
         };
@@ -273,8 +265,6 @@ router.post('/:id', validateChatId, requireAuth, async (
             updated_at: updatedChat.updatedAt,
             created_at: updatedChat.createdAt,
             share_id: updatedChat.shareId || undefined,
-            archived: updatedChat.archived,
-            pinned: updatedChat.pinned ?? false,
             meta: updatedChat.meta || {},
             folder_id: updatedChat.folderId || undefined,
         };
@@ -358,6 +348,70 @@ router.delete('/', requireAuth, async (
     }
 });
 
+/* -------------------- IMPORT -------------------- */
+
+/**
+ * POST /api/v1/chats/import
+ * Access Control: Any authenticated user
+ *
+ * Bulk import chats, preserving original timestamps and metadata.
+ *
+ * @body {Types.ChatImportForm[]} - array of chats to import
+ * @returns {Types.ChatResponse[]} - the newly created chats
+ */
+router.post('/import', requireAuth, async (
+    req: Types.TypedRequest<{}, Types.ChatImportForm[]>,
+    res: Response<Types.ChatResponse[] | Types.ErrorResponse>
+) => {
+    const userId = req.user!.id;
+    const body = req.body;
+
+    if (!Array.isArray(body)) {
+        return res.status(400).json({ detail: 'Request body must be an array of chats' });
+    }
+
+    const chatsData: Types.ChatImportForm[] = [];
+    for (let i = 0; i < body.length; i++) {
+        const result = Types.ChatImportFormSchema.safeParse(body[i]);
+        if (!result.success) {
+            return res.status(400).json({ 
+                detail: `Invalid chat at index ${i}`, errors: result.error.issues 
+            });
+        }
+        
+        chatsData.push(result.data);
+    }
+
+    try {
+        const imported = await Chats.importChats(userId, chatsData, db);
+
+        const response: Types.ChatResponse[] = imported.map(chat => ({
+            id: chat.id,
+            user_id: chat.userId,
+            title: chat.title,
+            chat: chat.chat,
+            updated_at: chat.updatedAt,
+            created_at: chat.createdAt,
+            share_id: chat.shareId || undefined,
+            meta: chat.meta || {},
+            folder_id: chat.folderId || undefined,
+        }));
+
+        return res.json(response);
+    } catch (error: unknown) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ detail: error.message });
+        }
+
+        if (error instanceof Error) {
+            return res.status(400).json({ detail: error.message });
+        }
+
+        console.error('Import chats error:', error);
+        return res.status(500).json({ detail: 'Internal server error' });
+    }
+});
+
 /* -------------------- SHARING & CLONING -------------------- */
 
 /**
@@ -393,8 +447,6 @@ router.post('/:id/share', validateChatId, requireAuth, async (
             updated_at: updatedChat.updatedAt,
             created_at: updatedChat.createdAt,
             share_id: updatedChat.shareId || undefined,
-            archived: updatedChat.archived,
-            pinned: updatedChat.pinned ?? false,
             meta: updatedChat.meta || {},
             folder_id: updatedChat.folderId || undefined,
         };
@@ -441,8 +493,6 @@ router.get('/share/:share_id', validateShareId, requireAuth, async (
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
             share_id: chat.shareId || undefined,
-            archived: chat.archived,
-            pinned: chat.pinned ?? false,
             meta: chat.meta || {},
             folder_id: chat.folderId || undefined,
         };
@@ -537,8 +587,6 @@ router.post('/:share_id/clone/shared', validateShareId, requireAuth, async (
             updated_at: clonedChat.updatedAt,
             created_at: clonedChat.createdAt,
             share_id: undefined,  // Clone is not shared
-            archived: clonedChat.archived,
-            pinned: clonedChat.pinned ?? false,
             meta: clonedChat.meta || {},
             folder_id: undefined,  // Clone is not in folder
         };
@@ -608,8 +656,6 @@ router.post('/:id/clone', validateChatId, requireAuth, async (
             updated_at: clonedChat.updatedAt,
             created_at: clonedChat.createdAt,
             share_id: undefined,
-            archived: clonedChat.archived,
-            pinned: clonedChat.pinned ?? false,
             meta: clonedChat.meta || {},
             folder_id: undefined,
         };
@@ -679,8 +725,6 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
             updated_at: updatedChat.updatedAt,
             created_at: updatedChat.createdAt,
             share_id: updatedChat.shareId || undefined,
-            archived: updatedChat.archived,
-            pinned: updatedChat.pinned ?? false,
             meta: updatedChat.meta || {},
             folder_id: updatedChat.folderId || undefined,
         };
@@ -730,8 +774,6 @@ router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
             updated_at: chat.updatedAt,
             created_at: chat.createdAt,
             share_id: chat.shareId || undefined,
-            archived: chat.archived,
-            pinned: chat.pinned ?? false,
             meta: chat.meta || {},
             folder_id: chat.folderId || undefined,
         }));

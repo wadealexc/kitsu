@@ -311,7 +311,6 @@ export type ModelParams = z.infer<typeof ModelParamsSchema>;
 
 // Model metadata
 export const ModelMetaSchema = z.object({
-    profile_image_url: z.string().default('/static/favicon.png'),
     description: z.string().nullable().optional(),
 }).passthrough();  // Allow additional properties
 export type ModelMeta = z.infer<typeof ModelMetaSchema>;
@@ -588,8 +587,6 @@ export const ChatResponseSchema = z.object({
     updated_at: z.number(),
     created_at: z.number(),
     share_id: z.string().nullable().optional(),
-    archived: z.boolean(),
-    pinned: z.boolean().optional().default(false),
     meta: z.record(z.string(), z.any()).optional().default({}),
     folder_id: FolderIdSchema.nullable().optional(),
 });
@@ -600,7 +597,6 @@ export const ChatImportFormSchema = z.object({
     chat: ChatObjectSchema,
     folder_id: FolderIdSchema.nullable().optional(),
     meta: z.record(z.string(), z.any()).optional().default({}),
-    pinned: z.boolean().optional().default(false),
     created_at: z.number().optional(),
     updated_at: z.number().optional(),
 });
@@ -634,7 +630,6 @@ export type EventForm = z.infer<typeof EventFormSchema>;
 // Query parameters for GET /api/v1/chats/ and /api/v1/chats/list
 export const ChatListQuerySchema = z.object({
     page: z.coerce.number().int().min(1).optional(),
-    include_pinned: z.stringbool().optional().default(false),
     include_folders: z.stringbool().optional().default(false),
 });
 export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;

@@ -11,7 +11,7 @@ import * as schema from '../../src/db/schema.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import { type Chat } from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
-import { type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm } from '../../src/routes/types.js';
+import { type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm, type ChatImportForm } from '../../src/routes/types.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -160,8 +160,6 @@ function toApiChatResponse(chat: Chat): ChatResponse {
         chat: chat.chat,
         updated_at: chat.updatedAt,
         created_at: chat.createdAt,
-        archived: chat.archived,
-        pinned: chat.pinned ?? false,
         meta: chat.meta ?? {},
     };
 
@@ -294,24 +292,6 @@ describe('Chat Routes', () => {
             assert.strictEqual(response2.body.length, 2);
         });
 
-        // TODO - uncomment when archival is implemented
-        // test('should exclude archived chats by default', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const chat1 = await createTestChat(userId, 'Normal Chat');
-        //     const chat2 = await createTestChat(userId, 'Archived Chat');
-
-        //     // Archive second chat
-        //     await Chats.updateChatArchivedById(chat2.id, db);
-
-        //     const response = await request(app)
-        //         .get('/api/v1/chats/')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
-
-        //     assert.strictEqual(response.body.length, 1);
-        //     assert.strictEqual(response.body[0].id, chat1.id);
-        // });
-
         test('should return empty array for user with no chats', async () => {
             const { token } = await createUserWithToken('user');
 
@@ -347,7 +327,6 @@ describe('Chat Routes', () => {
             const [chat1] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                pinned: false,
                 created_at: now - 1000,
                 updated_at: now - 1000,
             }], db);
@@ -447,8 +426,6 @@ describe('Chat Routes', () => {
             assert.ok(chat.chat);
             assert.ok(typeof chat.updated_at === 'number');
             assert.ok(typeof chat.created_at === 'number');
-            assert.ok(typeof chat.archived === 'boolean');
-            assert.ok(typeof chat.pinned === 'boolean');
             assert.ok(typeof chat.meta === 'object');
         });
 
@@ -465,34 +442,6 @@ describe('Chat Routes', () => {
             assert.strictEqual(chat.user_id, userId);
             assert.strictEqual(chat.userId, undefined);
         });
-
-        // TODO - uncomment when impled
-        // test('should include archived chats', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const chat1 = await createTestChat(userId, 'Normal Chat');
-        //     const chat2 = await createTestChat(userId, 'Archived Chat');
-        //     await Chats.updateChatArchivedById(chat2.id, db);
-
-        //     const response = await request(app)
-        //         .get('/api/v1/chats/all')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
-
-        //     assert.strictEqual(response.body.length, 2);
-        // });
-
-        // test('should include pinned chats', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const chat = await createTestChat(userId, 'Pinned Chat');
-        //     await Chats.updateChatPinnedById(chat.id, db);
-
-        //     const response = await request(app)
-        //         .get('/api/v1/chats/all')
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
-
-        //     assert.strictEqual(response.body[0].pinned, true);
-        // });
 
         test('should include folder chats', async () => {
             const { userId, token } = await createUserWithToken('user');
@@ -668,8 +617,6 @@ describe('Chat Routes', () => {
                 .send(chatData)
                 .expect(200);
 
-            assert.strictEqual(response.body.archived, false);
-            assert.strictEqual(response.body.pinned, false);
             assert.deepStrictEqual(response.body.meta, {});
             assert.strictEqual(response.body.share_id, undefined);
         });
@@ -826,7 +773,6 @@ describe('Chat Routes', () => {
             const [chat] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                pinned: false,
                 created_at: now - 1000,
                 updated_at: now - 1000,
             }], db);
@@ -1196,34 +1142,11 @@ describe('Chat Routes', () => {
                 .expect(200);
 
             assert.strictEqual(response.body.folder_id, folder.id);
-            assert.strictEqual(response.body.pinned, false);
 
             // Verify in database
             const updatedChat = await Chats.getChatById(chat.id, db);
             assert.strictEqual(updatedChat?.folderId, folder.id);
         });
-
-        // TODO
-        // test('should set pinned to false when moving to folder', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
-        //     const chat = await createTestChat(userId, 'Pinned Chat');
-
-        //     // Pin the chat first
-        //     await Chats.updateChatPinnedById(chat.id, db);
-        //     const pinnedChat = await Chats.getChatById(chat.id, db);
-        //     assert.strictEqual(pinnedChat?.pinned, true);
-
-        //     // Move to folder - should unpin
-        //     const response = await request(app)
-        //         .post(`/api/v1/chats/${chat.id}/folder`)
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .send({ folder_id: folder.id })
-        //         .expect(200);
-
-        //     assert.strictEqual(response.body.folder_id, folder.id);
-        //     assert.strictEqual(response.body.pinned, false);
-        // });
 
         test('should remove chat from folder when folder_id is null', async () => {
             const { userId, token } = await createUserWithToken('user');
@@ -1282,7 +1205,6 @@ describe('Chat Routes', () => {
             const [chat] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Old Chat'),
                 meta: {},
-                pinned: false,
                 created_at: now - 1000,
                 updated_at: now - 1000,
             }], db);
@@ -1431,29 +1353,6 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.length, 1);
             assert.strictEqual(response.body[0].user_id, user1Id);
         });
-
-        // TODO
-        // test('should exclude archived chats from folder', async () => {
-        //     const { userId, token } = await createUserWithToken('user');
-        //     const folder = await Folders.createFolder(createTestFolderForm(userId, 'Test Folder'), db);
-
-        //     const chat1 = await createTestChat(userId, 'Normal Chat');
-        //     const chat2 = await createTestChat(userId, 'Archived Chat');
-
-        //     await Chats.updateChatFolder(chat1.id, userId, folder.id, db);
-        //     await Chats.updateChatFolder(chat2.id, userId, folder.id, db);
-
-        //     // Archive second chat
-        //     await Chats.updateChatArchivedById(chat2.id, db);
-
-        //     const response = await request(app)
-        //         .get(`/api/v1/chats/folder/${folder.id}`)
-        //         .set('Authorization', `Bearer ${token}`)
-        //         .expect(200);
-
-        //     assert.strictEqual(response.body.length, 1);
-        //     assert.strictEqual(response.body[0].id, chat1.id);
-        // });
 
         test('should fail without authentication token', async () => {
             const { userId } = await createUserWithToken('user');
@@ -2173,6 +2072,191 @@ describe('Chat Routes', () => {
                 .post(`/api/v1/chats/${chat.id}/clone`)
                 .set('Authorization', 'Bearer invalid_token')
                 .send({})
+                .expect(401);
+        });
+    });
+
+    describe('POST /api/v1/chats/import', () => {
+        function createImportForm(overrides: Partial<ChatImportForm> = {}): ChatImportForm {
+            return {
+                chat: createTestChatObject(),
+                meta: {},
+                folder_id: null,
+                ...overrides,
+            };
+        }
+
+        test('should import a single chat and return it', async () => {
+            const { token } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([createImportForm()])
+                .expect(200);
+
+            assert.ok(Array.isArray(response.body));
+            assert.strictEqual(response.body.length, 1);
+
+            const imported = response.body[0];
+            assert.ok(imported.id);
+            assert.ok(imported.user_id);
+            assert.ok(imported.title);
+            assert.ok(imported.chat);
+        });
+
+        test('should import multiple chats', async () => {
+            const { token } = await createUserWithToken('user');
+
+            const forms = [
+                createImportForm({ chat: createTestChatObject('Chat A') }),
+                createImportForm({ chat: createTestChatObject('Chat B') }),
+                createImportForm({ chat: createTestChatObject('Chat C') }),
+            ];
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send(forms)
+                .expect(200);
+
+            assert.strictEqual(response.body.length, 3);
+            const titles = response.body.map((c: ChatResponse) => c.title).sort();
+            assert.deepStrictEqual(titles, ['Chat A', 'Chat B', 'Chat C']);
+        });
+
+        test('should preserve provided timestamps', async () => {
+            const { token } = await createUserWithToken('user');
+            const createdAt = 1700000000;
+            const updatedAt = 1700001000;
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([createImportForm({ created_at: createdAt, updated_at: updatedAt })])
+                .expect(200);
+
+            assert.strictEqual(response.body[0].created_at, createdAt);
+            assert.strictEqual(response.body[0].updated_at, updatedAt);
+        });
+
+        test('should use current time when timestamps are not provided', async () => {
+            const { token } = await createUserWithToken('user');
+            const before = currentUnixTimestamp();
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([createImportForm()])
+                .expect(200);
+
+            const after = currentUnixTimestamp();
+            assert.ok(response.body[0].created_at >= before);
+            assert.ok(response.body[0].created_at <= after);
+        });
+
+        test('imported chats should appear in the chat list', async () => {
+            const { token } = await createUserWithToken('user');
+
+            await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([
+                    createImportForm({ chat: createTestChatObject('Imported A') }),
+                    createImportForm({ chat: createTestChatObject('Imported B') }),
+                ])
+                .expect(200);
+
+            const listResponse = await request(app)
+                .get('/api/v1/chats/')
+                .set('Authorization', `Bearer ${token}`)
+                .expect(200);
+
+            assert.strictEqual(listResponse.body.length, 2);
+        });
+
+        test('imported chats should be owned by the requesting user', async () => {
+            const { token, userId } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([createImportForm()])
+                .expect(200);
+
+            assert.strictEqual(response.body[0].user_id, userId);
+        });
+
+        test('should return empty array for empty input', async () => {
+            const { token } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([])
+                .expect(200);
+
+            assert.deepStrictEqual(response.body, []);
+        });
+
+        test('should reject non-array body', async () => {
+            const { token } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ chat: createTestChatObject() })
+                .expect(400);
+
+            assert.ok(response.body.detail);
+        });
+
+        test('should reject array containing an invalid item', async () => {
+            const { token } = await createUserWithToken('user');
+
+            const response = await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token}`)
+                .send([
+                    createImportForm({ chat: createTestChatObject('Valid') }),
+                    { chat: 'not a chat object' },   // invalid
+                ])
+                .expect(400);
+
+            assert.ok(response.body.detail);
+            assert.ok(response.body.detail.includes('index 1'));
+        });
+
+        test('should not expose other users chats via import', async () => {
+            const { token: token1 } = await createUserWithToken('user');
+            const { token: token2 } = await createUserWithToken('user');
+
+            await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', `Bearer ${token1}`)
+                .send([createImportForm()])
+                .expect(200);
+
+            const listResponse = await request(app)
+                .get('/api/v1/chats/')
+                .set('Authorization', `Bearer ${token2}`)
+                .expect(200);
+
+            assert.strictEqual(listResponse.body.length, 0);
+        });
+
+        test('should fail without authentication token', async () => {
+            await request(app)
+                .post('/api/v1/chats/import')
+                .send([createImportForm()])
+                .expect(401);
+        });
+
+        test('should fail with invalid authentication token', async () => {
+            await request(app)
+                .post('/api/v1/chats/import')
+                .set('Authorization', 'Bearer invalid_token')
+                .send([createImportForm()])
                 .expect(401);
         });
     });

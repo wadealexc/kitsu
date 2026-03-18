@@ -77,8 +77,6 @@ describe('Chat Operations', () => {
             assert.ok(chat.id);
             assert.strictEqual(chat.userId, userId);
             assert.strictEqual(chat.title, 'My First Chat');
-            assert.strictEqual(chat.archived, false);
-            assert.strictEqual(chat.pinned, false);
             assert.strictEqual(chat.shareId, null);
             assert.ok(chat.createdAt);
             assert.ok(chat.updatedAt);
@@ -189,7 +187,6 @@ describe('Chat Operations', () => {
             const [chat1] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                pinned: false,
                 created_at: now - 1000,
                 updated_at: now - 1000,
             }], db);
@@ -217,31 +214,6 @@ describe('Chat Operations', () => {
             assert.ok(chats[0]!.createdAt);
         });
 
-        // TODO - uncomment when archival operations are implemented
-        // it('should exclude archived chats by default', async () => {
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Archived Chat'), db);
-        //     await Chats.updateChatArchivedById(chat2.id, db);
-
-        //     const chats = await Chats.getChatTitleListByUserId(userId, {}, db);
-
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(!chats.some(c => c.id === chat2.id));
-        // });
-
-        // it('should include archived chats when requested', async () => {
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Archived Chat'), db);
-        //     await Chats.updateChatArchivedById(chat2.id, db);
-
-        //     const chats = await Chats.getChatTitleListByUserId(userId, {
-        //         includeArchived: true
-        //     }, db);
-
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(chats.some(c => c.id === chat2.id));
-        // });
-
         it('should exclude chats in folders by default', async () => {
             const folder = await Folders.createFolder({ userId, name: 'Test Folder' }, db);
             const chat1 = await Chats.createChat(userId, createTestChatData('Root Chat'), db);
@@ -265,31 +237,6 @@ describe('Chat Operations', () => {
             assert.ok(chats.some(c => c.id === chat1.id));
             assert.ok(chats.some(c => c.id === chat2.id));
         });
-
-        // TODO - uncomment when pinning is implemented
-        // it('should exclude pinned chats by default', async () => {
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Pinned Chat'), db);
-        //     await Chats.updateChatPinnedById(chat2.id, db);
-
-        //     const chats = await Chats.getChatTitleListByUserId(userId, {}, db);
-
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(!chats.some(c => c.id === chat2.id));
-        // });
-
-        // it('should include pinned chats when requested', async () => {
-        //     const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-        //     const chat2 = await Chats.createChat(userId, createTestChatData('Pinned Chat'), db);
-        //     await Chats.updateChatPinnedById(chat2.id, db);
-
-        //     const chats = await Chats.getChatTitleListByUserId(userId, {
-        //         includePinned: true
-        //     }, db);
-
-        //     assert.ok(chats.some(c => c.id === chat1.id));
-        //     assert.ok(chats.some(c => c.id === chat2.id));
-        // });
 
         it('should support pagination', async () => {
             await Chats.createChat(userId, createTestChatData('Chat 1'), db);
@@ -316,27 +263,6 @@ describe('Chat Operations', () => {
             assert.ok(chats.some(c => c.id === chat1.id));
             assert.ok(!chats.some(c => c.id === chat2.id));
         });
-
-        // TODO - uncomment when archiving/pinning is supported
-        // it('should exclude archived chats', async () => {
-        //     const folder = await Folders.createFolder({ userId, name: 'Test Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-        //     await Chats.updateChatArchivedById(chat.id, db);
-
-        //     const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
-
-        //     assert.ok(!chats.some(c => c.id === chat.id));
-        // });
-
-        // it('should exclude pinned chats', async () => {
-        //     const folder = await Folders.createFolder({ userId, name: 'Test Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-        //     await Chats.updateChatPinnedById(chat.id, db);
-
-        //     const chats = await Chats.getChatsByFolderIdAndUserId([folder.id], userId, {}, db);
-
-        //     assert.ok(!chats.some(c => c.id === chat.id));
-        // });
 
         it('should verify user ownership', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
@@ -371,7 +297,6 @@ describe('Chat Operations', () => {
             const [chat] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                pinned: false,
                 created_at: now - 1000,
                 updated_at: now - 1000,
             }], db);
@@ -473,18 +398,6 @@ describe('Chat Operations', () => {
             assert.strictEqual(updated.folderId, null);
         });
 
-        // TODO - uncomment when pinned implemented
-        // it('should clear pinned status when moving to folder', async () => {
-        //     const folder = await Folders.createFolder({ userId, name: 'Test Folder' }, db);
-        //     const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-        //     await Chats.updateChatPinnedById(chat.id, db);
-
-        //     const updated = await Chats.updateChatFolder(chat.id, userId, folder.id, db);
-
-        //     assert.ok(updated);
-        //     assert.strictEqual(updated.pinned, false);
-        // });
-
         it('should throw if user does not own chat', async () => {
             const otherUser = await Users.createUser(newUserParams(), db);
             const folder = await Folders.createFolder({ userId, name: 'Test Folder' }, db);
@@ -496,95 +409,6 @@ describe('Chat Operations', () => {
             );
         });
     });
-
-    // TODO - uncomment when pin/archive implemented
-    // describe('updateChatPinnedById', () => {
-    //     it('should toggle pinned from false to true', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-
-    //         const updated = await Chats.updateChatPinnedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.pinned, true);
-    //     });
-
-    //     it('should toggle pinned from true to false', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-    //         await Chats.updateChatPinnedById(chat.id, db);
-
-    //         const updated = await Chats.updateChatPinnedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.pinned, false);
-    //     });
-
-    //     it('should convert null to false before toggling', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-    //         // Pinned defaults to false (or null in schema)
-
-    //         const updated = await Chats.updateChatPinnedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.pinned, true);
-    //     });
-
-    //     it('should return null for non-existent chat', async () => {
-    //         const updated = await Chats.updateChatPinnedById('non-existent-id', db);
-
-    //         assert.strictEqual(updated, null);
-    //     });
-    // });
-
-    // describe('updateChatArchivedById', () => {
-    //     it('should toggle archived from false to true', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-
-    //         const updated = await Chats.updateChatArchivedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.archived, true);
-    //     });
-
-    //     it('should toggle archived from true to false', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-    //         await Chats.updateChatArchivedById(chat.id, db);
-
-    //         const updated = await Chats.updateChatArchivedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.archived, false);
-    //     });
-
-    //     it('should clear folder_id when archiving', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-
-    //         const updated = await Chats.updateChatArchivedById(chat.id, db);
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.archived, true);
-    //         assert.strictEqual(updated.folderId, null);
-    //     });
-
-    //     it('should restore folder_id when unarchiving', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-    //         await Chats.updateChatArchivedById(chat.id, db); // Archive (clears folderId)
-
-    //         const updated = await Chats.updateChatArchivedById(chat.id, db); // Unarchive
-
-    //         assert.ok(updated);
-    //         assert.strictEqual(updated.archived, false);
-    //         // Note: folderId is not restored automatically
-    //         assert.strictEqual(updated.folderId, null);
-    //     });
-
-    //     it('should return null for non-existent chat', async () => {
-    //         const updated = await Chats.updateChatArchivedById('non-existent-id', db);
-
-    //         assert.strictEqual(updated, null);
-    //     });
-    // });
 
     describe('deleteChat', () => {
         it('should delete chat with ownership verification', async () => {
@@ -664,30 +488,6 @@ describe('Chat Operations', () => {
 
     //         assert.ok(chats.length >= 2);
     //         assert.ok(chats.every(c => c.title.includes('Project')));
-    //     });
-
-    //     it('should exclude archived chats by default', async () => {
-    //         const chat1 = await Chats.createChat(userId, createTestChatData('Project Alpha'), db);
-    //         const chat2 = await Chats.createChat(userId, createTestChatData('Project Beta'), db);
-    //         await Chats.updateChatArchivedById(chat2.id, db);
-
-    //         const chats = await Chats.getChatsByUserIdAndSearchText(userId, 'Project', {}, db);
-
-    //         assert.ok(chats.some(c => c.id === chat1.id));
-    //         assert.ok(!chats.some(c => c.id === chat2.id));
-    //     });
-
-    //     it('should include archived chats when requested', async () => {
-    //         const chat1 = await Chats.createChat(userId, createTestChatData('Project Alpha'), db);
-    //         const chat2 = await Chats.createChat(userId, createTestChatData('Project Beta'), db);
-    //         await Chats.updateChatArchivedById(chat2.id, db);
-
-    //         const chats = await Chats.getChatsByUserIdAndSearchText(userId, 'Project', {
-    //             includeArchived: true
-    //         }, db);
-
-    //         assert.ok(chats.some(c => c.id === chat1.id));
-    //         assert.ok(chats.some(c => c.id === chat2.id));
     //     });
 
     //     it('should support pagination', async () => {
@@ -900,126 +700,6 @@ describe('Chat Operations', () => {
         });
     });
 
-    /* -------------------- ARCHIVING & PINNING -------------------- */
-
-    // TODO - uncomment when archiving/pinning implemented
-    // describe('archiveAllChatsByUserId', () => {
-    //     it('should archive all chats for user', async () => {
-    //         await Chats.createChat(userId, createTestChatData('Chat 1'), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2'), db);
-
-    //         const success = await Chats.archiveAllChatsByUserId(userId, db);
-
-    //         assert.strictEqual(success, true);
-
-    //         const result = await Chats.getChatsByUserId(userId, {}, db);
-    //         assert.ok(result.items.every(c => c.archived === true));
-    //     });
-
-    //     it('should clear folder_id for all archived chats', async () => {
-    //         const folder = await Folders.createFolder(userId, { name: 'Test Folder' }, null, db);
-    //         await Chats.createChat(userId, createTestChatData('Chat', folder.id), db);
-
-    //         await Chats.archiveAllChatsByUserId(userId, db);
-
-    //         const result = await Chats.getChatsByUserId(userId, {}, db);
-    //         assert.ok(result.items.every(c => c.folderId === null));
-    //     });
-
-    //     it('should return false if user has no chats', async () => {
-    //         const success = await Chats.archiveAllChatsByUserId(userId, db);
-
-    //         assert.strictEqual(success, false);
-    //     });
-    // });
-
-    // describe('unarchiveAllChatsByUserId', () => {
-    //     it('should unarchive all chats for user', async () => {
-    //         await Chats.createChat(userId, createTestChatData('Chat 1'), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2'), db);
-    //         await Chats.archiveAllChatsByUserId(userId, db);
-
-    //         const success = await Chats.unarchiveAllChatsByUserId(userId, db);
-
-    //         assert.strictEqual(success, true);
-
-    //         const result = await Chats.getChatsByUserId(userId, {}, db);
-    //         assert.ok(result.items.every(c => c.archived === false));
-    //     });
-
-    //     it('should return false if user has no chats', async () => {
-    //         const success = await Chats.unarchiveAllChatsByUserId(userId, db);
-
-    //         assert.strictEqual(success, false);
-    //     });
-    // });
-
-    // describe('getArchivedChats', () => {
-    //     it('should retrieve only archived chats', async () => {
-    //         const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-    //         const chat2 = await Chats.createChat(userId, createTestChatData('Archived Chat'), db);
-    //         await Chats.updateChatArchivedById(chat2.id, db);
-
-    //         const archivedChats = await Chats.getArchivedChats(userId, {}, db);
-
-    //         assert.ok(archivedChats.some(c => c.id === chat2.id));
-    //         assert.ok(!archivedChats.some(c => c.id === chat1.id));
-    //     });
-
-    //     it('should support pagination', async () => {
-    //         await Chats.createChat(userId, createTestChatData('Chat 1'), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 2'), db);
-    //         await Chats.createChat(userId, createTestChatData('Chat 3'), db);
-    //         await Chats.archiveAllChatsByUserId(userId, db);
-
-    //         const page1 = await Chats.getArchivedChats(userId, {
-    //             skip: 0,
-    //             limit: 2
-    //         }, db);
-
-    //         assert.strictEqual(page1.length, 2);
-    //     });
-
-    //     it('should return empty array if no archived chats', async () => {
-    //         await Chats.createChat(userId, createTestChatData('Chat'), db);
-
-    //         const archivedChats = await Chats.getArchivedChats(userId, {}, db);
-
-    //         assert.strictEqual(archivedChats.length, 0);
-    //     });
-    // });
-
-    // describe('getPinnedChats', () => {
-    //     it('should retrieve only pinned chats', async () => {
-    //         const chat1 = await Chats.createChat(userId, createTestChatData('Normal Chat'), db);
-    //         const chat2 = await Chats.createChat(userId, createTestChatData('Pinned Chat'), db);
-    //         await Chats.updateChatPinnedById(chat2.id, db);
-
-    //         const pinnedChats = await Chats.getPinnedChats(userId, db);
-
-    //         assert.ok(pinnedChats.some(c => c.id === chat2.id));
-    //         assert.ok(!pinnedChats.some(c => c.id === chat1.id));
-    //     });
-
-    //     it('should exclude archived chats', async () => {
-    //         const chat = await Chats.createChat(userId, createTestChatData('Chat'), db);
-    //         await Chats.updateChatPinnedById(chat.id, db);
-    //         await Chats.updateChatArchivedById(chat.id, db);
-
-    //         const pinnedChats = await Chats.getPinnedChats(userId, db);
-
-    //         assert.ok(!pinnedChats.some(c => c.id === chat.id));
-    //     });
-
-    //     it('should return empty array if no pinned chats', async () => {
-    //         await Chats.createChat(userId, createTestChatData('Chat'), db);
-
-    //         const pinnedChats = await Chats.getPinnedChats(userId, db);
-
-    //         assert.strictEqual(pinnedChats.length, 0);
-    //     });
-    // });
-
     /* -------------------- FOLDER OPERATIONS -------------------- */
 
     describe('deleteChatsInFolder', () => {
@@ -1061,12 +741,10 @@ describe('Chat Operations', () => {
                 {
                     chat: createTestChatObject('Imported Chat 1'),
                     meta: { source: 'backup' },
-                    pinned: false,
                 },
                 {
                     chat: createTestChatObject('Imported Chat 2'),
                     meta: {},
-                    pinned: true,
                 },
             ];
 
@@ -1082,12 +760,10 @@ describe('Chat Operations', () => {
                 {
                     chat: createTestChatObject('Chat 1'),
                     meta: {},
-                    pinned: false,
                 },
                 {
                     chat: createTestChatObject('Chat 2'),
                     meta: {},
-                    pinned: false,
                 },
             ];
 
@@ -1107,7 +783,6 @@ describe('Chat Operations', () => {
                     created_at: createdAt,
                     updated_at: updatedAt,
                     meta: {},
-                    pinned: false,
                 },
             ];
 
@@ -1123,7 +798,6 @@ describe('Chat Operations', () => {
                 {
                     chat: createTestChatObject('Chat'),
                     meta: {},
-                    pinned: false,
                 },
             ];
 
@@ -1138,12 +812,10 @@ describe('Chat Operations', () => {
                 {
                     chat: createTestChatObject('Chat 1'),
                     meta: {},
-                    pinned: false,
                 },
                 {
                     chat: createTestChatObject('Chat 2'),
                     meta: {},
-                    pinned: false,
                 },
             ];
 
@@ -1156,21 +828,6 @@ describe('Chat Operations', () => {
             const imported = await Chats.importChats(userId, [], db);
 
             assert.strictEqual(imported.length, 0);
-        });
-
-        it('should set archived to false and shareId to null', async () => {
-            const chatsData: ChatImportForm[] = [
-                {
-                    chat: createTestChatObject('Chat'),
-                    meta: {},
-                    pinned: false,
-                },
-            ];
-
-            const imported = await Chats.importChats(userId, chatsData, db);
-
-            assert.strictEqual(imported[0]!.archived, false);
-            assert.strictEqual(imported[0]!.shareId, null);
         });
     });
 });

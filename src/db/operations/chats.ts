@@ -14,7 +14,7 @@ const TABLE = 'chat';
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = Omit<
     typeof chats.$inferInsert,
-    'id' | 'userId' | 'updatedAt' | 'createdAt' | 'archived' | 'pinned' | 'meta' | 'shareId'
+    'id' | 'userId' | 'updatedAt' | 'createdAt' | 'meta' | 'shareId'
 >;
 
 /**
@@ -22,7 +22,7 @@ export type NewChat = Omit<
  *
  * Required fields: userId, data.chat
  * Auto-generated: id (UUID v4), createdAt, updatedAt, title (from chat.title)
- * Defaults: archived=false, pinned=false, meta={}, shareId=null
+ * Defaults: meta={}, shareId=null
  */
 export async function createChat(
     userId: string,
@@ -40,8 +40,6 @@ export async function createChat(
             title: data.title,
             chat: data.chat,
             folderId: data.folderId,
-            archived: false,
-            pinned: false,
             meta: {},
             shareId: null,
             createdAt: now,
@@ -214,9 +212,7 @@ export async function getChatsByUserId(
  * @field skip - bingus
  */
 export type ListOptions = {
-    includeArchived?: boolean;
     includeFolders?: boolean;
-    includePinned?: boolean;
     skip?: number;
     limit?: number;
 };
@@ -247,8 +243,6 @@ export async function getChatTitleListByUserId(
     txOrDb: DbOrTx = db
 ): Promise<ChatTitleIdResponse[]> {
     const {
-        includeArchived = false,
-        includePinned = false,
         includeFolders = false,
         skip,
         limit,
@@ -257,8 +251,6 @@ export async function getChatTitleListByUserId(
     // Build where conditions
     const conditions: (SQL<unknown> | undefined)[] = [eq(chats.userId, userId)];
 
-    if (!includeArchived) conditions.push(eq(chats.archived, false));
-    if (!includePinned) conditions.push(eq(chats.pinned, false));
     if (!includeFolders) conditions.push(isNull(chats.folderId));
 
     const whereClause = and(...conditions);
@@ -282,7 +274,6 @@ export async function getChatTitleListByUserId(
  * Options for searching chats.
  */
 export type SearchOptions = {
-    includeArchived?: boolean;
     skip?: number;
     limit?: number;
 };
@@ -307,7 +298,6 @@ export async function getChatsByUserIdAndSearchText(
     txOrDb: DbOrTx = db
 ): Promise<Chat[]> {
     const {
-        includeArchived = false,
         skip,
         limit,
     } = opts;
@@ -317,8 +307,6 @@ export async function getChatsByUserIdAndSearchText(
         eq(chats.userId, userId),
         like(chats.title, `%${searchText}%`),
     ];
-
-    if (!includeArchived) conditions.push(eq(chats.archived, false));
 
     const whereClause = and(...conditions);
 
@@ -557,7 +545,6 @@ export async function updateChatFolder(
         .update(chats)
         .set({
             folderId: folderId,
-            pinned: false,  // Can't be pinned in folder
             updatedAt: currentUnixTimestamp(),
         })
         .where(and(
@@ -621,9 +608,7 @@ export async function getChatsByFolderIdAndUserId(
         .from(chats)
         .where(and(
             inArray(chats.folderId, folderIds),
-            eq(chats.userId, userId),
-            eq(chats.archived, false),
-            eq(chats.pinned, false)
+            eq(chats.userId, userId)
         ))
         .orderBy(desc(chats.updatedAt))
         .limit(opts.limit ?? 999999)
@@ -659,8 +644,6 @@ export async function importChats(
             title: chat.title,
             chat: chat,
             meta: data.meta ?? {},
-            pinned: data.pinned ?? false,
-            archived: false,
             shareId: null,
             folderId: null,
             createdAt: data.created_at ?? now,

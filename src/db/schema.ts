@@ -84,8 +84,6 @@ export const chats = sqliteTable('chat', {
     // Organization
     folderId: text('folder_id')
         .references(() => folders.id, { onDelete: 'set null' }),
-    archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
-    pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
 
     // Metadata
     meta: text('meta', { mode: 'json' }).$type<Record<string, any>>().default({}),
@@ -101,8 +99,6 @@ export const chats = sqliteTable('chat', {
     index('idx_chat_folder_id').on(table.folderId),
     index('idx_chat_created_at').on(table.createdAt),
     index('idx_chat_updated_at').on(table.updatedAt),
-    index('idx_chat_user_id_pinned').on(table.userId, table.pinned),
-    index('idx_chat_user_id_archived').on(table.userId, table.archived),
     index('idx_chat_updated_at_user_id').on(table.updatedAt, table.userId),
     index('idx_chat_folder_id_user_id').on(table.folderId, table.userId),
 ]);
