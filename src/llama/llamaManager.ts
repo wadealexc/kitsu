@@ -94,9 +94,8 @@ export class LlamaManager {
     private taskLlama: Llama | null = null;
     private taskQueue: Job[] = [];
 
-    private loopTimer: NodeJS.Timeout | null = null;
     private sleepAfterMs: number;
-    private sleepTimer: { reset: () => void, clear: () => void } | null = null;
+    private sleepTimer: { reset: () => void } | null = null;
 
     // Logging
     private runCounter = 0;
@@ -214,7 +213,7 @@ export class LlamaManager {
         if (cur && !cur.llama.active) 
             promises.push(this.#start(cur.llama));
 
-        if (this.taskLlama && !this.taskLlama.active)
+        if (this.taskLlama && !this.taskLlama.active && this.taskQueue.length !== 0)
             promises.push(this.#start(this.taskLlama));
 
         await Promise.all(promises);
@@ -290,7 +289,7 @@ export class LlamaManager {
         this.#logVRAM();
 
         this.requestQueue.push({ llama: this.defaultLlama, jobs: [] });
-        this.sleepTimer = this.#newSleepTimer(this.sleepAfterMs);
+        this.sleepTimer = this.#newSleepTimer();
 
         const tick = async () => {
             try {
@@ -298,7 +297,7 @@ export class LlamaManager {
             } catch (err) {
                 console.error(`LlamaManager: loop error: ${err}`);
             }
-            this.loopTimer = setTimeout(tick, LOOP_INTERVAL_MS);
+            setTimeout(tick, LOOP_INTERVAL_MS);
         };
         tick();
     }
@@ -359,12 +358,6 @@ export class LlamaManager {
      * pending jobs.
      */
     async stopServer(): Promise<void> {
-        // Stop the dispatch loop
-        if (this.loopTimer !== null) {
-            clearTimeout(this.loopTimer);
-            this.loopTimer = null;
-        }
-
         // Reject all pending jobs before clearing queues
         for (const item of this.requestQueue) {
             for (const job of item.jobs) {
@@ -712,16 +705,13 @@ export class LlamaManager {
         });
     }
 
-    #newSleepTimer(delayMs: number): {
-        reset: () => void,
-        clear: () => void,
-    } {
+    #newSleepTimer(): { reset: () => void } {
         let timer: NodeJS.Timeout | null = null;
 
         const start = () => {
             timer = setTimeout(async () => {
                 await this.#sleep();
-            }, delayMs); // NOTE: add unref() ?
+            }, this.sleepAfterMs); // NOTE: add unref() ?
         };
 
         start();
@@ -729,10 +719,6 @@ export class LlamaManager {
             reset: () => {
                 if (timer !== null) clearTimeout(timer);
                 start();
-            },
-            clear: () => {
-                if (timer !== null) clearTimeout(timer);
-                timer = null;
             },
         };
     }
