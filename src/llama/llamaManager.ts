@@ -1,5 +1,6 @@
 import path from 'path';
 import * as fs from 'node:fs';
+import http from 'node:http';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import fetch, { Headers } from 'node-fetch';
 
@@ -28,6 +29,11 @@ const NUM_RETRIES = 40;
 
 // How often the main dispatch loop ticks
 const LOOP_INTERVAL_MS = 100;
+
+// Disable HTTP keep-alive for llama-server requests. Without this, node-fetch pools
+// TCP connections, and llama-server may close an idle connection between tool-call
+// rounds, causing a "socket hang up" on the next round's fetch.
+const LLAMA_HTTP_AGENT = new http.Agent({ keepAlive: false });
 
 type Llama = {
     model: proto.ModelInfo,
@@ -435,6 +441,7 @@ export class LlamaManager {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(body),
                 signal: job.request.signal,
+                agent: LLAMA_HTTP_AGENT,
             });
 
             const contentType: string | null = response.headers.get('content-type');
@@ -621,19 +628,6 @@ export class LlamaManager {
         return new Promise<void>((resolve, reject) => {
             this.#pollServer(llama)
                 .then(async () => {
-                    // Fetch context window size from /props
-                    try {
-                        const propsRes = await fetch(`http://${llama.serverHost}:${llama.serverPort}/props`);
-                        if (propsRes.ok) {
-                            const props = await propsRes.json() as Record<string, unknown>;
-                            if (typeof props.n_ctx === 'number') {
-                                llama.model.contextLength = props.n_ctx;
-                                console.log(chalk.dim(` - n_ctx: ${props.n_ctx}`));
-                            }
-                        }
-                    } catch {
-                        // Non-critical - proceed without context length
-                    }
                     resolve();
                     this.#logVRAM();
                 })
