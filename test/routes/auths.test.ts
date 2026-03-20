@@ -1312,7 +1312,7 @@ describe('GET /api/v1/auths/admin/config', () => {
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
         assert.ok(typeof res.body.ENABLE_SIGNUP === 'boolean');
-        assert.ok(res.body.WEBUI_URL);
+        assert.ok(res.body.APP_URL);
         assert.ok(res.body.JWT_EXPIRES_IN);
         assert.ok(res.body.DEFAULT_USER_ROLE);
     });
@@ -1323,7 +1323,7 @@ describe('GET /api/v1/auths/admin/config', () => {
             .set('Authorization', `Bearer ${adminToken}`);
 
         assert.strictEqual(res.status, 200);
-        assert.ok(res.body.WEBUI_URL !== undefined);
+        assert.ok(res.body.APP_URL !== undefined);
         assert.ok(res.body.ENABLE_SIGNUP !== undefined);
         assert.ok(res.body.JWT_EXPIRES_IN !== undefined);
         assert.ok(res.body.DEFAULT_USER_ROLE !== undefined);
@@ -1386,7 +1386,7 @@ describe('POST /api/v1/auths/admin/config', () => {
 
     test('updates admin config', async () => {
         const newConfig = {
-            WEBUI_URL: 'http://localhost:8080',
+            APP_URL: 'http://localhost:8080',
             ENABLE_SIGNUP: false,
             DEFAULT_USER_ROLE: 'pending' as const,
             JWT_EXPIRES_IN: '30d',
@@ -1398,7 +1398,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .send(newConfig);
 
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.WEBUI_URL, 'http://localhost:8080');
+        assert.strictEqual(res.body.APP_URL, 'http://localhost:8080');
         assert.strictEqual(res.body.ENABLE_SIGNUP, false);
         assert.strictEqual(res.body.DEFAULT_USER_ROLE, 'pending');
         assert.strictEqual(res.body.JWT_EXPIRES_IN, '30d');
@@ -1410,7 +1410,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                WEBUI_URL: 'http://updated.com',
+                APP_URL: 'http://updated.com',
                 ENABLE_SIGNUP: false,
                 DEFAULT_USER_ROLE: 'pending' as const,
                 JWT_EXPIRES_IN: '14d',
@@ -1423,7 +1423,7 @@ describe('POST /api/v1/auths/admin/config', () => {
 
         assert.strictEqual(res.status, 200);
         assert.strictEqual(res.body.ENABLE_SIGNUP, false);
-        assert.strictEqual(res.body.WEBUI_URL, 'http://updated.com');
+        assert.strictEqual(res.body.APP_URL, 'http://updated.com');
         assert.strictEqual(res.body.JWT_EXPIRES_IN, '14d');
     });
 
@@ -1435,7 +1435,7 @@ describe('POST /api/v1/auths/admin/config', () => {
                 .post('/api/v1/auths/admin/config')
                 .set('Authorization', `Bearer ${adminToken}`)
                 .send({
-                    WEBUI_URL: 'http://localhost:3000',
+                    APP_URL: 'http://localhost:3000',
                     ENABLE_SIGNUP: true,
                     DEFAULT_USER_ROLE: 'user' as const,
                     JWT_EXPIRES_IN: format,
@@ -1451,7 +1451,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                WEBUI_URL: 'http://localhost:3000',
+                APP_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
                 DEFAULT_USER_ROLE: 'user',
                 JWT_EXPIRES_IN: 'invalid-format',
@@ -1466,7 +1466,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
-                WEBUI_URL: 'http://localhost:3000',
+                APP_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: true,
                 DEFAULT_USER_ROLE: 'superuser', // Invalid role
                 JWT_EXPIRES_IN: '7d',
@@ -1494,7 +1494,7 @@ describe('POST /api/v1/auths/admin/config', () => {
             .post('/api/v1/auths/admin/config')
             .set('Authorization', `Bearer ${userToken}`)
             .send({
-                WEBUI_URL: 'http://localhost:3000',
+                APP_URL: 'http://localhost:3000',
                 ENABLE_SIGNUP: false,
                 DEFAULT_USER_ROLE: 'user',
                 JWT_EXPIRES_IN: '7d',

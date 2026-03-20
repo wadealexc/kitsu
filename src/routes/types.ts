@@ -165,7 +165,7 @@ const MsStringValueSchema = z.custom<StringValue>((v) => {
 });
 
 export const AdminConfigSchema = z.object({
-    WEBUI_URL: z.string(),
+    APP_URL: z.string(),
     ENABLE_SIGNUP: z.boolean(),
     DEFAULT_USER_ROLE: z.enum(['pending', 'user', 'admin']),
     JWT_EXPIRES_IN: MsStringValueSchema,

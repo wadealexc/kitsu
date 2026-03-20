@@ -216,11 +216,13 @@ export class LlamaManager {
         const promises: Promise<void>[] = [];
         const cur = this.requestQueue.at(0);
         
-        if (cur && !cur.llama.active) 
+        if (cur && !cur.llama.active) {
             promises.push(this.#start(cur.llama));
 
-        if (this.taskLlama && !this.taskLlama.active && this.taskQueue.length !== 0)
-            promises.push(this.#start(this.taskLlama));
+            // Start task model alongside main model
+            if (this.taskLlama && !this.taskLlama.active)
+                promises.push(this.#start(this.taskLlama));
+        }
 
         await Promise.all(promises);
     }

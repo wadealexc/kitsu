@@ -11,6 +11,21 @@ import { requireAuth, requireAdmin } from './middleware.js';
 
 const router = Router();
 
+// Backend config endpoint (temporary inline implementation)
+router.get('/', (
+    _req: Request,
+    res: Response<any | Types.ErrorResponse>
+) => {
+    res.json({
+        name: 'Placeholder',
+        default_locale: 'en-US',
+        features: {
+            auth: true,
+            enable_signup: true,
+        },
+    });
+});
+
 /* -------------------- ADMIN ENDPOINTS -------------------- */
 
 /**

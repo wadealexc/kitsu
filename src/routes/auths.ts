@@ -17,7 +17,7 @@ const router = Router();
 /* -------------------- MODULE-LEVEL CONFIG -------------------- */
 
 let adminConfig: Types.AdminConfig = {
-    WEBUI_URL: 'http://192.168.87.30:5050',
+    APP_URL: 'http://192.168.87.30:5050',
     ENABLE_SIGNUP: true,
     DEFAULT_USER_ROLE: DEFAULT_USER_ROLE,
     JWT_EXPIRES_IN: '7d',

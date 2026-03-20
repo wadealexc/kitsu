@@ -107,18 +107,6 @@ app.use('/api/v1/files', filesRouter);
 app.use('/api/version', versionRouter);
 app.use('/health', healthRouter);
 
-// Backend config endpoint (temporary inline implementation)
-app.get('/api/config', (_req, res) => {
-    res.json({
-        name: 'Open WebUI',
-        default_locale: 'en-US',
-        features: {
-            auth: true,
-            enable_signup: true,
-        },
-    });
-});
-
 /* -------------------- ERROR HANDLING AND SHUTDOWN -------------------- */
 
 const LLAMA_SHIM_URL = `http://${cfg.ports.shim.host}:${cfg.ports.shim.port}`;

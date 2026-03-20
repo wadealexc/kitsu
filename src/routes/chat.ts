@@ -430,10 +430,6 @@ router.post('/custom-completions', requireAuth, async (
             }
         }
 
-        console.log(`waiting for tasks...`);
-        await taskPromise;
-        console.log(`done!`);
-
         const completionTps = totalPredictedMs > 0
             ? (totalUsage.completion_tokens / totalPredictedMs) * 1000
             : undefined;
@@ -442,6 +438,11 @@ router.post('/custom-completions', requireAuth, async (
             : undefined;
 
         res.write('data: [DONE]\n\n');
+
+        console.log(`waiting for tasks...`);
+        await taskPromise;
+        console.log(`done!`);
+
         emitSseEvent(res, chatId, messageId, {
             type: 'chat:completion',
             data: {
