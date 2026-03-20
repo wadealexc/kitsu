@@ -68,13 +68,12 @@ export async function newDBWithAdmin() {
 /**
  * Create a test user and return JWT token
  */
-export async function createUserWithToken(role: UserRole = 'user', profileImageUrl?: string): Promise<{ 
+export async function createUserWithToken(role: UserRole = 'user'): Promise<{
     userId: string;
     token: string;
     user: Users.User;
 }> {
     const userParams = newUserParams(role);
-    if (profileImageUrl) userParams.profileImageUrl = profileImageUrl;
 
     const user = await Users.createUser(userParams, db);
     await Auths.createAuth({

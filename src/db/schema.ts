@@ -17,10 +17,9 @@ import type {
 /* -------------------- USER TABLE -------------------- */
 
 export const DEFAULT_USER_ROLE: UserRole = 'user';
-export const DEFAULT_USER_IMAGE = '/static/user.png';
 
 /**
- * The user table stores user profile information, settings, permissions, and metadata. 
+ * The user table stores user profile information, settings, permissions, and metadata.
  * It is the root table for a user; deleting a user from this table will cascade
  * deletion to their auth, chats, files, folders, etc.
  */
@@ -29,9 +28,6 @@ export const users = sqliteTable('user', {
     id: text('id').primaryKey().notNull(),
     username: text('username').notNull().unique(),
     role: text('role').$type<UserRole>().notNull(),
-
-    // Profile
-    profileImageUrl: text('profile_image_url').notNull().default(DEFAULT_USER_IMAGE),
 
     // Settings & Metadata (JSON)
     info: text('info', { mode: 'json' }).$type<Record<string, any>>(),

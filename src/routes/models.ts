@@ -489,7 +489,6 @@ function toModelAccessResponse(
             id: modelUser.user.id,
             username: modelUser.user.username,
             role: modelUser.user.role,
-            profile_image_url: modelUser.user.profileImageUrl,
         } : null,
         write_access: canWrite,
     };

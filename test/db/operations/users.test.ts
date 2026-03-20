@@ -19,7 +19,6 @@ describe('createUser', () => {
         const user = await Users.createUser(newUserParams(), db);
 
         assert.strictEqual(user.role, 'user');
-        assert.strictEqual(user.profileImageUrl, '/static/user.png');
         assert.ok(user.createdAt);
         assert.ok(user.updatedAt);
         assert.ok(user.lastActiveAt);
@@ -42,17 +41,6 @@ describe('createUser', () => {
         );
     });
 
-    test('uses custom profile image if provided', async () => {
-        const user = await Users.createUser(
-            {
-                ...newUserParams(),
-                profileImageUrl: 'https://example.com/avatar.jpg',
-            },
-            db
-        );
-
-        assert.strictEqual(user.profileImageUrl, 'https://example.com/avatar.jpg');
-    });
 });
 
 describe('getUserById', () => {
@@ -174,31 +162,12 @@ describe('updateUser', () => {
 
         const updated = await Users.updateUser(
             user.id,
-            { role: 'admin', profileImageUrl: 'https://new.jpg' },
+            { role: 'admin' },
             db
         );
 
         assert.strictEqual(updated.role, 'admin');
-        assert.strictEqual(updated.profileImageUrl, 'https://new.jpg');
         assert.ok(updated.updatedAt >= updated.createdAt);
-    });
-
-    test('filters out undefined values', async () => {
-        const original = await Users.createUser(
-            { ...newUserParams(), role: 'admin' },
-            db
-        );
-
-        const updated = await Users.updateUser(
-            original.id,
-            { profileImageUrl: undefined, role: 'user' },
-            db
-        );
-
-        // profileImageUrl should remain unchanged
-        assert.strictEqual(updated.profileImageUrl, original.profileImageUrl);
-        // role should be updated
-        assert.strictEqual(updated.role, 'user');
     });
 
     test('throws for non-existent user', async () => {
@@ -347,13 +316,11 @@ describe('updateProfile', () => {
 
         const updated = await Users.updateProfile(
             user.id,
-            {
-                profileImageUrl: 'https://new-avatar.jpg',
-            },
+            { username: 'new-username' },
             db
         );
 
-        assert.strictEqual(updated.profileImageUrl, 'https://new-avatar.jpg');
+        assert.strictEqual(updated.username, 'new-username');
     });
 });
 

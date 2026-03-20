@@ -98,7 +98,7 @@ router.post('/signup', async (
         });
     }
 
-    const { username, password, profile_image_url: profileImageUrl } = body.data;
+    const { username, password } = body.data;
 
     try {
         const user = await db.transaction(async (tx) => {
@@ -109,7 +109,6 @@ router.post('/signup', async (
             const newUser = await Users.createUser({
                 username,
                 role,
-                profileImageUrl: profileImageUrl,
             }, tx);
 
             // Create auth credentials
@@ -190,7 +189,6 @@ router.get('/', requireAuth, (
         id: user.id,
         username: user.username,
         role: user.role,
-        profile_image_url: user.profileImageUrl,
         token: token,
         token_type: 'Bearer',
         expires_at: JWT.getTokenExpiration(token),
@@ -201,14 +199,14 @@ router.get('/', requireAuth, (
  * POST /api/v1/auths/update/profile
  * Access Control: Requires HTTPBearer authentication (JWT token)
  *
- * Update the current user's profile information (username and profile image)
+ * Update the current user's profile information (username)
  *
- * @param {Types.UpdateProfileForm} - username and profile image
- * @returns {Types.UserProfileImageResponse} - updated user profile
+ * @param {Types.UpdateProfileForm} - username
+ * @returns {Types.UpdateProfileResponse} - updated user profile
  */
 router.post('/update/profile', requireAuth, async (
     req: Types.TypedRequest<{}, Types.UpdateProfileForm>,
-    res: Response<Types.UserProfileImageResponse | Types.ErrorResponse>
+    res: Response<Types.UpdateProfileResponse | Types.ErrorResponse>
 ) => {
     const body = Types.UpdateProfileFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -218,20 +216,16 @@ router.post('/update/profile', requireAuth, async (
         });
     }
 
-    const { profile_image_url: profileImageUrl, username } = body.data;
+    const { username } = body.data;
     const userId = req.user!.id;
 
     try {
-        const updatedUser = await Users.updateProfile(userId, {
-            username,
-            profileImageUrl,
-        }, db);
+        const updatedUser = await Users.updateProfile(userId, { username }, db);
 
         return res.json({
             id: updatedUser.id,
             username: updatedUser.username,
             role: updatedUser.role,
-            profile_image_url: updatedUser.profileImageUrl,
         });
     } catch (error: unknown) {
         if (error instanceof HttpError) {
@@ -367,9 +361,8 @@ function toSessionUserResponse(
 ): Types.SessionUserResponse {
     return {
         id: user.id,
-        username: user.username,  // Use username as name
+        username: user.username,
         role: user.role,
-        profile_image_url: user.profileImageUrl,
         token,
         token_type: 'Bearer',
         expires_at: expiresAt,

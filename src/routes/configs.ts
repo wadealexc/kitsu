@@ -1,13 +1,12 @@
 /**
  * Configuration Routes
  *
- * Handles system-wide configuration management (import/export) and
- * admin announcement banners.
+ * Handles system-wide configuration management (import/export).
  */
 
 import { Router, type Request, type Response } from 'express';
 import * as Types from './types.js';
-import { requireAuth, requireAdmin } from './middleware.js';
+import { requireAdmin } from './middleware.js';
 
 const router = Router();
 
@@ -76,46 +75,6 @@ router.post('/import', requireAdmin, (
     // TODO: Update system config in database
     // For now, just echo back the imported config
     res.status(200).json(body.data.config);
-});
-
-/**
- * POST /api/v1/configs/banners
- * Access Control: Requires HTTPBearer authentication and admin role
- *
- * Set the list of admin announcement banners. Replaces the current banner list.
- *
- * @param {Types.SetBannersForm} - banners array to set
- * @returns {Types.BannerModel[]} - the updated banner list
- */
-router.post('/banners', requireAdmin, (
-    req: Types.TypedRequest<{}, Types.SetBannersForm>,
-    res: Response<Types.BannerModel[] | Types.ErrorResponse>
-) => {
-    const body = Types.SetBannersFormSchema.safeParse(req.body);
-    if (!body.success) {
-        return res.status(400).json({ detail: 'Invalid request body', errors: body.error.issues });
-    }
-
-    // TODO: Update banners in database
-    // For now, just echo back the submitted banners
-    res.status(200).json(body.data.banners);
-});
-
-/* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
-
-/**
- * GET /api/v1/configs/banners
- * Access Control: Requires HTTPBearer authentication (any verified user)
- *
- * Get the list of admin announcement banners displayed to all users.
- *
- * @returns {Types.BannerModel[]} - array of banner objects
- */
-router.get('/banners', requireAuth, (
-    req: Request,
-    res: Response<Types.BannerModel[] | Types.ErrorResponse>
-) => {
-    res.status(200).json([]);
 });
 
 /* -------------------- EXPORT -------------------- */

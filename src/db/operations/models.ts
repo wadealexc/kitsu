@@ -176,7 +176,6 @@ export type ModelUserResponse = Model & {
         id: string;
         username: string;
         role: UserRole;
-        profileImageUrl: string;
     } | null;
 };
 
@@ -197,7 +196,6 @@ export async function getCustomModels(
                 id: users.id,
                 username: users.username,
                 role: users.role,
-                profileImageUrl: users.profileImageUrl,
             },
         })
         .from(models)

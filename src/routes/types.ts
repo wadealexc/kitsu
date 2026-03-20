@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { type Request } from 'express';
 import parse, { type StringValue } from 'ms';
-import { DEFAULT_USER_IMAGE, DEFAULT_USER_ROLE } from '../db/schema.js';
+import { DEFAULT_USER_ROLE } from '../db/schema.js';
 
 /* -------------------- HELPER TYPES -------------------- */
 
@@ -89,7 +89,6 @@ export type SigninForm = z.infer<typeof SigninFormSchema>;
 export const SignupFormSchema = z.object({
     username: z.string(),
     password: z.string(),
-    profile_image_url: z.string().default(DEFAULT_USER_IMAGE),
 });
 export type SignupForm = z.infer<typeof SignupFormSchema>;
 
@@ -105,7 +104,6 @@ export const SessionUserResponseSchema = z.object({
     id: UserIdSchema,
     username: z.string(),
     role: UserRoleSchema,
-    profile_image_url: z.string(),
     token: z.string(),
     token_type: z.string(),
     expires_at: z.number().nullable().optional(),
@@ -115,17 +113,15 @@ export type SessionUserResponse = z.infer<typeof SessionUserResponseSchema>;
 // Profile update
 export const UpdateProfileFormSchema = z.object({
     username: z.string(),
-    profile_image_url: z.string(),
 });
 export type UpdateProfileForm = z.infer<typeof UpdateProfileFormSchema>;
 
-export const UserProfileImageResponseSchema = z.object({
+export const UpdateProfileResponseSchema = z.object({
     id: UserIdSchema,
     username: z.string(),
     role: UserRoleSchema,
-    profile_image_url: z.string(),
 });
-export type UserProfileImageResponse = z.infer<typeof UserProfileImageResponseSchema>;
+export type UpdateProfileResponse = z.infer<typeof UpdateProfileResponseSchema>;
 
 // Password update
 export const UpdatePasswordFormSchema = z.object({
@@ -144,7 +140,6 @@ export const SigninResponseSchema = z.object({
     id: UserIdSchema,
     username: z.string(),
     role: UserRoleSchema,
-    profile_image_url: z.string(),
     token: z.string(),
     token_type: z.string(),
 });
@@ -180,23 +175,6 @@ export const ImportConfigFormSchema = z.object({
 });
 export type ImportConfigForm = z.infer<typeof ImportConfigFormSchema>;
 
-// Banner model
-export const BannerModelSchema = z.object({
-    id: z.string(),
-    type: z.string(),
-    title: z.string().optional(),
-    content: z.string(),
-    dismissible: z.boolean(),
-    timestamp: z.number(),
-});
-export type BannerModel = z.infer<typeof BannerModelSchema>;
-
-// Set banners form (for POST /api/v1/configs/banners)
-export const SetBannersFormSchema = z.object({
-    banners: z.array(BannerModelSchema),
-});
-export type SetBannersForm = z.infer<typeof SetBannersFormSchema>;
-
 /* -------------------- USER SCHEMAS -------------------- */
 
 // User settings (UI preferences)
@@ -211,7 +189,6 @@ export const UserModelSchema = z.object({
     id: UserIdSchema,
     username: z.string(),
     role: UserRoleSchema.default(DEFAULT_USER_ROLE),
-    profile_image_url: z.string(),
     timezone: z.string().optional(),
     info: z.record(z.string(), z.any()).optional(),
     settings: UserSettingsSchema.optional(),
@@ -246,7 +223,6 @@ export type UserModelListResponse = z.infer<typeof UserModelListResponseSchema>;
 // User active response
 export const UserActiveResponseSchema = z.object({
     username: z.string(),
-    profile_image_url: z.string().optional(),
     is_active: z.boolean(),
 });
 export type UserActiveResponse = z.infer<typeof UserActiveResponseSchema>;
@@ -255,7 +231,6 @@ export type UserActiveResponse = z.infer<typeof UserActiveResponseSchema>;
 export const UserUpdateFormSchema = z.object({
     role: UserRoleSchema,
     username: z.string(),
-    profile_image_url: z.string(),
     password: z.string().optional(),
 });
 export type UserUpdateForm = z.infer<typeof UserUpdateFormSchema>;
@@ -320,7 +295,6 @@ export const UserResponseSchema = z.object({
     id: UserIdSchema,
     username: z.string(),
     role: UserRoleSchema,
-    profile_image_url: z.string(),
 });
 export type UserResponse = z.infer<typeof UserResponseSchema>;
 

@@ -19,9 +19,7 @@ function createModelForm(overrides: Partial<NewModel> & { userId: string }): New
         baseModelId: overrides?.baseModelId !== undefined ? overrides.baseModelId : 'Base Model',
         userId: overrides?.userId,
         params: overrides?.params || {},
-        meta: overrides?.meta || {
-            profile_image_url: 'img.png'
-        },
+        meta: overrides?.meta || {},
         isPublic: overrides?.isPublic,
         isActive: overrides?.isActive !== undefined ? overrides.isActive : true,
     }
@@ -92,7 +90,7 @@ describe('insertNewModel', () => {
             name: 'My Custom GPT-4',
             baseModelId: 'gpt-4-turbo',
             params: { temperature: 0.7, max_tokens: 2000 },
-            meta: { profile_image_url: 'img.png', description: 'Custom configuration' },
+            meta: { description: 'Custom configuration' },
             userId: testUserId,
         });
 
@@ -102,7 +100,7 @@ describe('insertNewModel', () => {
         assert.strictEqual(model.id, 'my-custom-gpt4');
         assert.strictEqual(model.baseModelId, 'gpt-4-turbo');
         assert.deepStrictEqual(model.params, { temperature: 0.7, max_tokens: 2000 });
-        assert.deepStrictEqual(model.meta, { profile_image_url: 'img.png', description: 'Custom configuration' });
+        assert.deepStrictEqual(model.meta, { description: 'Custom configuration' });
     });
 
     test('creates model with public access', async () => {
@@ -179,7 +177,6 @@ describe('getCustomModels', () => {
         assert.strictEqual(customModel.user!.id, testUserId);
         assert.strictEqual(customModel.user!.username, testUsername);
         assert.ok(customModel.user!.role);
-        assert.ok(customModel.user!.profileImageUrl);
     });
 });
 
@@ -230,7 +227,7 @@ describe('updateModelById', () => {
             {
                 name: 'Updated Name',
                 params: { temperature: 0.8 },
-                meta: { profile_image_url: 'img.png', description: 'Updated' },
+                meta: { description: 'Updated' },
             },
             db
         );
@@ -238,7 +235,7 @@ describe('updateModelById', () => {
         assert.ok(updated);
         assert.strictEqual(updated.name, 'Updated Name');
         assert.deepStrictEqual(updated.params, { temperature: 0.8 });
-        assert.deepStrictEqual(updated.meta, { profile_image_url: 'img.png', description: 'Updated' });
+        assert.deepStrictEqual(updated.meta, { description: 'Updated' });
         assert.ok(updated.updatedAt >= originalUpdatedAt);
     });
 
@@ -435,7 +432,7 @@ describe('hasAccess', () => {
             isActive: true,
             updatedAt: 0,
             createdAt: 0,
-            meta: { profile_image_url: 'img.png' },
+            meta: { },
             params: {},
             isPublic: isPublic,
         }
@@ -491,14 +488,14 @@ describe('Edge Cases', () => {
         const modelForm = createModelForm({
             userId: testUserId,
             params: {},
-            meta: { profile_image_url: 'img.png' },
+            meta: {},
         });
 
         const model = await Models.insertNewModel(modelForm, db);
 
         assert.ok(model);
         assert.deepStrictEqual(model.params, {});
-        assert.deepStrictEqual(model.meta, { profile_image_url: 'img.png' });
+        assert.deepStrictEqual(model.meta, {});
     });
 
     test('handles complex nested params and meta', async () => {
@@ -509,7 +506,6 @@ describe('Edge Cases', () => {
                 top_p: 0.9,
             },
             meta: {
-                profile_image_url: 'img.png',
                 description: 'Test',
                 capabilities: { vision: true },
                 array: [1, 2, 3],
@@ -524,7 +520,6 @@ describe('Edge Cases', () => {
             top_p: 0.9,
         });
         assert.deepStrictEqual(model.meta, {
-            profile_image_url: 'img.png',
             description: 'Test',
             capabilities: { vision: true },
             array: [1, 2, 3],

@@ -71,7 +71,6 @@ describe('GET /api/v1/users/:user_id', () => {
             .expect(200);
 
         assert.strictEqual(response.body.username, users[0]!.username);
-        assert.ok(response.body.profile_image_url !== undefined);
         assert.strictEqual(response.body.is_active, true);
     });
 
@@ -455,117 +454,6 @@ describe('POST /api/v1/users/user/info/update', () => {
     });
 });
 
-describe('GET /api/v1/users/:user_id/profile/image', () => {
-    beforeEach(async () => {
-        await clearDatabase();
-    });
-
-    test('should return 302 redirect for HTTP URL profile images', async () => {
-        const profileImage = 'https://example.com/image.png';
-        const { token, user } = await createUserWithToken('user', profileImage);
-
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(302);
-
-        assert.strictEqual(response.headers.location, 'https://example.com/image.png');
-    });
-
-    test('should return 302 redirect to default image for missing profile image', async () => {
-        const profileImage = '/user.png';
-        const { token, user } = await createUserWithToken('user', profileImage);
-
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(302);
-
-        assert.strictEqual(response.headers.location, '/static/user.png');
-    });
-
-    test('should decode and return data URI images with correct content type', async () => {
-        // Simple 1x1 red PNG as data URI
-        const profileImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
-        const { token, user } = await createUserWithToken('user', profileImage);
-        
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(response.headers['content-type'], 'image/png');
-        assert.ok(response.body.length > 0);
-    });
-
-    test('should handle JPEG data URIs correctly', async () => {
-        const profileImage = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAIBAQIBAQICAgICAgICAwUDAwMDAwYEBAMFBwYHBwcGBwcICQsJCAgKCAcHCg0KCgsMDAwMBwkODw0MDgsMDAz/2wBDAQICAgMDAwYDAwYMCAcIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAz/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA==';
-        const { token, user } = await createUserWithToken('user', profileImage);
-
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(200);
-
-        assert.strictEqual(response.headers['content-type'], 'image/jpeg');
-    });
-
-    test('should fallback to default image for invalid data URIs', async () => {
-        // Invalid data URI (missing data after comma)
-        const profileImage = 'data:image/png;base64,';
-        const { token, user } = await createUserWithToken('user', profileImage);
-
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(302);
-
-        assert.strictEqual(response.headers.location, '/static/user.png');
-    });
-
-    test('should fallback to default image for malformed data URIs', async () => {
-        // Malformed data URI (no comma separator)
-        const profileImage = 'data:image/png;base64';
-        const { token, user } = await createUserWithToken('user', profileImage);
-
-        const response = await request(app)
-            .get(`/api/v1/users/${user.id}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(302);
-
-        assert.strictEqual(response.headers.location, '/static/user.png');
-    });
-
-    test('should return 400 when user not found', async () => {
-        const { token } = await createUserWithToken('user');
-        const nonExistentId = crypto.randomUUID();
-
-        const response = await request(app)
-            .get(`/api/v1/users/${nonExistentId}/profile/image`)
-            .set('Authorization', `Bearer ${token}`)
-            .expect(400);
-
-        assert.strictEqual(response.body.detail, 'User not found');
-    });
-
-    test('should fail without authentication token', async () => {
-        const users = await createMultipleUsers(1, 'user');
-
-        await request(app)
-            .get(`/api/v1/users/${users[0]!.userId}/profile/image`)
-            .expect(401);
-    });
-
-    test('should fail with invalid authentication token', async () => {
-        const users = await createMultipleUsers(1, 'user');
-
-        await request(app)
-            .get(`/api/v1/users/${users[0]!.userId}/profile/image`)
-            .set('Authorization', 'Bearer invalid_token')
-            .expect(401);
-    });
-});
-
 describe('GET /api/v1/users/', () => {
     beforeEach(async () => {
         await clearDatabase();
@@ -754,14 +642,13 @@ describe('POST /api/v1/users/:user_id/update', () => {
         await clearDatabase();
     });
 
-    test('should update user role, username, and profile_image_url with admin token', async () => {
+    test('should update user role and username with admin token', async () => {
         const { token } = await createUserWithToken('admin');
         const targetUser = await createMultipleUsers(1, 'user');
 
         const updateData = {
             role: 'admin',
             username: 'updated name',
-            profile_image_url: 'https://example.com/newimage.png',
         };
 
         const response = await request(app)
@@ -773,7 +660,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         assert.strictEqual(response.body.id, targetUser[0]!.userId);
         assert.strictEqual(response.body.role, 'admin');
         assert.strictEqual(response.body.username, 'updated name');
-        assert.strictEqual(response.body.profile_image_url, 'https://example.com/newimage.png');
 
         // Verify database was updated
         const user = await Users.getUserById(targetUser[0]!.userId, db);
@@ -788,7 +674,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'user',
             username: targetUser[0]!.username,
-            profile_image_url: '/user.png',
             password: 'newpassword123',
         };
 
@@ -811,7 +696,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'user',
             username: users[1]!.username, // Try to use second user's username
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)
@@ -839,7 +723,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'admin',
             username: primaryAdmin.username,
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)
@@ -865,7 +748,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'user', // Try to demote primary admin
             username: primaryAdmin.username,
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)
@@ -884,7 +766,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'user',
             username: 'user',
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)
@@ -903,7 +784,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const updateData = {
             role: 'admin',
             username: targetUser[0]!.username,
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)
@@ -920,7 +800,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
 
         await request(app)
             .post(`/api/v1/users/${users[0]!.userId}/update`)
-            .send({ role: 'user', username: 'user', profile_image_url: '/user.png' })
+            .send({ role: 'user', username: 'user' })
             .expect(401);
     });
 
@@ -930,7 +810,7 @@ describe('POST /api/v1/users/:user_id/update', () => {
         await request(app)
             .post(`/api/v1/users/${users[0]!.userId}/update`)
             .set('Authorization', 'Bearer invalid_token')
-            .send({ role: 'user', username: 'user', profile_image_url: '/user.png' })
+            .send({ role: 'user', username: 'user' })
             .expect(401);
     });
 
@@ -941,7 +821,6 @@ describe('POST /api/v1/users/:user_id/update', () => {
         const invalidData = {
             role: 'invalid_role',
             username: 'user@email.com',
-            profile_image_url: '/user.png',
         };
 
         const response = await request(app)

@@ -8,7 +8,6 @@ import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
 import type { UserRole } from './types.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
-import { DEFAULT_USER_IMAGE } from '../db/schema.js';
 
 const router = Router();
 
@@ -53,7 +52,6 @@ router.get('/', requireAdmin, async (
             id: user.id,
             username: user.username,
             role: user.role,
-            profile_image_url: user.profileImageUrl,
             last_active_at: user.lastActiveAt,
             updated_at: user.updatedAt,
             created_at: user.createdAt,
@@ -128,7 +126,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
     }
 
     const userId = req.params.user_id;
-    const { role, username, profile_image_url: profileImageUrl, password } = body.data;
+    const { role, username, password } = body.data;
 
     try {
         const updatedUser = await db.transaction(async (tx) => {
@@ -161,7 +159,6 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
             const updated = await Users.updateUser(userId, {
                 role: role,
                 username,
-                profileImageUrl: profileImageUrl,
             }, tx);
 
             // Update auth table (username and optionally password)
@@ -178,7 +175,6 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
             id: updatedUser.id,
             username: updatedUser.username,
             role: updatedUser.role,
-            profile_image_url: updatedUser.profileImageUrl,
             last_active_at: updatedUser.lastActiveAt,
             updated_at: updatedUser.updatedAt,
             created_at: updatedUser.createdAt,
@@ -267,7 +263,6 @@ router.get('/:user_id', validateUserId, requireAuth, async (
 
         const response: Types.UserActiveResponse = {
             username: user.username,
-            profile_image_url: user.profileImageUrl,
             is_active: true,  // TODO: Replace with actual activity check
         };
 
@@ -366,68 +361,6 @@ router.post('/user/info/update', requireAuth, async (
         return res.json(updatedInfo);
     } catch (error) {
         console.error('Update user info error:', error);
-        return res.status(500).json({ detail: 'Internal server error' });
-    }
-});
-
-/**
- * GET /api/v1/users/{user_id}/profile/image
- * Access Control: Requires HTTPBearer authentication (any verified user)
- *
- * Get a user's profile image. Returns redirect (HTTP URLs), streaming image data (data URIs),
- * or default fallback image.
- *
- * @param {Types.UserIdParams} - User ID whose profile image to retrieve
- * @returns {Response} - 302 redirect, image stream, or default image file
- */
-router.get('/:user_id/profile/image', validateUserId, requireAuth, async (
-    req: Types.TypedRequest<Types.UserIdParams>,
-    res: Response
-) => {
-    const userId = req.params.user_id;
-
-    try {
-        const user = await Users.getUserById(userId, db);
-        if (!user) {
-            return res.status(400).json({ detail: 'User not found' });
-        }
-
-        const profileImageUrl = user.profileImageUrl;
-
-        // HTTP URL: return 302 redirect
-        if (profileImageUrl.startsWith('http')) {
-            return res.redirect(302, profileImageUrl);
-        }
-
-        // Data URI: decode and stream image
-        if (profileImageUrl.startsWith('data:image')) {
-            try {
-                // Parse data URI: "data:image/png;base64,iVBORw0KG..."
-                const [header, base64Data] = profileImageUrl.split(',', 2);
-                if (!header || !base64Data) {
-                    throw new Error('Invalid data URI format');
-                }
-
-                // Extract media type from header (e.g., "image/png")
-                const mediaType = header.split(';')[0]?.replace('data:', '');
-                if (!mediaType) throw new Error('Invalid data URI format');
-
-                // Decode base64 data
-                const imageData = Buffer.from(base64Data, 'base64');
-
-                // Stream image with appropriate content type
-                res.setHeader('Content-Type', mediaType);
-                res.setHeader('Content-Disposition', 'inline');
-                return res.status(200).send(imageData);
-            } catch (error) {
-                // If data URI parsing fails, fall through to default image
-            }
-        }
-
-        // Fallback: return default image
-        return res.redirect(302, DEFAULT_USER_IMAGE);
-    } catch (error) {
-        console.error('Get profile image error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
 });

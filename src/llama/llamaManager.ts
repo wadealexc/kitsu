@@ -25,7 +25,7 @@ const POLL_INTERVAL_MS = 500;
 
 // Number of times to ping `llama-server` process before giving up on life
 // (total wait time ms: NUM_RETRIES * POLL_INTERVAL_MS -> 20 seconds)
-const NUM_RETRIES = 40;
+const NUM_RETRIES = 200;
 
 // How often the main dispatch loop ticks
 const LOOP_INTERVAL_MS = 100;

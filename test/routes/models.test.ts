@@ -63,7 +63,6 @@ async function createCustomModel(
             baseModelId: overrides?.baseModelId || 'qwen3-vl-30b',
             params: { temperature: 0.7 },
             meta: {
-                profile_image_url: '/static/favicon.png',
                 description: 'Test model',
             },
             isPublic: overrides?.isPublic ?? undefined,
@@ -230,7 +229,6 @@ describe('POST /api/v1/models/create', () => {
             params: { temperature: 0.8 },
             isPublic: true,
             meta: {
-                profile_image_url: '/static/favicon.png',
                 description: 'Test description',
             },
             is_active: true,
@@ -264,7 +262,7 @@ describe('POST /api/v1/models/create', () => {
             isPublic: true,
             is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
         };
 
         const response = await request(app)
@@ -288,7 +286,7 @@ describe('POST /api/v1/models/create', () => {
             isPublic: true,
             is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
         };
 
         const response = await request(app)
@@ -312,7 +310,7 @@ describe('POST /api/v1/models/create', () => {
             isPublic: true,
             is_active: true,
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
         };
 
         const response = await request(app)
@@ -537,7 +535,6 @@ describe('POST /api/v1/models/model/update', () => {
             base_model_id: 'llama3-70b',
             params: { temperature: 0.9 },
             meta: {
-                profile_image_url: '/new-image.png',
                 description: 'Updated description',
             },
             is_active: false,
@@ -568,7 +565,7 @@ describe('POST /api/v1/models/model/update', () => {
             name: 'Hacked Base Model',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
             isPublic: true,
             is_active: true,
         };
@@ -591,7 +588,7 @@ describe('POST /api/v1/models/model/update', () => {
             name: 'Test',
             base_model_id: 'nonexistent-base-model',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
             isPublic: true,
             is_active: true,
         };
@@ -617,7 +614,7 @@ describe('POST /api/v1/models/model/update', () => {
             name: 'Hacked Name',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
             isPublic: true,
             is_active: true,
         };
@@ -639,7 +636,7 @@ describe('POST /api/v1/models/model/update', () => {
             name: 'Test',
             base_model_id: 'qwen3-vl-30b',
             params: {},
-            meta: { profile_image_url: '/static/favicon.png', description: null },
+            meta: { description: null },
             isPublic: true,
             is_active: true,
         };

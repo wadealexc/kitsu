@@ -47,14 +47,12 @@ describe('POST /api/v1/auths/signup', () => {
             .send({
                 username: 'admin',
                 password: 'adminpass123',
-                profile_image_url: '/images/admin.png',
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body);
         assert.strictEqual(res.body.username, 'admin');
         assert.strictEqual(res.body.role, 'admin'); // First user is admin
-        assert.strictEqual(res.body.profile_image_url, '/images/admin.png');
         assert.strictEqual(res.body.token_type, 'Bearer');
         assert.ok(res.body.token);
         assert.ok(res.body.expires_at);
@@ -133,19 +131,6 @@ describe('POST /api/v1/auths/signup', () => {
         assert.strictEqual(res.body.username, 'user');
     });
 
-    test('uses default profile image when not provided', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                username: 'user',
-                password: 'password123',
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.profile_image_url);
-        // Should have default value from schema
-    });
-
     test('rejects duplicate username', async () => {
         // Create first user
         await request(app)
@@ -214,20 +199,6 @@ describe('POST /api/v1/auths/signup', () => {
 
         assert.strictEqual(res.status, 400);
         assert.ok(res.body.detail);
-    });
-
-    test('accepts valid profile image URL', async () => {
-        const imageUrl = 'https://example.com/images/avatar.png';
-        const res = await request(app)
-            .post('/api/v1/auths/signup')
-            .send({
-                username: 'user',
-                password: 'password123',
-                profile_image_url: imageUrl,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.profile_image_url, imageUrl);
     });
 
     test('returns expires_at timestamp', async () => {
@@ -334,7 +305,6 @@ describe('POST /api/v1/auths/signin', () => {
         assert.ok(res.body.id);
         assert.strictEqual(res.body.username, testUsername);
         assert.ok(res.body.role);
-        assert.ok(res.body.profile_image_url !== undefined);
     });
 
     test('is case-insensitive for username', async () => {
@@ -1141,47 +1111,9 @@ describe('POST /api/v1/auths/update/profile', () => {
             .send({
                 username: testUsername,
                 password: 'password123',
-                profile_image_url: '/default.png',
             });
         testToken = signupRes.body.token;
         testUserId = signupRes.body.id;
-    });
-
-    test('updates profile image URL', async () => {
-        const newImageUrl = '/images/new-avatar.png';
-
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                username: testUsername,
-                profile_image_url: newImageUrl,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.id, testUserId);
-        assert.strictEqual(res.body.username, testUsername);
-        assert.strictEqual(res.body.profile_image_url, newImageUrl);
-        assert.strictEqual(res.body.role, 'admin'); // First user
-
-        // Verify change persisted in database
-        const user = await Users.getUserById(testUserId, db);
-        assert.strictEqual(user?.profileImageUrl, newImageUrl);
-    });
-
-    test('updates to external URL', async () => {
-        const externalUrl = 'https://example.com/avatar.jpg';
-
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                username: testUsername,
-                profile_image_url: externalUrl,
-            });
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.profile_image_url, externalUrl);
     });
 
     test('updates username field', async () => {
@@ -1190,11 +1122,9 @@ describe('POST /api/v1/auths/update/profile', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 username: 'new username',
-                profile_image_url: '/images/test.png',
             });
 
         assert.strictEqual(res.status, 200);
-        // Name should be updated
         assert.strictEqual(res.body.username, 'new username');
     });
 
@@ -1203,7 +1133,6 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .send({
                 username: 'user',
-                profile_image_url: '/test.png',
             });
 
         assert.strictEqual(res.status, 401);
@@ -1216,7 +1145,6 @@ describe('POST /api/v1/auths/update/profile', () => {
             .set('Authorization', 'Bearer invalid-token')
             .send({
                 username: 'user',
-                profile_image_url: '/test.png',
             });
 
         assert.strictEqual(res.status, 401);
@@ -1228,31 +1156,7 @@ describe('POST /api/v1/auths/update/profile', () => {
             .post('/api/v1/auths/update/profile')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                // Missing username and profile_image_url
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-    });
-
-    test('rejects missing username field', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                profile_image_url: '/test.png',
-            });
-
-        assert.strictEqual(res.status, 400);
-        assert.strictEqual(res.body.detail, 'Invalid request body');
-    });
-
-    test('rejects missing profile_image_url field', async () => {
-        const res = await request(app)
-            .post('/api/v1/auths/update/profile')
-            .set('Authorization', `Bearer ${testToken}`)
-            .send({
-                username: 'user',
+                // Missing username
             });
 
         assert.strictEqual(res.status, 400);
@@ -1265,14 +1169,12 @@ describe('POST /api/v1/auths/update/profile', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 username: 'user',
-                profile_image_url: '/new.png',
             });
 
         assert.strictEqual(res.status, 200);
         assert.ok(res.body.id);
         assert.ok(res.body.username);
         assert.ok(res.body.role);
-        assert.ok(res.body.profile_image_url);
     });
 });
 

@@ -43,7 +43,6 @@ export async function createUser(
             ...params,
             id: userId,
             username: normalizedUsername,
-            profileImageUrl: params.profileImageUrl,
             createdAt: now,
             updatedAt: now,
             lastActiveAt: now,
@@ -173,7 +172,6 @@ export async function updateUserInfo(
 
 export type UpdateUserProfile = {
     username?: string;
-    profileImageUrl?: string;
 };
 
 /**
