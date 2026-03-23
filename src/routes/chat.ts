@@ -66,7 +66,7 @@ async function preprocessChatRequest(
     }
 
     let messages = parsed.data.messages as proto.Message[];
-    // Inject system prompt from frontend (already resolved and variable-substituted)
+    // Inject system prompt from frontend
     if (messages[0]?.role !== 'system') {
         if (parsed.data.systemPrompt) {
             console.warn('[chat] Appending system prompt to messages.');

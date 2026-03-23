@@ -61,13 +61,10 @@ app.use('/static', express.static(path.resolve('static')));
 let browser: Browser.Browser | undefined = undefined;
 if (cfg.web.enable) {
     browser = await Browser.init(
-        app,
         cfg.web.braveAPIKey,
         cfg.web.runDangerouslyWithoutSandbox,
         cfg.web.screenshotWebpages,
     );
-
-    browser.serve();
 }
 
 // Initialize tool registry
