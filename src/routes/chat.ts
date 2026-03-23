@@ -65,12 +65,20 @@ async function preprocessChatRequest(
         return { ok: false, value: { status: 404, detail: `Model not found: ${resolvedModel}` }};
     }
 
-    // Oh god it's horrible
-    let systemPrompt = (parsed.data.model_item?.params as any)?.system as string;
     let messages = parsed.data.messages as proto.Message[];
-    // Add system prompt if needed
-    if (systemPrompt && messages[0]?.role !== 'system') {
-        messages.unshift({ role: 'system', content: systemPrompt });
+    // Inject system prompt from frontend (already resolved and variable-substituted)
+    if (messages[0]?.role !== 'system') {
+        if (parsed.data.systemPrompt) {
+            console.warn('[chat] Appending system prompt to messages.');
+            messages.unshift({ role: 'system', content: parsed.data.systemPrompt });
+        } else {
+            console.warn('[chat] No system prompt provided by frontend');
+            messages.unshift({ role: 'system', content: '' });
+        }
+
+        if (messages[0]?.content === '') {
+            console.warn('[chat] System prompt is empty!');
+        }
     }
 
     // At this point, we should have a user message at [1] no matter what

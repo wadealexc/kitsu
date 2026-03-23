@@ -507,6 +507,7 @@ export interface ChatObject {
     model: string;
     params?: ModelParams;
     webSearchEnabled?: boolean;
+    systemPrompt?: string;
     history: ChatHistory;
     messages: FlattenedMessage[];
     timestamp: number;
@@ -521,6 +522,7 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     messages: z.array(FlattenedMessageSchema),
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
+    systemPrompt: z.string().optional(),
 }).passthrough();
 
 // TODO - somehow there's a way to apply .partial to ChatObjectSchema, but
@@ -534,6 +536,7 @@ export const ChatObjectUpdateSchema = z.object({
     messages: z.array(FlattenedMessageSchema),
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
+    systemPrompt: z.string(),
 }).partial();
 
 // export const ChatUpdateSchema: z.ZodType<Partial<ChatObject>> = ChatObjectSchema.partial()
@@ -658,6 +661,7 @@ export const ChatCompletionFormSchema = z.object({
     params: ModelParamsSchema.optional(),
     webSearchEnabled: z.boolean().optional().default(false),
     generateTitle: z.boolean().optional(),
+    systemPrompt: z.string().optional(),
 }).passthrough();  // Allow additional OpenAI extensions
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 
@@ -703,7 +707,7 @@ export const FolderFileItemSchema: z.ZodType<FolderFileItem> = z.object({
 /** Folder data structure containing functionality settings */
 export interface FolderData {
     /** System prompt applied to all chats in this folder */
-    system_prompt?: string;
+    systemPrompt?: string;
     /** Files and knowledge collections attached to this folder */
     files?: FolderFileItem[];
     /** Selected model ID for this folder */
@@ -711,7 +715,7 @@ export interface FolderData {
 }
 
 export const FolderDataSchema: z.ZodType<FolderData> = z.object({
-    system_prompt: z.string().optional(),
+    systemPrompt: z.string().optional(),
     files: z.array(FolderFileItemSchema).optional(),
     model_id: z.string().optional(),
 });

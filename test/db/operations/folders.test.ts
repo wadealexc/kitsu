@@ -156,12 +156,12 @@ describe('Folder Operations', () => {
                 'Folder with Data',
                 undefined,
                 undefined,
-                { system_prompt: 'You are a helpful assistant' }
+                { systemPrompt: 'You are a helpful assistant' }
             );
             const folder = await Folders.createFolder(folderData, db);
 
             assert.ok(folder.data);
-            assert.strictEqual(folder.data.system_prompt, 'You are a helpful assistant');
+            assert.strictEqual(folder.data.systemPrompt, 'You are a helpful assistant');
         });
 
         test('should verify timestamps are set correctly', async () => {
@@ -504,7 +504,7 @@ describe('Folder Operations', () => {
         test('should update data with merge semantics', async () => {
             const folder = await Folders.createFolder(
                 createTestFolderForm(userId, 'Test Folder', undefined, undefined, {
-                    system_prompt: 'Original prompt',
+                    systemPrompt: 'Original prompt',
                     model_id: 'model1'
                 }),
                 db
@@ -513,13 +513,13 @@ describe('Folder Operations', () => {
             const updated = await Folders.updateFolder(
                 folder.id,
                 userId,
-                { data: { system_prompt: 'Updated prompt' } },
+                { data: { systemPrompt: 'Updated prompt' } },
                 db
             );
 
             assert.ok(updated);
             assert.ok(updated.data);
-            assert.strictEqual(updated.data.system_prompt, 'Updated prompt');
+            assert.strictEqual(updated.data.systemPrompt, 'Updated prompt');
             assert.deepStrictEqual(updated.data.model_id, 'model1');
         });
 
@@ -1088,7 +1088,7 @@ describe('Folder Operations', () => {
 
         test('should handle complex nested data structures', async () => {
             const complexData: FolderData = {
-                system_prompt: 'Complex system prompt',
+                systemPrompt: 'Complex system prompt',
                 files: [
                     {
                         type: 'file',
@@ -1123,7 +1123,7 @@ describe('Folder Operations', () => {
 
         test('should handle updates that merge complex data', async () => {
             const initialData: FolderData = {
-                system_prompt: 'Initial prompt',
+                systemPrompt: 'Initial prompt',
                 files: [
                     { type: 'file', id: 'file-1', name: 'doc1.pdf' },
                 ],
@@ -1136,7 +1136,7 @@ describe('Folder Operations', () => {
             );
 
             const updateData: FolderData = {
-                system_prompt: 'Updated prompt',
+                systemPrompt: 'Updated prompt',
                 files: [
                     { type: 'file', id: 'file-1', name: 'doc1.pdf' },
                     { type: 'file', id: 'file-2', name: 'doc2.pdf' },
@@ -1152,7 +1152,7 @@ describe('Folder Operations', () => {
 
             assert.ok(updated);
             assert.ok(updated.data);
-            assert.strictEqual(updated.data.system_prompt, 'Updated prompt');
+            assert.strictEqual(updated.data.systemPrompt, 'Updated prompt');
             assert.strictEqual(updated.data.files?.length, 2);
             assert.deepStrictEqual(updated.data.model_id, 'model-1');
         });

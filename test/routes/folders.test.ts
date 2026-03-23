@@ -46,7 +46,7 @@ async function createTestFolder(userId: string, name: string, parentId?: string)
         name,
         parentId,
         { icon: ':folder:' },
-        { system_prompt: 'Test prompt' }
+        { systemPrompt: 'Test prompt' }
      ), db);
 
     return folder;
@@ -178,7 +178,7 @@ describe('POST /api/v1/folders/', () => {
         const folderData = {
             name: 'My New Folder',
             meta: { icon: ':star:' },
-            data: { system_prompt: 'You are helpful' }
+            data: { systemPrompt: 'You are helpful' }
         };
 
         const response = await request(app)
@@ -193,7 +193,7 @@ describe('POST /api/v1/folders/', () => {
         assert.strictEqual(response.body.parent_id, null);
         assert.strictEqual(response.body.is_expanded, false);
         assert.strictEqual(response.body.meta.icon, ':star:');
-        assert.strictEqual(response.body.data.system_prompt, 'You are helpful');
+        assert.strictEqual(response.body.data.systemPrompt, 'You are helpful');
     });
 
     test('should create folder with minimal data', async () => {
@@ -372,13 +372,13 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .set('Authorization', `Bearer ${token}`)
             .send({
                 data: {
-                    system_prompt: 'Updated prompt',
+                    systemPrompt: 'Updated prompt',
                     model_id: 'gpt-4'
                 }
             })
             .expect(200);
 
-        assert.strictEqual(response.body.data.system_prompt, 'Updated prompt');
+        assert.strictEqual(response.body.data.systemPrompt, 'Updated prompt');
         assert.strictEqual(response.body.data.model_id, 'gpt-4');
     });
 
@@ -389,7 +389,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             'Test Folder',
             undefined,
             { icon: ':folder:' },
-            { system_prompt: 'Original', model_id: 'gpt-4' }
+            { systemPrompt: 'Original', model_id: 'gpt-4' }
         ), db);
 
         const response = await request(app)
@@ -401,7 +401,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .expect(200);
 
         // Original fields should still be present
-        assert.strictEqual(response.body.data.system_prompt, 'Original');
+        assert.strictEqual(response.body.data.systemPrompt, 'Original');
         assert.ok(response.body.data.model_id);
         // New field should be added
         assert.ok(response.body.data.files);
