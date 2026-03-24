@@ -115,7 +115,7 @@ router.post('/custom-completions', requireAuth, async (
             const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
             const toolResults = await _emitEventsAndExecuteTools(res, ctx.value, toolRegistry, toolCalls, ctrl.signal);
 
-            finalContent = _accumulateBlocks(blocks, result.value, toolResults);
+            finalContent = _accumulateBlocks(blocks, result.value, toolResults, stream.reasoningDurationMs());
 
             // If model did not produce tool calls, we're done
             if (!toolResults) break;
@@ -619,11 +619,13 @@ function _accumulateBlocks(
     blocks: Types.MessageBlock[],
     response: proto.CompletionResponse,
     toolResults?: ToolRoundResult[],
+    reasoningDurationMs?: number,
 ): string {
     const message = response.choices[0]?.message;
 
     if (message?.reasoning_content) {
-        blocks.push({ type: 'reasoning', content: message.reasoning_content, done: true });
+        const duration = reasoningDurationMs !== undefined ? Math.round(reasoningDurationMs / 1000) : undefined;
+        blocks.push({ type: 'reasoning', content: message.reasoning_content, done: true, duration });
     }
 
     if (!toolResults) {
