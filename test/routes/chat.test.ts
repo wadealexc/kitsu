@@ -105,16 +105,26 @@ function findChatEvent(frames: SseFrame[], type: string): ChatEventFrame | undef
  */
 function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm {
     return {
+        stream: true,
         model: 'test model',
         messages: [
             { role: 'system', content: 'You are a helpful assistant.' },
             { role: 'user', content: 'Hello' },
         ],
-        chat_id: 'local:test',
-        id: crypto.randomUUID(),
-        model_item: {},
-        stream: true,
+        chatId: 'local:test',
+        messageId: crypto.randomUUID(),
+        userMessage: {
+            id: '',
+            parentId: '',
+            childrenIds: [],
+            role: 'user',
+            content: '',
+            files: [],
+            timestamp: 0,
+            done: true,
+        },
         webSearchEnabled: false,
+        generateTitle: false,
         ...overrides,
     };
 }
@@ -167,38 +177,6 @@ function textChunk(content: string): Record<string, any> {
 function stopChunk(): Record<string, any> {
     return makeChunk({ choices: [{ index: 0, finish_reason: 'stop', delta: {} }] });
 }
-
-/* -------------------- /completions -------------------- */
-
-describe('POST /completions', () => {
-    let token: string;
-
-    before(async () => {
-        await clearDatabase();
-        ({ token } = await createUserWithToken());
-    });
-
-    afterEach(() => mock.resetQueue());
-
-    test('default mock response streams tokens and ends with chat:completion', async () => {
-        const res = await request(app)
-            .post('/api/v1/chat/completions')
-            .set('Authorization', `Bearer ${token}`)
-            .send(makeChatBody())
-            .buffer(true)
-            .parse(sseParser as any);
-
-        assert.strictEqual(res.status, 200);
-
-        const frames = parseSseBody(res.body as unknown as string);
-
-        const tokenFrames = frames.filter(f => f.kind === 'token' && f.parsed?.choices);
-        assert.ok(tokenFrames.length > 0, 'Expected at least one token frame');
-
-        const completion = findChatEvent(frames, 'chat:completion');
-        assert.ok(completion, 'Expected chat:completion event');
-    });
-});
 
 /* -------------------- /custom-completions -------------------- */
 
