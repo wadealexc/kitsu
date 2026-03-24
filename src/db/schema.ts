@@ -10,8 +10,6 @@ import type {
     AccessControl,
     ModelParams,
     ModelMeta,
-    ChatHistory,
-    FlattenedMessage,
 } from '../routes/types.js';
 
 /* -------------------- USER TABLE -------------------- */

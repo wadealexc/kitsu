@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { Browser } from '../browser/browser.js';
 import * as proto from '../protocol.js';
 
+export type BeforeRequestOptions = { webSearchEnabled: boolean };
+
 export interface Tool<Input = unknown, Output = unknown> {
     name: () => string;
     description: () => string;
@@ -21,7 +23,7 @@ export interface Tool<Input = unknown, Output = unknown> {
      * Allows the tool to modify a request's messages before being passed to a model
      * @returns the new completion request object
      */
-    beforeRequest?: (req: proto.CompletionRequest) => proto.CompletionRequest | Promise<proto.CompletionRequest>;
+    beforeRequest?: (req: proto.CompletionRequest, opts: BeforeRequestOptions) => proto.CompletionRequest | Promise<proto.CompletionRequest>;
 }
 
 export type ToolContext = {

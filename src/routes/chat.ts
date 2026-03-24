@@ -10,172 +10,12 @@ import * as Chats from '../db/operations/chats.js';
 import * as Models from '../db/operations/models.js';
 import * as Files from '../db/operations/files.js';
 import { StorageProvider } from '../storage/provider.js';
-import { ToolRegistry } from '../tools/registry.js';
+import { ToolRegistry, type ToolRoundResult } from '../tools/registry.js';
 import type { SseEvent, SseEventPayload, SseUsage } from './sseEvents.js';
 
 const router = Router();
 
-/* -------------------- SHARED PRE-PROCESSING -------------------- */
-
-type ChatRequestContext = {
-    userId: string;
-    chatId: string;
-    messageId: string;
-    userMessage: Types.ChatMessage;
-    firstUserMessage: proto.BasicMessage;
-    resolvedModel: string;
-    messages: proto.Message[];
-    completionBody: Types.ChatCompletionForm & Record<string, any>;
-};
-
-type PreprocessError = {
-    status: number;
-    detail: string;
-    errors?: any[];
-};
-
-/**
- * Validates, resolves model access, injects system prompt, verifies chat
- * ownership, and associates uploaded files. Returns a typed context or error.
- */
-async function preprocessChatRequest(
-    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
-    llama: LlamaManager,
-): Promise<proto.Result<ChatRequestContext, PreprocessError>> {
-    const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
-    if (!parsed.success) {
-        return { ok: false, value: { status: 400, detail: 'Invalid request body', errors: parsed.error.issues } };
-    }
-
-    const userId = req.user!.id;
-    const { chatId, messageId, userMessage } = parsed.data;
-
-    // Resolve custom model -> base model
-    let resolvedModel: string = parsed.data.model;
-    const customModel = await Models.getModelById(resolvedModel, db);
-    if (customModel) {
-        if (!Models.hasAccess(customModel, userId, 'read')) {
-            return { ok: false, value: { status: 403, detail: 'No access to this model' } };
-        }
-        resolvedModel = customModel.baseModelId;
-    }
-
-    // Ensure base model exists
-    if (!llama.getModelInfo(resolvedModel)) {
-        return { ok: false, value: { status: 404, detail: `Model not found: ${resolvedModel}` }};
-    }
-
-    let messages = parsed.data.messages as proto.Message[];
-    // Inject system prompt from frontend, if needed
-    if (messages[0]?.role !== 'system') {
-        if (parsed.data.systemPrompt) {
-            console.warn('[chat] Appending system prompt to messages.');
-            messages.unshift({ role: 'system', content: parsed.data.systemPrompt });
-        } else {
-            console.warn('[chat] No system prompt provided by frontend');
-            messages.unshift({ role: 'system', content: '' });
-        }
-
-        if (messages[0]?.content === '') {
-            console.warn('[chat] System prompt is empty!');
-        }
-    }
-
-    // At this point, we should have a user message at [1] no matter what
-    const firstUserMessage = messages[1];
-    if (!firstUserMessage || firstUserMessage.role !== 'user') {
-        console.error(`Expected user message at messages[1]`);
-        throw new Error(`no user message found`);
-    }
-
-    const completionBody = { ...parsed.data, model: resolvedModel, messages };
-
-    // Verify user owns the referenced chat (unless 'local', which is not persisted)
-    if (!chatId.startsWith('local:')) {
-        const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
-        if (!chat) {
-            return { ok: false, value: { status: 404, detail: 'Chat not found' } };
-        }
-    }
-
-    // Insert chat files from parent message (if provided)
-    if (userMessage?.files && !chatId.startsWith('local:')) {
-        const fileIds = userMessage.files
-            .filter((f: any) => f.type === 'file')
-            .map((f: any) => f.id)
-            .filter(Boolean);
-
-        if (fileIds.length > 0) {
-            try {
-                await Chats.insertChatFiles(chatId, userMessage.id, fileIds, userId, db);
-            } catch (error) {
-                console.error('Error inserting chat files:', error);
-                // Don't fail request — file associations are metadata, not critical
-            }
-        }
-    }
-
-    return {
-        ok: true,
-        value: {
-            userId,
-            chatId,
-            messageId,
-            userMessage,
-            firstUserMessage,
-            resolvedModel,
-            messages,
-            completionBody
-        }
-    };
-}
-
-/**
- * Walks messages and resolves any `image_url` content parts whose URL is a bare
- * file UUID (not a data: or http(s): URL) into base64 data URLs.
- *
- * The frontend uploads images and stores the returned file ID as `image_url.url`.
- * llama-server only accepts `data:` or `http(s)://` URLs, so we must resolve
- * the ID → file record → filesystem bytes → base64 before forwarding.
- *
- * Mutates the messages array in-place. Parts that cannot be resolved are
- * replaced with a text marker so the request still succeeds.
- */
-async function resolveFileIdImages(messages: proto.Message[]): Promise<void> {
-    for (const message of messages) {
-        if (typeof message.content === 'string') continue;
-
-        const parts = message.content as proto.ContentPart[];
-        for (let i = 0; i < parts.length; i++) {
-            const part: proto.ContentPart | undefined = parts[i];
-            if (!part || part.type !== 'image_url') continue;
-
-            const imagePart: proto.ImageContentPart = part;
-            const url = imagePart.image_url.url;
-            if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
-                continue; // already a valid URL
-            }
-
-            // Treat as file ID
-            const file = await Files.getFileById(url, db);
-            if (!file || !file.path) {
-                console.warn(`[resolveFileIdImages] file not found for id: ${url}`);
-                parts[i] = { type: 'text', text: '[image unavailable]' };
-                continue;
-            }
-
-            const buffer = await StorageProvider.downloadFile(file.path);
-            const contentType = file.meta?.contentType ?? 'image/png';
-            const base64 = buffer.toString('base64');
-            parts[i] = {
-                type: 'image_url',
-                image_url: { url: `data:${contentType};base64,${base64}` },
-            };
-        }
-    }
-}
-
-/* -------------------- CUSTOM COMPLETION (TOOL LOOP) -------------------- */
+/* -------------------- CUSTOM COMPLETION -------------------- */
 
 const MAX_TOOL_ROUNDS = 10;
 
@@ -212,7 +52,7 @@ router.post('/custom-completions', requireAuth, async (
             .json({ detail: ctx.value.detail, errors: ctx.value.errors });
     }
 
-    const { chatId, messageId, completionBody: rawBody } = ctx.value;
+    const { chatId, generateTitle, webSearchEnabled } = ctx.value;
     const toolRegistry = req.app.locals.tools as ToolRegistry;
 
     // AbortController will cancel request if the client aborts
@@ -231,32 +71,29 @@ router.post('/custom-completions', requireAuth, async (
         ctrl.abort();
     });
 
-    await resolveFileIdImages(rawBody.messages as proto.Message[]);
-
-    // Inject tool definitions and run beforeRequest hooks once before the loop
-    let body: Types.ChatCompletionForm & Record<string, any> = {
-        ...rawBody,
+    // Inject tools and run beforeRequest hooks
+    let body: proto.CompletionRequest = {
+        ...ctx.value.completionBody,
         tools: toolRegistry.getToolDefinitions(),
     };
-    body = await toolRegistry.beforeRequest(body) as typeof body;
+    body = await toolRegistry.beforeRequest(body, { webSearchEnabled });
 
-    // Commit SSE headers before any writes (doTasks may write before the main loop's
-    // first response arrives, which would implicitly commit default headers)
+    // Commit SSE headers before any writes
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.status(200);
     res.flushHeaders();
 
-    // Dispatch task model, if configured
+    // Dispatch tasks concurrently with the completion loop
     const taskModel = llama.getTaskModel();
-    const taskPromise = (taskModel && rawBody.generateTitle)
+    const taskPromise = (taskModel && generateTitle)
         ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
         : Promise.resolve();
 
-    let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-    let totalPredictedMs = 0;
-    let totalPromptMs = 0;
+    let totalUsage: UsageInfo = _newUsageInfo();
+    let finalContent = '';
+    const blocks: Types.MessageBlock[] = [];
 
     try {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -270,68 +107,28 @@ router.post('/custom-completions', requireAuth, async (
 
             // Wait until the model is done responding
             const result = await stream.finished();
-            if (!result.ok) {
-                console.error(`[custom-completions] round ${round} error:`, result.value);
-                emitSseEvent(res, chatId, messageId, {
-                    type: 'chat:message:error',
-                    data: { error: { content: result.value.message ?? String(result.value) } },
-                });
-                res.end();
-                return;
-            }
+            if (!result.ok) throw result.value;
 
-            totalUsage = accumulateUsage(totalUsage, result.value);
-            totalPredictedMs += result.value.timings?.predicted_ms ?? 0;
-            totalPromptMs += result.value.timings?.prompt_ms ?? 0;
-            // Model gave a final text response - no more looping required
-            if (!hasToolCalls(result.value)) break;
+            totalUsage = _accumulateUsage(totalUsage, result.value);
 
-            // Model ended with tool calls. Emit start event
-            const toolCalls: proto.ToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
-            for (const tc of toolCalls) {
-                console.log(` - ${ctx.value.resolvedModel} calls ${tc.function.name}`);
-                emitSseEvent(res, chatId, messageId, {
-                    type: 'tool_call:start',
-                    data: {
-                        id: tc.id,
-                        name: tc.function.name,
-                        arguments: tc.function.arguments
-                    },
-                });
-            }
+            // If model responds with tool calls, emit events and execute tools
+            const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
+            const toolResults = await _emitEventsAndExecuteTools(res, ctx.value, toolRegistry, toolCalls, ctrl.signal);
 
-            // Execute all tool calls, then emit results
-            const toolRoundStart = performance.now();
-            const roundResults = await toolRegistry.executeToolRound(toolCalls, ctrl.signal);
-            const toolRoundSec = ((performance.now() - toolRoundStart) / 1000).toFixed(2);
-            console.log(` - ${ctx.value.resolvedModel} tool round completed in ${toolRoundSec}s`);
-            for (const r of roundResults) {
-                const resultText = r.result.ok ? r.result.output : `Error: ${r.result.error}`;
-                emitSseEvent(res, chatId, messageId, {
-                    type: 'tool_call:result',
-                    data: {
-                        id: r.id,
-                        name: r.name,
-                        arguments: r.arguments,
-                        result: resultText
-                    },
-                });
-            }
+            finalContent = _accumulateBlocks(blocks, result.value, toolResults);
 
-            // Build assistant turn + tool result messages and append to history.
-            const message = result.value.choices[0]?.message;
+            // If model did not produce tool calls, we're done
+            if (!toolResults) break;
+
+            // Append assistant + tool messages to history for next round
+            const roundMessage = result.value.choices[0]?.message;
             const assistantTurn: proto.Message = {
                 role: 'assistant',
-                content: message?.content ?? '',
-                reasoning_content: message?.reasoning_content || undefined,
-                tool_calls: toolCalls.map(tc => ({
-                    id: tc.id,
-                    type: 'function' as const,
-                    function: { name: tc.function.name, arguments: tc.function.arguments },
-                })),
+                content: roundMessage?.content ?? '',
+                reasoning_content: roundMessage?.reasoning_content || undefined,
+                tool_calls: [...toolCalls],
             };
-
-            const toolMessages: proto.Message[] = roundResults.map(r => ({
+            const toolMessages: proto.Message[] = toolResults.map(r => ({
                 role: 'tool' as const,
                 tool_call_id: r.id,
                 content: r.result.ok ? r.result.output : `Error: ${r.result.error}`,
@@ -339,46 +136,51 @@ router.post('/custom-completions', requireAuth, async (
 
             body = { ...body, messages: [...body.messages, assistantTurn, ...toolMessages] };
 
-            // On the last allowed round, strip tools so the model is forced to
-            // produce a final text response.
+            // On the last allowed round, strip tools to force a final text response
             if (round === MAX_TOOL_ROUNDS - 1) {
                 console.log(`[custom-completions] max tool rounds reached, stripping tools`);
                 body = { ...body, tools: undefined };
             }
         }
 
-        const completionTps = totalPredictedMs > 0
-            ? (totalUsage.completion_tokens / totalPredictedMs) * 1000
-            : undefined;
-        const promptTps = totalPromptMs > 0
-            ? (totalUsage.prompt_tokens / totalPromptMs) * 1000
-            : undefined;
+        const finalUsage: SseUsage = _getFinalUsage(totalUsage);
 
         res.write('data: [DONE]\n\n');
-
-        console.log(`waiting for tasks...`);
         await taskPromise;
-        console.log(`done!`);
 
-        emitSseEvent(res, chatId, messageId, {
-            type: 'chat:completion',
-            data: {
-                done: true,
-                usage: {
-                    ...totalUsage,
-                    ...(completionTps !== undefined ? { completion_tokens_per_second: completionTps } : {}),
-                    ...(promptTps !== undefined ? { prompt_tokens_per_second: promptTps } : {}),
-                },
-            },
+        // Update chat in DB
+        await _persistChat(ctx.value, {
+            content: finalContent,
+            blocks,
+            usage: finalUsage,
+            done: true
         });
+
+        _emitSseEvent(res, chatId, {
+            type: 'chat:completion',
+            data: { done: true, usage: finalUsage },
+        });
+
         res.end();
     } catch (err: any) {
         // Headers are always committed at this point (we flush them before the loop)
         console.error(`[custom-completions] mid-stream error:`, err);
-        emitSseEvent(res, chatId, messageId, {
-            type: 'chat:message:error',
-            data: { error: { content: err?.message ?? String(err) } },
+        const errMsg = err?.message ?? String(err);
+
+        // Update chat in DB
+        await _persistChat(ctx.value, {
+            content: finalContent,
+            blocks,
+            usage: totalUsage,
+            done: false,
+            error: { content: errMsg }
         });
+
+        _emitSseEvent(res, chatId, {
+            type: 'chat:message:error',
+            data: { error: { content: errMsg } },
+        });
+
         res.end();
     }
 });
@@ -413,7 +215,7 @@ async function doTasks(
     log(`starting title generation request`);
 
     const emitTitle = (title: string) => {
-        emitSseEvent(res, ctx.chatId, ctx.messageId, {
+        _emitSseEvent(res, ctx.chatId, {
             type: 'chat:title',
             data: title,
         });
@@ -421,7 +223,7 @@ async function doTasks(
 
     const startTime = performance.now();
     try {
-        if (ctx.chatId.startsWith('local:')) {
+        if (ctx.isLocalChat) {
             log(`local chat - skipping title generation`);
             return;
         }
@@ -482,39 +284,426 @@ async function doTasks(
     }
 }
 
+/* -------------------- CHAT PRE-PROCESSING -------------------- */
+
+type ChatRequestContext = {
+    userId: string;
+    chatId: string;
+    chat: Types.ChatObject;
+    folderId: string | null | undefined;
+    userMessage: Types.ChatMessage;
+    firstUserMessage: proto.UserMessage;
+    resolvedModel: string;
+    completionBody: proto.CompletionRequest;
+    webSearchEnabled: boolean;
+    generateTitle: boolean;
+    isLocalChat: boolean;
+};
+
+type PreprocessError = {
+    status: number;
+    detail: string;
+    errors?: any[];
+};
+
+/**
+ * Validates, resolves model access, injects system prompt, resolves file images,
+ * verifies chat ownership, associates uploaded files, and builds a clean OAI
+ * completion body. Returns a typed context or error.
+ */
+async function preprocessChatRequest(
+    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
+    llama: LlamaManager,
+): Promise<proto.Result<ChatRequestContext, PreprocessError>> {
+    const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return {
+            ok: false, value: {
+                status: 400, detail: 'Invalid request body', errors: parsed.error.issues
+            }
+        };
+    }
+
+    const userId = req.user!.id;
+    const {
+        chatId,
+        chat,
+        folderId,
+        userMessage,
+        params,
+        webSearchEnabled,
+        generateTitle,
+        systemPrompt
+    } = parsed.data;
+
+    const isLocalChat = chatId.startsWith('local:');
+
+    // Resolve custom model -> base model
+    let resolvedModel: string = parsed.data.model;
+    const customModel = await Models.getModelById(resolvedModel, db);
+    if (customModel) {
+        if (!Models.hasAccess(customModel, userId, 'read')) {
+            return {
+                ok: false, value: {
+                    status: 403, detail: 'No access to this model'
+                }
+            };
+        }
+
+        resolvedModel = customModel.baseModelId;
+    }
+
+    // Ensure base model exists
+    if (!llama.getModelInfo(resolvedModel)) {
+        return {
+            ok: false, value: {
+                status: 404, detail: `Model not found: ${resolvedModel}`
+            }
+        };
+    }
+
+    let messages = parsed.data.messages as proto.Message[];
+    // Inject system prompt from frontend, if needed
+    if (messages[0]?.role !== 'system') {
+        if (systemPrompt) {
+            console.warn('[chat] Appending system prompt to messages.');
+            messages.unshift({ role: 'system', content: systemPrompt });
+        } else {
+            console.warn('[chat] No system prompt provided by frontend');
+            messages.unshift({ role: 'system', content: '' });
+        }
+
+        if (messages[0]?.content === '') {
+            console.warn('[chat] System prompt is empty!');
+        }
+    }
+
+    // At this point, we should have a user message at [1] no matter what
+    const firstUserMessage = messages[1];
+    if (!firstUserMessage || firstUserMessage.role !== 'user') {
+        console.error(`Expected user message at messages[1]`);
+        return {
+            ok: false, value: {
+                status: 400, detail: 'Malformed request; no user message found'
+            }
+        };
+    }
+
+    // Resolve file ID images before sending to llama
+    await resolveFileIdImages(messages);
+
+    // For non-local chats: create chat if exists, and insert file associations
+    if (!isLocalChat) {
+        const existingChat = await Chats.getChatByIdAndUserId(chatId, userId, db);
+        if (!existingChat) {
+            await Chats.createChat(userId, {
+                id: chatId,
+                title: chat.title,
+                chat: chat,
+                folderId: folderId ?? null,
+            }, db);
+        }
+
+        if (userMessage.files.length > 0) {
+            const fileIds = userMessage.files
+                .filter((f: any) => f.type === 'file')
+                .map((f: any) => f.id)
+                .filter(Boolean);
+
+            if (fileIds.length > 0) {
+                try {
+                    await Chats.insertChatFiles(chatId, userMessage.id, fileIds, userId, db);
+                } catch (error) {
+                    console.error('Error inserting chat files:', error);
+                    // Don't fail — file associations are metadata, not critical
+                }
+            }
+        }
+    }
+
+    // Extract inference params, dropping non-OAI/non-forwarded fields
+    // TODO - remove unused fields
+    const {
+        system: _system,
+        stream_response: _sr,
+        reasoning_effort: _re,
+        chat_template_kwargs: _ctk,
+        ...inferenceParams
+    } = params;
+
+    // Build clean OAI body — only known fields, no custom extensions leak to llama
+    const completionBody: proto.CompletionRequest = {
+        model: resolvedModel,
+        messages,
+        stream: parsed.data.stream,
+        ...inferenceParams,
+    };
+
+    return {
+        ok: true,
+        value: {
+            userId,
+            chatId,
+            chat,
+            folderId,
+            userMessage,
+            firstUserMessage,
+            resolvedModel,
+            completionBody,
+            webSearchEnabled,
+            generateTitle,
+            isLocalChat,
+        }
+    };
+}
+
+/**
+ * Walks messages and resolves any `image_url` content parts whose URL is a bare
+ * file UUID (not a data: or http(s): URL) into base64 data URLs.
+ *
+ * The frontend uploads images and stores the returned file ID as `image_url.url`.
+ * llama-server only accepts `data:` or `http(s)://` URLs, so we must resolve
+ * the ID → file record → filesystem bytes → base64 before forwarding.
+ *
+ * Mutates the messages array in-place. Parts that cannot be resolved are
+ * replaced with a text marker so the request still succeeds.
+ */
+async function resolveFileIdImages(messages: proto.Message[]): Promise<void> {
+    for (const message of messages) {
+        if (typeof message.content === 'string') continue;
+
+        const parts = message.content as proto.ContentPart[];
+        for (let i = 0; i < parts.length; i++) {
+            const part: proto.ContentPart | undefined = parts[i];
+            if (!part || part.type !== 'image_url') continue;
+
+            const imagePart: proto.ImageContentPart = part;
+            const url = imagePart.image_url.url;
+            if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+                continue; // already a valid URL
+            }
+
+            // Treat as file ID
+            const file = await Files.getFileById(url, db);
+            if (!file || !file.path) {
+                console.warn(`[resolveFileIdImages] file not found for id: ${url}`);
+                parts[i] = { type: 'text', text: '[image unavailable]' };
+                continue;
+            }
+
+            const buffer = await StorageProvider.downloadFile(file.path);
+            const contentType = file.meta?.contentType ?? 'image/png';
+            const base64 = buffer.toString('base64');
+            parts[i] = {
+                type: 'image_url',
+                image_url: { url: `data:${contentType};base64,${base64}` },
+            };
+        }
+    }
+}
+
+/* -------------------- PERSISTENCE -------------------- */
+
+type PersistData = {
+    content: string;
+    blocks: Types.MessageBlock[];
+    usage: SseUsage;
+    done: boolean;
+    error?: { content: string };
+};
+
+/**
+ * Fills in the response message placeholder in ctx.chat.history and persists
+ * the chat to the DB (create for new chats, update for existing).
+ *
+ * Skips for local: chats and requests that didn't include a chat object.
+ * DB errors are caught and logged so they never mask stream errors.
+ */
+async function _persistChat(ctx: ChatRequestContext, data: PersistData): Promise<void> {
+    if (ctx.isLocalChat) return;
+
+    // Fill in the response message placeholder that the frontend seeded in history
+    const responseId = ctx.chat.history.currentId;
+    if (responseId && ctx.chat.history.messages[responseId]) {
+        const msg = ctx.chat.history.messages[responseId];
+        msg.content = data.content;
+        msg.done = data.done;
+        msg.model = ctx.resolvedModel;
+        msg.usage = data.usage;
+        msg.blocks = data.blocks;
+        if (data.error) msg.error = data.error;
+    }
+
+    // Exclude title from the update — it was set at creation time and may have been
+    // updated by doTasks running concurrently. Overwriting it here would be a race.
+    const { title: _title, ...chatFields } = ctx.chat;
+
+    try {
+        await Chats.updateChat(ctx.chatId, { chat: chatFields }, db);
+    } catch (err) {
+        console.error('[custom-completions] failed to persist chat:', err);
+    }
+}
+
 /* -------------------- HELPERS -------------------- */
 
 /**
  * Writes a typed `event: chat-event` SSE frame to the response.
  */
-function emitSseEvent(
+function _emitSseEvent(
     res: Response,
     chatId: string,
-    messageId: string,
     payload: SseEventPayload,
 ): void {
     const frame: SseEvent = {
         chat_id: chatId ?? '',
-        message_id: messageId ?? '',
         data: payload,
     };
     res.write(`event: chat-event\ndata: ${JSON.stringify(frame)}\n\n`);
 }
 
+async function _emitEventsAndExecuteTools(
+    res: Response,
+    ctx: ChatRequestContext,
+    toolRegistry: ToolRegistry,
+    toolCalls: proto.AssistantToolCall[],
+    signal: AbortSignal,
+): Promise<ToolRoundResult[] | undefined> {
+    if (toolCalls.length === 0) return;
+
+    // Emit SSE events for each tool call
+    for (const tc of toolCalls) {
+        console.log(` - ${ctx.resolvedModel} calls ${tc.function.name}`);
+        _emitSseEvent(res, ctx.chatId, {
+            type: 'tool_call:start',
+            data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments },
+        });
+    }
+
+    // Execute tool calls
+    const start = performance.now();
+    const roundResults = await toolRegistry.executeToolRound(toolCalls, signal);
+    const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+    console.log(` - ${ctx.resolvedModel} tool round completed in ${elapsed}s`);
+
+    // For each tool call, emit SSE events for the result
+    for (const r of roundResults) {
+        _emitSseEvent(res, ctx.chatId, {
+            type: 'tool_call:result',
+            data: { 
+                id: r.id, 
+                name: r.name, 
+                arguments: r.arguments, 
+                result: r.result.ok ? r.result.output : `Error: ${r.result.error}` 
+            },
+        });
+    }
+
+    return roundResults;
+}
+
+/**
+ * Updates the blocks array for one completion round.
+ * 
+ * Non-tool call rounds: Adds reasoning block and content block. Returns final text content
+ * 
+ * Tool rounds: Add reasoning block and tool call blocks
+ *
+ * Final round (no tool calls): adds reasoning block (if present) and content block.
+ * Returns the final text content.
+ *
+ * Tool round: adds reasoning block (if present), tool_call blocks, and fills in
+ * results after execution. Returns an empty string.
+ */
+function _accumulateBlocks(
+    blocks: Types.MessageBlock[],
+    response: proto.CompletionResponse,
+    toolResults?: ToolRoundResult[],
+): string {
+    const message = response.choices[0]?.message;
+
+    if (message?.reasoning_content) {
+        blocks.push({ type: 'reasoning', content: message.reasoning_content, done: true });
+    }
+
+    if (!toolResults) {
+        return message?.content ?? '';
+    }
+
+    for (let i = 0; i < toolResults.length; i++) {
+        const r = toolResults.at(i)!;
+
+        blocks.push({
+            type: 'tool_call',
+            id: r.id,
+            name: r.name,
+            arguments: r.arguments,
+            done: true,
+            result: r.result.ok ? r.result.output : `Error: ${r.result.error}`,
+        });
+    }
+
+    // Return 'final content' (empty string because we ended on a tool call)
+    return '';
+}
+
+type UsageInfo = {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+
+    totalPredictedMs: number;
+    totalPromptMs: number;
+};
+
+function _newUsageInfo(): UsageInfo {
+    return {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+
+        totalPredictedMs: 0,
+        totalPromptMs: 0,
+    }
+}
+
 /**
  * Merges timings/usage from a single CompletionResponse into running totals.
  */
-function accumulateUsage(total: SseUsage, response: proto.CompletionResponse): SseUsage {
+function _accumulateUsage(info: UsageInfo, response: proto.CompletionResponse): UsageInfo {
     const tokensOut = response.timings?.predicted_n ?? response.usage?.completion_tokens ?? 0;
     const cacheIn = response.timings?.cache_n ?? 0;
     const promptIn = response.timings?.prompt_n ?? response.usage?.prompt_tokens ?? 0;
     const tokensIn = cacheIn + promptIn;
 
+    const totalPredictedMs = info.totalPredictedMs + (response.timings?.predicted_ms ?? 0);
+    const totalPromptMs = info.totalPromptMs + (response.timings?.prompt_ms ?? 0);
+
     return {
-        prompt_tokens: total.prompt_tokens + tokensIn,
-        completion_tokens: total.completion_tokens + tokensOut,
-        total_tokens: total.total_tokens + tokensIn + tokensOut,
+        prompt_tokens: info.prompt_tokens + tokensIn,
+        completion_tokens: info.completion_tokens + tokensOut,
+        total_tokens: info.total_tokens + tokensIn + tokensOut,
+
+        totalPredictedMs,
+        totalPromptMs,
     };
+}
+
+function _getFinalUsage(info: UsageInfo): SseUsage {
+    const completionTps = info.totalPredictedMs > 0
+        ? (info.completion_tokens / info.totalPredictedMs) * 1000
+        : undefined;
+    const promptTps = info.totalPromptMs > 0
+        ? (info.prompt_tokens / info.totalPromptMs) * 1000
+        : undefined;
+
+    return {
+        prompt_tokens: info.prompt_tokens,
+        completion_tokens: info.completion_tokens,
+        total_tokens: info.total_tokens,
+        completion_tokens_per_second: completionTps,
+        prompt_tokens_per_second: promptTps,
+    }
 }
 
 /**

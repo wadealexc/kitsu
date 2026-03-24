@@ -21,16 +21,16 @@ export type NewChat = Omit<
  * Creates a new chat for a user.
  *
  * Required fields: userId, data.chat
- * Auto-generated: id (UUID v4), createdAt, updatedAt, title (from chat.title)
+ * Auto-generated: id (UUID v4 unless provided), createdAt, updatedAt, title (from chat.title)
  * Defaults: meta={}, shareId=null
  */
 export async function createChat(
     userId: string,
-    data: NewChat,
+    data: NewChat & { id?: string },
     txOrDb: DbOrTx = db
 ): Promise<Chat> {
     const now = currentUnixTimestamp();
-    const chatId = crypto.randomUUID();
+    const chatId = data.id ?? crypto.randomUUID();
 
     const [chat] = await txOrDb
         .insert(chats)

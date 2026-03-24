@@ -12,11 +12,27 @@ export interface ModelInfo {
 // https://platform.openai.com/docs/api-reference/chat/create
 // (only tracking the fields we care about)
 export type CompletionRequest = {
-    stream?: boolean,
-    model: string,
-    messages: Message[],
-    tools?: ToolDefinition[],
-    webSearchEnabled?: boolean, // TODO - not a real field, temp
+    stream?: boolean;
+    model: string;
+    messages: Message[];
+    tools?: ToolDefinition[];
+    // Inference params (forwarded to llama-server)
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    min_p?: number;
+    max_tokens?: number;
+    stop?: string | string[];
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    repeat_penalty?: number;
+    repeat_last_n?: number;
+    seed?: number;
+    mirostat?: number;
+    mirostat_eta?: number;
+    mirostat_tau?: number;
+    tfs_z?: number;
+    logit_bias?: Record<string, any> | any[];
 };
 
 // Top-level tool definition provided to assistant
@@ -29,12 +45,17 @@ export type ToolDefinition = {
     }
 };
 
-export type Message = BasicMessage | AssistantMessage | ToolMessage;
+export type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
 
-export type BasicMessage = {
-    role: 'user' | 'system' | 'developer',
+export type SystemMessage = {
+    role: 'system' | 'developer',
+    content: string,
+};
+
+export type UserMessage = {
+    role: 'user',
     content: string | ContentPart[],
-}
+};
 
 export type ToolMessage = {
     role: 'tool',
@@ -96,7 +117,7 @@ export type ChatDelta = {
     content?: string,
     reasoning_content?: string,
     refusal?: string,
-    tool_calls?: ToolCall[],
+    tool_calls?: AssistantToolCall[],
 };
 
 // Fully accumulated response — what LlamaStream returns after the stream ends
@@ -137,17 +158,7 @@ export type ChatMessage = {
     content?: string,
     reasoning_content?: string,
     refusal?: string,
-    tool_calls?: ToolCall[],
-};
-
-export type ToolCall = {
-    index: number,
-    id: string,
-    type: string,
-    function: {
-        arguments: string,
-        name: string,
-    },
+    tool_calls?: AssistantToolCall[],
 };
 
 export type Result<T, E> =

@@ -3,7 +3,7 @@ import { writeFile } from "fs/promises";
 import sharp from 'sharp';
 
 import { z } from 'zod';
-import type { Tool, ToolContext } from '../types.js';
+import type { Tool, ToolContext, BeforeRequestOptions } from '../types.js';
 import * as proto from '../../protocol.js';
 
 const IMAGELABEL_START = `img_`;
@@ -169,7 +169,7 @@ class PreprocessImage implements Tool<Input, Output> {
         };
     }
 
-    async beforeRequest(req: proto.CompletionRequest): Promise<proto.CompletionRequest> {
+    async beforeRequest(req: proto.CompletionRequest, _opts: BeforeRequestOptions): Promise<proto.CompletionRequest> {
         let newReq: proto.CompletionRequest = req;
 
         const snippet = this.systemPromptSnippet();

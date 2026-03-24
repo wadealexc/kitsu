@@ -489,14 +489,6 @@ export const ChatHistorySchema = z.object({
 }).passthrough();
 export type ChatHistory = z.infer<typeof ChatHistorySchema>;
 
-// Flattened message (in messages array)
-export const FlattenedMessageSchema = z.object({
-    role: z.enum(['user', 'assistant', 'system']),
-    content: z.string(),
-    timestamp: z.number(),
-}).passthrough();
-export type FlattenedMessage = z.infer<typeof FlattenedMessageSchema>;
-
 // Complete chat object (the nested "chat" field)
 export interface ChatObject {
     // TODO: Seems unused by frontend
@@ -509,7 +501,6 @@ export interface ChatObject {
     webSearchEnabled?: boolean;
     systemPrompt?: string;
     history: ChatHistory;
-    messages: FlattenedMessage[];
     timestamp: number;
 }
 
@@ -519,7 +510,6 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     model: z.string(),
     params: ModelParamsSchema.default({}),
     history: ChatHistorySchema,
-    messages: z.array(FlattenedMessageSchema),
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
     systemPrompt: z.string().optional(),
@@ -533,7 +523,6 @@ export const ChatObjectUpdateSchema = z.object({
     model: z.string(),
     params: ModelParamsSchema,
     history: ChatHistorySchema,
-    messages: z.array(FlattenedMessageSchema),
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
     systemPrompt: z.string(),
@@ -633,31 +622,90 @@ export const ChatUsageStatsQuerySchema = z.object({
 });
 export type ChatUsageStatsQuery = z.infer<typeof ChatUsageStatsQuerySchema>;
 
+/* -------------------- OAI MESSAGE SCHEMAS -------------------- */
+
+export const OAITextContentPartSchema = z.object({
+    type: z.literal('text'),
+    text: z.string(),
+});
+export type OAITextContentPart = z.infer<typeof OAITextContentPartSchema>;
+
+export const OAIImageContentPartSchema = z.object({
+    type: z.literal('image_url'),
+    image_url: z.object({
+        url: z.string(),
+        detail: z.string().optional(),
+    }),
+});
+export type OAIImageContentPart = z.infer<typeof OAIImageContentPartSchema>;
+
+export const OAIContentPartSchema = z.discriminatedUnion('type', [
+    OAITextContentPartSchema,
+    OAIImageContentPartSchema,
+]);
+export type OAIContentPart = z.infer<typeof OAIContentPartSchema>;
+
+export const OAISystemMessageSchema = z.object({
+    role: z.union([z.literal('system'), z.literal('developer')]),
+    content: z.string(),
+});
+export type OAISystemMessage = z.infer<typeof OAISystemMessageSchema>;
+
+export const OAIUserMessageSchema = z.object({
+    role: z.literal('user'),
+    content: z.union([z.string(), z.array(OAIContentPartSchema)]),
+});
+export type OAIUserMessage = z.infer<typeof OAIUserMessageSchema>;
+
+export const OAIAssistantToolCallSchema = z.object({
+    id: z.string(),
+    type: z.literal('function'),
+    function: z.object({
+        name: z.string(),
+        arguments: z.string(),
+    }),
+});
+export type OAIAssistantToolCall = z.infer<typeof OAIAssistantToolCallSchema>;
+
+export const OAIAssistantMessageSchema = z.object({
+    role: z.literal('assistant'),
+    content: z.string(),
+    reasoning_content: z.string().optional(),
+    tool_calls: z.array(OAIAssistantToolCallSchema).optional(),
+});
+export type OAIAssistantMessage = z.infer<typeof OAIAssistantMessageSchema>;
+
+export const OAIToolMessageSchema = z.object({
+    role: z.literal('tool'),
+    tool_call_id: z.string(),
+    content: z.string(),
+});
+export type OAIToolMessage = z.infer<typeof OAIToolMessageSchema>;
+
+export const OAIMessageSchema = z.union([
+    OAISystemMessageSchema,
+    OAIUserMessageSchema,
+    OAIAssistantMessageSchema,
+    OAIToolMessageSchema,
+]);
+export type OAIMessage = z.infer<typeof OAIMessageSchema>;
+
+/* -------------------- COMPLETION FORM -------------------- */
+
 // Chat completion form (OpenAI-compatible with OpenWebUI extensions)
 export const ChatCompletionFormSchema = z.object({
-    // Required fields
     model: z.string(),
-    messages: z.array(z.any()),  // OpenAI message format - flexible structure
-
-    // OpenAI standard fields
-    stream: z.boolean().optional(),
-    temperature: z.number().optional(),
-    top_p: z.number().optional(),
-    max_tokens: z.number().int().optional(),
-    stop: z.union([z.string(), z.array(z.string())]).optional(),
-    presence_penalty: z.number().optional(),
-    frequency_penalty: z.number().optional(),
-    logit_bias: z.record(z.string(), z.number()).optional(),
-
-    // OpenWebUI extensions
+    messages: z.array(OAIMessageSchema),
+    stream: z.boolean(),
     chatId: ChatIdSchema,
-    messageId: MessageIdSchema,
     userMessage: ChatMessageSchema,
-    params: ModelParamsSchema.optional(),
-    webSearchEnabled: z.boolean().optional().default(false),
-    generateTitle: z.boolean().optional(),
-    systemPrompt: z.string().optional(),
-}).passthrough();  // Allow additional OpenAI extensions
+    chat: ChatObjectSchema,
+    folderId: FolderIdSchema.optional(),
+    params: ModelParamsSchema,
+    webSearchEnabled: z.boolean(),
+    generateTitle: z.boolean(),
+    systemPrompt: z.string(),
+});
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
 
 /* -------------------- FOLDER SCHEMAS -------------------- */

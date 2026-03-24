@@ -71,6 +71,5 @@ export type SseEventPayload =
 
 export type SseEvent = {
     chat_id: string;
-    message_id: string;
     data: SseEventPayload;
 };

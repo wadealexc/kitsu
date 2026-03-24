@@ -128,7 +128,6 @@ export function createTestChatObject(
             messages: {},
             currentId: null,
         },
-        messages: [],
         timestamp: currentUnixTimestamp(),
     };
 }

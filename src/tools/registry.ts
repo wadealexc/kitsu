@@ -1,7 +1,7 @@
 import { toJSONSchema } from 'zod';
 
 import loadTools from './loader.js';
-import type { Tool, ToolContext } from './types.js';
+import type { Tool, ToolContext, BeforeRequestOptions } from './types.js';
 import * as proto from '../protocol.js';
 
 export type ToolCallResult =
@@ -40,13 +40,13 @@ export class ToolRegistry {
      * iterates over each tool, allows it to mutate the request, and returns the
      * final request.
      */
-    async beforeRequest(req: proto.CompletionRequest): Promise<proto.CompletionRequest> {
+    async beforeRequest(req: proto.CompletionRequest, opts: BeforeRequestOptions): Promise<proto.CompletionRequest> {
         for (const tool of this.tools.values()) {
             // Don't perform preflight changes if the tool was not included
             if (!req.tools) continue;
             if (-1 === req.tools.findIndex(t => t.function.name === tool.name())) continue;
 
-            if (tool.beforeRequest) req = await tool.beforeRequest(req);
+            if (tool.beforeRequest) req = await tool.beforeRequest(req, opts);
         }
 
         return req;
@@ -88,7 +88,7 @@ export class ToolRegistry {
      * Runs all tool calls in a single round in parallel.
      * Uses Promise.allSettled so one failure doesn't block the others.
      */
-    async executeToolRound(toolCalls: proto.ToolCall[], signal: AbortSignal): Promise<ToolRoundResult[]> {
+    async executeToolRound(toolCalls: proto.AssistantToolCall[], signal: AbortSignal): Promise<ToolRoundResult[]> {
         const promiseResults = await Promise.allSettled(
             toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, signal))
         );

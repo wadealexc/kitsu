@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Tool, ToolContext } from '../types.js';
+import type { Tool, ToolContext, BeforeRequestOptions } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
 import * as proto from '../../protocol.js';
 
@@ -45,8 +45,8 @@ class LoadWebpage implements Tool<Input, Output> {
         return InputSchema;
     }
 
-    beforeRequest(req: proto.CompletionRequest): proto.CompletionRequest {
-        if (!req.webSearchEnabled) {
+    beforeRequest(req: proto.CompletionRequest, opts: BeforeRequestOptions): proto.CompletionRequest {
+        if (!opts.webSearchEnabled) {
             return { ...req, tools: req.tools?.filter(t => t.function.name !== 'loadWebpage') };
         }
         return req;
