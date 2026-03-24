@@ -15,6 +15,8 @@ export default class LlamaStream extends PassThrough {
     private chunks: Buffer<any>[] = [];
     private reasoningStartMs: number | undefined;
     private reasoningEndMs: number | undefined;
+    private contentStartMs: number | undefined;
+    private contentEndMs: number | undefined;
 
     // Eagerly captures the stop event so callers can await finished() to
     // get the result of the stream.
@@ -31,6 +33,9 @@ export default class LlamaStream extends PassThrough {
             if (buf.includes('"reasoning_content"')) {
                 if (!this.reasoningStartMs) this.reasoningStartMs = performance.now();
                 this.reasoningEndMs = performance.now();
+            } else if (buf.includes('"content":"')) {
+                if (!this.contentStartMs) this.contentStartMs = performance.now();
+                this.contentEndMs = performance.now();
             }
         });
 
@@ -134,6 +139,15 @@ export default class LlamaStream extends PassThrough {
     reasoningDurationMs(): number | undefined {
         if (this.reasoningStartMs === undefined) return undefined;
         return (this.reasoningEndMs ?? this.reasoningStartMs) - this.reasoningStartMs;
+    }
+
+    /**
+     * Wall-clock ms between first and last content chunk.
+     * Undefined if no content was observed.
+     */
+    contentDurationMs(): number | undefined {
+        if (this.contentStartMs === undefined) return undefined;
+        return (this.contentEndMs ?? this.contentStartMs) - this.contentStartMs;
     }
 }
 

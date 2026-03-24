@@ -94,10 +94,11 @@ router.post('/custom-completions', requireAuth, async (
     let totalUsage: UsageInfo = _newUsageInfo();
     let finalContent = '';
     const blocks: Types.MessageBlock[] = [];
+    const roundLogs: RoundLog[] = [];
 
     try {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            console.log(`[custom-completions] round ${round}`);
+            const roundStartMs = performance.now();
 
             const response = await llama.completions({ body, signal: ctrl.signal });
             const stream = response.stream;
@@ -113,12 +114,26 @@ router.post('/custom-completions', requireAuth, async (
 
             // If model responds with tool calls, emit events and execute tools
             const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
-            const toolResults = await _emitEventsAndExecuteTools(res, ctx.value, toolRegistry, toolCalls, ctrl.signal);
+            const toolExec = await _emitEventsAndExecuteTools(res, ctx.value, toolRegistry, toolCalls, ctrl.signal);
 
-            finalContent = _accumulateBlocks(blocks, result.value, toolResults, stream.reasoningDurationMs());
+            finalContent = _accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs());
+
+            // Build round log
+            const roundLog: RoundLog = {
+                round,
+                totalMs: performance.now() - roundStartMs,
+                tokens: result.value.timings?.predicted_n ?? 0,
+                reasoningMs: stream.reasoningDurationMs(),
+                contentMs: stream.contentDurationMs(),
+                ...(toolExec ? {
+                    toolCalls: toolCalls.map(tc => tc.function.name),
+                    toolsMs: toolExec.elapsedMs,
+                } : {}),
+            };
+            roundLogs.push(roundLog);
 
             // If model did not produce tool calls, we're done
-            if (!toolResults) break;
+            if (!toolExec) break;
 
             // Append assistant + tool messages to history for next round
             const roundMessage = result.value.choices[0]?.message;
@@ -128,7 +143,7 @@ router.post('/custom-completions', requireAuth, async (
                 reasoning_content: roundMessage?.reasoning_content || undefined,
                 tool_calls: [...toolCalls],
             };
-            const toolMessages: proto.Message[] = toolResults.map(r => ({
+            const toolMessages: proto.Message[] = toolExec.results.map(r => ({
                 role: 'tool' as const,
                 tool_call_id: r.id,
                 content: r.result.ok ? r.result.output : `Error: ${r.result.error}`,
@@ -138,7 +153,6 @@ router.post('/custom-completions', requireAuth, async (
 
             // On the last allowed round, strip tools to force a final text response
             if (round === MAX_TOOL_ROUNDS - 1) {
-                console.log(`[custom-completions] max tool rounds reached, stripping tools`);
                 body = { ...body, tools: undefined };
             }
         }
@@ -148,7 +162,6 @@ router.post('/custom-completions', requireAuth, async (
         res.write('data: [DONE]\n\n');
         await taskPromise;
 
-        // Update chat in DB
         await _persistChat(ctx.value, {
             content: finalContent,
             blocks,
@@ -163,11 +176,9 @@ router.post('/custom-completions', requireAuth, async (
 
         res.end();
     } catch (err: any) {
-        // Headers are always committed at this point (we flush them before the loop)
         console.error(`[custom-completions] mid-stream error:`, err);
         const errMsg = err?.message ?? String(err);
 
-        // Update chat in DB
         await _persistChat(ctx.value, {
             content: finalContent,
             blocks,
@@ -183,6 +194,8 @@ router.post('/custom-completions', requireAuth, async (
 
         res.end();
     }
+
+    _logCompletion(ctx.value.resolvedModel, roundLogs);
 });
 
 /* -------------------- TASKS -------------------- */
@@ -562,18 +575,22 @@ function _emitSseEvent(
     res.write(`event: chat-event\ndata: ${JSON.stringify(frame)}\n\n`);
 }
 
+type ToolExecResult = {
+    results: ToolRoundResult[];
+    elapsedMs: number;
+};
+
 async function _emitEventsAndExecuteTools(
     res: Response,
     ctx: ChatRequestContext,
     toolRegistry: ToolRegistry,
     toolCalls: proto.AssistantToolCall[],
     signal: AbortSignal,
-): Promise<ToolRoundResult[] | undefined> {
+): Promise<ToolExecResult | undefined> {
     if (toolCalls.length === 0) return;
 
     // Emit SSE events for each tool call
     for (const tc of toolCalls) {
-        console.log(` - ${ctx.resolvedModel} calls ${tc.function.name}`);
         _emitSseEvent(res, ctx.chatId, {
             type: 'tool_call:start',
             data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments },
@@ -583,23 +600,22 @@ async function _emitEventsAndExecuteTools(
     // Execute tool calls
     const start = performance.now();
     const roundResults = await toolRegistry.executeToolRound(toolCalls, signal);
-    const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-    console.log(` - ${ctx.resolvedModel} tool round completed in ${elapsed}s`);
+    const elapsedMs = performance.now() - start;
 
-    // For each tool call, emit SSE events for the result
+    // Emit SSE events for each result
     for (const r of roundResults) {
         _emitSseEvent(res, ctx.chatId, {
             type: 'tool_call:result',
-            data: { 
-                id: r.id, 
-                name: r.name, 
-                arguments: r.arguments, 
-                result: r.result.ok ? r.result.output : `Error: ${r.result.error}` 
+            data: {
+                id: r.id,
+                name: r.name,
+                arguments: r.arguments,
+                result: r.result.ok ? r.result.output : `Error: ${r.result.error}`
             },
         });
     }
 
-    return roundResults;
+    return { results: roundResults, elapsedMs };
 }
 
 /**
@@ -648,6 +664,38 @@ function _accumulateBlocks(
     // Return 'final content' (empty string because we ended on a tool call)
     return '';
 }
+
+/* -------------------- LOGGING -------------------- */
+
+type RoundLog = {
+    round: number;
+    totalMs: number;
+    tokens: number;
+    reasoningMs?: number;
+    contentMs?: number;
+    toolCalls?: string[];
+    toolsMs?: number;
+};
+
+function _logCompletion(model: string, roundLogs: RoundLog[]): void {
+    const lines: string[] = [];
+    for (const r of roundLogs) {
+        lines.push(`[custom-completions::${r.round}] (${model}) (total: ${(r.totalMs / 1000).toFixed(2)}s) [${r.tokens} tokens]`);
+        if (r.reasoningMs !== undefined) {
+            lines.push(` - reasoning: ${(r.reasoningMs / 1000).toFixed(2)}s`);
+        }
+        if (r.toolCalls && r.toolCalls.length > 0) {
+            for (const name of r.toolCalls) lines.push(` - called tool: ${name}`);
+            lines.push(` - tools finished: ${((r.toolsMs ?? 0) / 1000).toFixed(2)}s`);
+        }
+        if (r.contentMs !== undefined) {
+            lines.push(` - content: ${(r.contentMs / 1000).toFixed(2)}s`);
+        }
+    }
+    console.log(lines.join('\n'));
+}
+
+/* -------------------- USAGE -------------------- */
 
 type UsageInfo = {
     prompt_tokens: number;
