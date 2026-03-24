@@ -21,7 +21,7 @@ type ChatRequestContext = {
     userId: string;
     chatId: string;
     messageId: string;
-    parentMessage: any;
+    userMessage: Types.ChatMessage;
     firstUserMessage: proto.BasicMessage;
     resolvedModel: string;
     messages: proto.Message[];
@@ -48,7 +48,7 @@ async function preprocessChatRequest(
     }
 
     const userId = req.user!.id;
-    const { chat_id: chatId, id: messageId, parent_message: parentMessage } = parsed.data;
+    const { chatId, messageId, userMessage } = parsed.data;
 
     // Resolve custom model -> base model
     let resolvedModel: string = parsed.data.model;
@@ -99,15 +99,15 @@ async function preprocessChatRequest(
     }
 
     // Insert chat files from parent message (if provided)
-    if (parentMessage?.files && !chatId.startsWith('local:')) {
-        const fileIds = parentMessage.files
+    if (userMessage?.files && !chatId.startsWith('local:')) {
+        const fileIds = userMessage.files
             .filter((f: any) => f.type === 'file')
             .map((f: any) => f.id)
             .filter(Boolean);
 
         if (fileIds.length > 0) {
             try {
-                await Chats.insertChatFiles(chatId, parentMessage.id, fileIds, userId, db);
+                await Chats.insertChatFiles(chatId, userMessage.id, fileIds, userId, db);
             } catch (error) {
                 console.error('Error inserting chat files:', error);
                 // Don't fail request — file associations are metadata, not critical
@@ -121,7 +121,7 @@ async function preprocessChatRequest(
             userId,
             chatId,
             messageId,
-            parentMessage,
+            userMessage,
             firstUserMessage,
             resolvedModel,
             messages,
@@ -174,101 +174,6 @@ async function resolveFileIdImages(messages: proto.Message[]): Promise<void> {
         }
     }
 }
-
-/* -------------------- CHAT COMPLETION -------------------- */
-
-/**
- * POST /api/v1/chat/completions
- * Access Control: Any authenticated user
- *
- * Main chat completion API — send messages to AI and get responses.
- * OpenAI-compatible endpoint with OpenWebUI extensions.
- *
- * @body {Types.ChatCompletionForm} - OpenAI-compatible request with extensions
- * @returns {object} - OpenAI-compatible response (streaming or static)
- */
-router.post('/completions', requireAuth, async (
-    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
-    res: Response<any | Types.ErrorResponse>,
-    next: NextFunction,
-) => {
-    console.log(`body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
-
-    const llama = req.app.locals.llama as LlamaManager;
-    const ctx = await preprocessChatRequest(req, llama);
-    if (!ctx.ok) {
-        return res
-            .status(ctx.value.status)
-            .json({ detail: ctx.value.detail, errors: ctx.value.errors });
-    }
-
-    const { chatId, messageId, completionBody: body } = ctx.value;
-
-    await resolveFileIdImages(body.messages as proto.Message[]);
-
-    // AbortController will cancel request if the client aborts
-    const ctrl = new AbortController();
-    res.once('close', () => ctrl.abort());
-    req.once('aborted', () => {
-        console.log(chalk.dim.yellow(`client aborted request`));
-        ctrl.abort();
-    });
-
-    try {
-        // Send completion request
-        const response = await llama.completions({ body, signal: ctrl.signal });
-        const stream = response.stream;
-
-        // Once we have data back from llama-server, set headers/status
-        // and begin streaming to the client
-        stream.once('readable', () => {
-            response.headers.forEach((v, k) => res.setHeader(k, v));
-            res.status(response.status);
-
-            stream.pipe(res, { end: false });
-        });
-
-        // This listener is triggered when llama-server is done streaming, or when the
-        // stream is cancelled prematurely due to client disconnects/llama-server errors
-        stream.once('stop', async (result: proto.Result<proto.CompletionResponse, Error>) => {
-            console.log(`stream stopped. result: ${result.ok}`);
-
-            // On success, inject a chat-event frame then end the response
-            if (result.ok) {
-                const tokensOut = result.value.timings?.predicted_n ?? 0;
-                const cacheIn = result.value.timings?.cache_n ?? 0;
-                const promptIn = result.value.timings?.prompt_n ?? 0;
-                const tokensIn = cacheIn + promptIn;
-                const predictedMs = result.value.timings?.predicted_ms ?? 0;
-                const promptMs = result.value.timings?.prompt_ms ?? 0;
-                const completionTps = predictedMs > 0 ? (tokensOut / predictedMs) * 1000 : undefined;
-                const promptTps = promptMs > 0 ? (promptIn / promptMs) * 1000 : undefined;
-
-                console.log(` - result: ${JSON.stringify(result.value, null, 2)}`);
-
-                emitSseEvent(res, chatId, messageId, {
-                    type: 'chat:completion',
-                    data: {
-                        done: true,
-                        usage: {
-                            prompt_tokens: tokensIn,
-                            completion_tokens: tokensOut,
-                            total_tokens: tokensIn + tokensOut,
-                            ...(completionTps !== undefined ? { completion_tokens_per_second: completionTps } : {}),
-                            ...(promptTps !== undefined ? { prompt_tokens_per_second: promptTps } : {}),
-                        },
-                    },
-                });
-                res.end();
-            } else {
-                console.log(` - error: ${JSON.stringify(result.value, null, 2)}`);
-                next(result.value);
-            }
-        });
-    } catch (err: any) {
-        return next(err);
-    }
-});
 
 /* -------------------- CUSTOM COMPLETION (TOOL LOOP) -------------------- */
 

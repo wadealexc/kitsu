@@ -650,10 +650,9 @@ export const ChatCompletionFormSchema = z.object({
     logit_bias: z.record(z.string(), z.number()).optional(),
 
     // OpenWebUI extensions
-    chat_id: ChatIdSchema,
-    id: MessageIdSchema,
-    parent_id: MessageIdSchema.optional(),
-    parent_message: z.record(z.string(), z.any()).optional(),
+    chatId: ChatIdSchema,
+    messageId: MessageIdSchema,
+    userMessage: ChatMessageSchema,
     params: ModelParamsSchema.optional(),
     webSearchEnabled: z.boolean().optional().default(false),
     generateTitle: z.boolean().optional(),
