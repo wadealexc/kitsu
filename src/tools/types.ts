@@ -15,7 +15,7 @@ export interface Tool<Input = unknown, Output = unknown> {
     /**
      * Calls the tool at runtime
      */
-    call: (input: Input) => Promise<Output> | Output;
+    call: (input: Input, signal: AbortSignal) => Promise<Output> | Output;
 
     /**
      * Allows the tool to modify a request's messages before being passed to a model

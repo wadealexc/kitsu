@@ -52,11 +52,11 @@ class LoadWebpage implements Tool<Input, Output> {
         return req;
     }
 
-    async call(input: Input): Promise<Output> {
+    async call(input: Input, signal: AbortSignal): Promise<Output> {
         const urls: URL[] = input.urls.slice(0, MAX_PAGES_ALLOWED).map(url => new URL(url));
         const results: Output = [];
 
-        (await Promise.allSettled(this.browser.fetchContent(false, ...urls))).forEach(result => {
+        (await Promise.allSettled(this.browser.fetchContent(false, signal, ...urls))).forEach(result => {
             if (result.status === 'fulfilled') {
                 results.push({
                     content: result.value.content,

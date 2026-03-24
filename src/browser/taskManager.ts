@@ -13,6 +13,7 @@ export type PageLoad<T> = {
     promise: Promise<T>,
     resolveFn: (result: T) => void,
     rejectFn: (err: any) => void,
+    signal?: AbortSignal,
 };
 
 /**
@@ -52,10 +53,10 @@ export class TaskManager<T> {
 
     /**
      * Create a new `waiting` task for a url
-     * 
+     *
      * @emits `create` after adding tasks to `this.waiting`
      */
-    create(url: URL): PageLoad<T> {
+    create(url: URL, signal?: AbortSignal): PageLoad<T> {
         let resolveFn: ((result: T) => void);
         let rejectFn: ((err: any) => void);
 
@@ -70,6 +71,7 @@ export class TaskManager<T> {
             promise,
             resolveFn: resolveFn!,
             rejectFn: rejectFn!,
+            signal,
         };
 
         this.waiting.push(task);

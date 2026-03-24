@@ -1,14 +1,11 @@
 import chalk from 'chalk';
-import puppeteer from 'puppeteer';
-import express from 'express';
+import { chromium, type Browser as PlaywrightBrowser, type Page, type BrowserContext } from 'playwright';
+import { Readability } from '@mozilla/readability';
+import { parseHTML } from 'linkedom';
 
 import EventEmitter from 'events';
 import * as Task from './taskManager.js';
-import * as middleware from '../server/middleware.js';
-import { type RequestBody } from '../server/middleware.js';
 
-// from: open_webui/retrieval/web/external.py
-// NOTE: supports optional ChatID input, could use to link requests with other tasks
 export type SearchRequest = {
     query: string,
     count: number,
@@ -24,16 +21,6 @@ export type SearchResponse = {
     link: string,
     title: string,
     snippet: string,
-};
-
-// from: open_webui/retrieval/loaders/external_web.py
-export type LoadRequest = {
-    urls: string[],
-};
-
-export type LoadResponse = {
-    page_content: string,
-    metadata: {},
 };
 
 const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
@@ -53,10 +40,18 @@ const MAX_CONCURRENT_PAGE_LOADS = 10;
 const MAX_RETRIES_PER_PAGE = 3;
 
 // If a page load takes longer than this amount of time, we mark it "failed" and retry
-const PAGE_LOAD_TIMEOUT_MS = 30000;
+const PAGE_LOAD_TIMEOUT_MS = 10000;
 
 // How often we check for outstanding work
 const PROCESS_TASKS_INTERVAL_MS = 100;
+
+// Resource types to block — we only need HTML text, not images/styles/fonts/media
+const BLOCKED_RESOURCE_TYPES = ['image', 'stylesheet', 'font', 'media'];
+
+// If Readability extracts less than this fraction of the raw page text, fall back to innerText.
+// Prevents Readability from silently discarding most content on non-article pages
+// (e.g. index pages, Q&A sites, SPAs where it grabs a small fragment instead of everything).
+const READABILITY_MIN_RATIO = 0.2;
 
 export type Document = {
     content: string,
@@ -70,7 +65,11 @@ type BrowserEvents = {
 };
 
 /**
- * `Browser` handles web search, page loading, and text extraction
+ * `Browser` handles web search, page loading, and text extraction.
+ *
+ * Search results come from the Brave Search API. Page content is loaded
+ * via a Playwright-managed Chromium browser and extracted using Mozilla
+ * Readability (with a textContent fallback for non-article pages).
  */
 export class Browser {
 
@@ -78,17 +77,15 @@ export class Browser {
 
     private braveAPIKey: string;
 
-    // TODO - we may want a browser pool to handle concurrent page loads better
-    private browser: puppeteer.Browser;
+    private browser: PlaywrightBrowser;
+    private context: BrowserContext;
     private rateLimits: Map<string, number> = new Map();
 
     // Active tasks (or those still relevant to rate-limiting)
     // - New tasks are added to `tasks.waiting` until a worker is assigned
     // - Tasks are moved to `tasks.active` when a worker is loading the page
-    // - When a page is fully loaded and text is extracted, it is added to `this.documents`
-    //   Also, the task is moved to `tasks.complete` so it can continue counting towards
-    //   rate limiting for a minute. After a minute, the task will be removed from `tasks.complete`.
-    private documents: Map<URL, Document> = new Map();
+    // - Once a task completes, it is moved to `tasks.complete` so it can continue
+    //   counting towards rate limiting for a minute.
     private tasks = new Task.TaskManager<Document>(MAX_CONCURRENT_PAGE_LOADS);
     private taskLoop: {
         interval: NodeJS.Timeout,
@@ -104,11 +101,13 @@ export class Browser {
     private screenshotWebpages: boolean;
 
     constructor(
-        browser: puppeteer.Browser,
+        browser: PlaywrightBrowser,
+        context: BrowserContext,
         braveAPIKey: string,
         screenshotWebpages: boolean,
     ) {
         this.browser = browser;
+        this.context = context;
         this.braveAPIKey = braveAPIKey;
         this.screenshotWebpages = screenshotWebpages;
 
@@ -119,23 +118,25 @@ export class Browser {
     /* -------------------- SEARCH/TASK CREATION -------------------- */
 
     /**
-     * Send a query to the brave search API and return the top `count` results.
-     * 
-     * If `loadPages` is true, `Browser.search` also starts background jobs to load
-     * each returned webpage and extract the text into `Browser.documents`.
-     * 
+     * Send a query to the Brave Search API and return the top `count` results.
+     *
+     * If `loadPages` is true, also starts background jobs to load each returned
+     * webpage and extract text content.
+     *
      * @param req the query and number of requested results
-     * @param loadPages if true, start background job to load pages and extract text
-     * @returns A list of URLs fetched from the Brave API
+     * @param loadPages if true, start background jobs to load pages
+     * @param signal optional AbortSignal to cancel the request
+     * @returns a list of search results from the Brave API
      */
-    async search(req: SearchRequest, loadPages?: boolean): Promise<SearchResponse[]> {
+    async search(req: SearchRequest, loadPages?: boolean, signal?: AbortSignal): Promise<SearchResponse[]> {
         const searchResponses: SearchResponse[] = [];
         const urls: URL[] = [];
 
-        // Search via brave search api
+        // Search via Brave Search API
         const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}`;
         const response = await fetch(url, {
             method: 'get',
+            signal,
             headers: {
                 'Accept': 'application/json',
                 'Accept-Encoding': 'gzip',
@@ -151,77 +152,82 @@ export class Browser {
         // Parse/collect responses
         const results = await response.json();
         for (const item of (results.web?.results as BraveSearchResult[])) {
-            let url: URL;
-            try { url = new URL(item.url) } catch (err: any) {
+            let itemUrl: URL;
+            try { itemUrl = new URL(item.url) } catch (err: any) {
                 console.error(`Browser.search: error parsing returned URL ${item.url}; skipping. Error: ${err}`);
                 continue;
             }
 
             // Skip results that we won't be able to load
-            // TODO - a bit leaky; should combine with canCreateTask somehow
-            if (this.hostBlacklist.has(url.hostname)) continue;
+            if (this.hostBlacklist.has(itemUrl.hostname)) continue;
 
-            urls.push(url);
+            urls.push(itemUrl);
             searchResponses.push({
-                link: url.toString(),
+                link: itemUrl.toString(),
                 title: item.title,
                 snippet: item.description,
             });
         }
 
         // Start background jobs if requested
-        if (loadPages) this.fetchContent(false, ...urls).forEach(promise => promise.catch(() => { }));
+        if (loadPages)
+            this.fetchContent(false, signal, ...urls)
+                .forEach(promise => promise.catch(() => { }));
+
         return searchResponses;
     }
 
-    async searchMulti(queries: string[], count: number, loadPages: boolean): Promise<SearchResponse[]> {
-        const responses: SearchResponse[] = [];
+    /**
+     * Run multiple search queries in parallel and return deduplicated results.
+     */
+    async searchMulti(queries: string[], count: number, loadPages: boolean, signal?: AbortSignal): Promise<SearchResponse[]> {
+        const settled = await Promise.allSettled(
+            queries.map(query => this.search({ query, count }, loadPages, signal))
+        );
 
-        for (const query of queries) {
-            try {
-                const response = await this.search({ query, count }, loadPages);
-                responses.push(...response);
-            } catch (err: any) {
-                console.log(`skipping failed search for query: ${query}; err: ${err}`);
+        const responses: SearchResponse[] = [];
+        for (const result of settled) {
+            if (result.status === 'fulfilled') {
+                responses.push(...result.value);
+            } else {
+                console.log(`skipping failed search; err: ${result.reason}`);
             }
         }
 
         // Return only unique links
-        const links = new Set<string>();
-        return responses.filter((response, index, arr) => {
-            if (!links.has(response.link)) {
-                links.add(response.link);
-                return true;
-            }
-
-            return false;
+        const seen = new Set<string>();
+        return responses.filter(r => {
+            if (seen.has(r.link)) return false;
+            
+            seen.add(r.link);
+            return true;
         });
     }
 
     /**
-     * Start background jobs to load each page, assuming the url is eligible to be loaded
-     * 
+     * Start background jobs to load each page, assuming the url is eligible to be loaded.
+     *
+     * @param mustHaveTask if true, only return promises for tasks that were already created
+     * @param signal optional AbortSignal to cancel page loads
+     * @param urls the URLs to fetch
      * @returns a list of promises that resolve to each page's content
      */
-    fetchContent(mustHaveTask: boolean, ...urls: URL[]): Promise<Document>[] {
+    fetchContent(mustHaveTask: boolean, signal: AbortSignal | undefined, ...urls: URL[]): Promise<Document>[] {
         const results: Promise<Document>[] = [];
 
         for (const url of urls) {
             if (this.isHostBlacklisted(url)) {
                 results.push(Promise.reject(`err: url is on host blacklist: ${url}`));
             } else {
-                // 1. If we already have this content, resolve immediately
-                // 2. If we're currently fetching this content, resolve when we fetch it
-                // 3. Otherwise, create a new task and resolve when it's complete
-                if (this.documents.has(url)) {
-                    results.push(Promise.resolve(this.documents.get(url)!));
-                } else if (this.tasks.has(url)) {
+                // 1. If we're currently fetching this content, resolve when we fetch it
+                // 2. Otherwise, create a new task and resolve when it's complete
+                if (this.tasks.has(url)) {
                     results.push(this.tasks.get(url)!.promise);
                 } else {
                     if (mustHaveTask) {
                         results.push(Promise.reject(`required task did not exist for url: ${url}`));
                     } else {
-                        results.push(this.tasks.create(url).promise);
+                        results.push(this.tasks.create(url, signal).promise);
                     }
                 }
             }
@@ -234,7 +240,7 @@ export class Browser {
 
     /**
      * Calls `this.processTasks` in a regular interval.
-     * 
+     *
      * Does nothing if an interval is already present.
      */
     #startTaskLoop() {
@@ -270,7 +276,6 @@ export class Browser {
 
         // For each expired task, decrease the corresponding rate limit
         this.tasks.forEachExpired((task: Task.Expiry<Document>) => this.decRateLimit(task.url));
-        // this.tasks.printInfo();
 
         while (this.tasks.hasWorker() && this.tasks.hasNext()) {
             const task = this.tasks.getNext()!;
@@ -286,27 +291,26 @@ export class Browser {
                 continue;
             }
 
-            // Update rate limit and page load attempts
-            task.loadAttempts++;
+            // Update rate limit and move task to active state
             this.incRateLimit(task.url);
             if (this.taskLoop) this.taskLoop.total++;
 
-            // Start task. If the task fails, defer it to be retried later.
             this.tasks.start(task);
-            this.#loadPage(task.url)
+            this.#loadPage(task.url, task.signal)
                 .then((result: Document) => {
                     if (this.taskLoop) this.taskLoop.successes++;
                     this.tasks.finish(task, result);
                 })
                 .catch((reason: any) => {
-                    console.log(`loading page failed for url ${task.url}. reason: ${reason}`);
+                    const retryable = !(reason instanceof PageLoadError && !reason.retryable);
+                    const retriesLeft = task.loadAttempts < MAX_RETRIES_PER_PAGE;
 
-                    // Only retry up to MAX_RETRIES_PER_PAGE
-                    if (task.loadAttempts >= MAX_RETRIES_PER_PAGE) {
-                        console.log(` - max retries exceeded; dropping`);
-                        this.tasks.drop(task, `max retries exceeded for ${task.url}`);
-                    } else {
+                    if (retryable && retriesLeft) {
+                        console.log(`loading page failed for url ${task.url} (attempt ${task.loadAttempts}/${MAX_RETRIES_PER_PAGE}, will retry). reason: ${reason}`);
                         this.tasks.defer(task);
+                    } else {
+                        console.log(`loading page failed for url ${task.url} (dropping). reason: ${reason}`);
+                        this.tasks.drop(task, `${reason}`);
                     }
                 })
                 .finally(() => {
@@ -321,93 +325,126 @@ export class Browser {
     }
 
     /**
-     * Use `this.browser` to navigate to a page and extract text.
-     * 
-     * Steps:
-     * - Create a new browser page and set the user agent
-     * - Go to the webpage and wait for the main body to load
-     * - Trim some unneeded elements
-     * - Grab+return innerText (similar to "Ctrl A + Ctrl C")
+     * Use `this.context` to navigate to a page and extract text content.
+     *
+     * Tries Mozilla Readability first for clean article extraction. Falls back to
+     * stripping nav/header/footer/aside and grabbing innerText for non-article
+     * pages (index pages, Q&A sites, SPAs, etc.).
+     *
+     * Readability is skipped if its output is less than READABILITY_MIN_RATIO of the
+     * raw page text — this catches cases where it grabs a small article fragment
+     * instead of the full page content.
      */
-    async #loadPage(url: URL): Promise<Document> {
-        const page: puppeteer.Page = await this.browser.newPage();
-        await page.setUserAgent({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0' });
+    async #loadPage(url: URL, signal?: AbortSignal): Promise<Document> {
+        const page: Page = await this.context.newPage();
 
-        return new Promise<Document>(async (resolve, reject) => {
-            try {
-                await this.#gotoPage(page, url);
-                await page.waitForSelector('body');
+        try {
+            await this.#gotoPage(page, url, signal);
 
-                // Remove some elements we probably don't need
-                await page.evaluate(() => {
-                    document.body
-                        .querySelectorAll('nav, header, footer, aside')
-                        .forEach(element => element.remove());
-                });
+            const html = await page.content();
 
-                // This is pretty close to the text you'd get from "Ctrl+A"
-                const text = await page.evaluate(() => {
-                    return document.body.innerText ?? '';
-                });
+            // Parse HTML twice: once to measure raw text length (before Readability
+            // mutates the document), and once to feed Readability.
+            // We use linkedom textContent throughout — page.evaluate + innerText is
+            // unreliable when stylesheets are blocked (Chromium treats text as invisible).
+            const rawLength = parseHTML(html).document.body?.textContent?.trim().length ?? 0;
 
-                if (this.screenshotWebpages) {
-                    await page.screenshot({ path: `./screenshots/${url.hostname}_${Date.now()}.png` });
+            const { document: readabilityDoc } = parseHTML(html);
+            const article = new Readability(readabilityDoc as any).parse();
+            const articleLength = article?.textContent?.trim().length ?? 0;
+
+            const useReadability = article !== null
+                && articleLength > 0
+                && (rawLength === 0 || articleLength / rawLength >= READABILITY_MIN_RATIO);
+
+            let text: string;
+            if (useReadability) {
+                // Re-parse Readability's cleaned HTML for heading pre-processing.
+                // textContent concatenates all text nodes with no block-level separation,
+                // so we inject newlines + markdown markers on headings before extraction.
+                const { document: articleDoc } = parseHTML(article!.content);
+                for (const h of articleDoc.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+                    const level = parseInt(h.tagName[1]!);
+                    const hashes = '#'.repeat(Math.min(level, 4));
+                    (h as any).textContent = `\n\n${hashes} ${(h as any).textContent}\n`;
                 }
-
-                // Cleanup!
-                await page.close();
-
-                // We're done - create a document with the fetched content
-                const result: Document = {
-                    content: text,
-                    metadata: {
-                        source: url
-                    }
+                text = articleDoc.body?.textContent
+                    || articleDoc.documentElement?.textContent
+                    || article!.textContent
+                    || '';
+            } else {
+                // Fallback: strip structural chrome from the raw HTML and extract text
+                const { document: fallbackDoc } = parseHTML(html);
+                for (const el of fallbackDoc.querySelectorAll('nav, header, footer, aside, script, style')) {
+                    el.remove();
                 }
-
-                this.documents.set(url, result);
-                resolve(result);
-            } catch (err: any) {
-                // Cleanup!
-                await page.close();
-
-                reject(err);
+                text = fallbackDoc.body?.textContent ?? '';
             }
-        });
-    }
 
-    async #gotoPage(page: puppeteer.Page, url: URL): Promise<void> {
-        const response = await page.goto(url.toString(), {
-            timeout: PAGE_LOAD_TIMEOUT_MS,
-            waitUntil: 'networkidle2', // wait until we there are no more than 2 network requests for 500 ms
-            // waitUntil: 'domcontentloaded', // finish as soon as the DOM is built (does not wait for css/images/...)
-            // signal: TODO - can add AbortSignal
-        });
+            if (this.screenshotWebpages) {
+                await page.screenshot({ path: `./screenshots/${url.hostname}_${Date.now()}.png` });
+            }
 
-        if (!response) throw new Error(`null response from page.goto`);
-        if (!response.ok()) {
-            const code = response.status();
-            const errText = await response?.text();
+            await page.close();
 
-            // TODO - handle other 400-level codes
-            if (code === 429) this.hostBlacklist.add(url.hostname);
-            throw new Error(`error: ${code}`);
+            return {
+                content: normalizeWhitespace(text),
+                metadata: { source: url },
+            };
+        } catch (err: any) {
+            await page.close();
+            throw err;
         }
     }
 
-    async printStatus() {
-        const pages = await this.browser.pages();
+    /**
+     * Navigate `page` to `url`, waiting for DOM content to load.
+     *
+     * Uses domcontentloaded (not networkidle2) for speed — resource blocking on
+     * the context means there is little remaining network activity after DOM load.
+     *
+     * If `signal` is aborted, closes the page (which causes goto to reject).
+     */
+    async #gotoPage(page: Page, url: URL, signal?: AbortSignal): Promise<void> {
+        const abortHandler = () => page.close();
+        signal?.addEventListener('abort', abortHandler, { once: true });
+
+        try {
+            const response = await page.goto(url.toString(), {
+                timeout: PAGE_LOAD_TIMEOUT_MS,
+                waitUntil: 'domcontentloaded',
+            });
+
+            if (!response) throw new PageLoadError(`null response from page.goto`, false);
+            if (!response.ok()) {
+                const code = response.status();
+                if (code === 429) this.hostBlacklist.add(url.hostname);
+                throw new PageLoadError(`http error: ${code}`, false);
+            }
+        } catch (err: any) {
+            // Playwright timeout → non-retryable
+            if (err.name === 'TimeoutError') {
+                throw new PageLoadError(`timeout loading ${url}`, false);
+            }
+            throw err;
+        } finally {
+            signal?.removeEventListener('abort', abortHandler);
+        }
+    }
+
+    /* -------------------- STATUS -------------------- */
+
+    printStatus() {
+        const pages = this.context.pages();
         this.tasks.printInfo();
 
         console.log(chalk.dim(` - pages open: ${pages.length}`));
-        // if (pages.length !== 0) console.log(JSON.stringify(pages.map(page => page.url()), null, 2));
 
         const rateLimitStr = `[\n  ${Array.from(this.rateLimits)
             .map(([key, value]) => `  { "${key}": ${value} }`)
             .join(",\n  ")}\n]`;
 
         console.log(chalk.dim(` - rate limits:\n${rateLimitStr}`));
-        console.log(chalk.dim(` - documents fetched for:\n${JSON.stringify(Array.from(this.documents.keys()), null, 2)}`))
     }
 
     isHostBlacklisted(url: URL): boolean {
@@ -451,56 +488,107 @@ export class Browser {
         this.tasks.removeAllListeners('newTask');
         this.#stopTaskLoop();
 
-        // Close pages individually before closing the browser
-        const pages = await this.browser.pages();
-        await Promise.all(pages.map(page => page.close()));
+        // Close all open pages, then context, then browser
+        await Promise.all(this.context.pages().map(page => page.close()));
+        await this.context.close();
         await this.browser.close();
 
         console.log(chalk.green(`...done!`));
 
         // Print url blacklist to console for further investigation
         if (this.hostBlacklist.size !== 0) {
-            const hosts = this.hostBlacklist.values().toArray();
+            const hosts = [...this.hostBlacklist.values()];
             console.log(`Host Blacklist contains elements; printing:\n ${JSON.stringify(hosts, null, 2)}`);
         }
     }
 }
 
-// TODO - option for "run dangerously without sandbox", useful if someone
-// wants to try out the project without extra effort
-//
-// ... then again, if i just dockerize this, that should fix it
+/**
+ * Launch a Playwright Chromium browser and return an initialized Browser instance.
+ *
+ * Resource blocking (images, stylesheets, fonts, media) is set up on the context
+ * so all pages automatically skip these resource types during load.
+ */
 export async function init(
     braveAPIKey: string,
     runDangerouslyWithoutSandbox: boolean,
     screenshotWebpages: boolean,
 ): Promise<Browser> {
-    let puppet: puppeteer.Browser;
     if (runDangerouslyWithoutSandbox) {
-        console.log(chalk.red(`Browser.browserInit: warning - starting browser process without sandbox`));
-
-        puppet = await puppeteer.launch({
-            handleSIGINT: false,
-            handleSIGTERM: false,
-            handleSIGHUP: false,
-            args: [
-                '--disable-http2',
-                '--no-sandbox'
-            ]
-        });
+        console.log(chalk.red(`Browser.init: warning - starting browser process without sandbox`));
     } else {
-        console.log(`Browser.browserInit: starting browser...`);
-
-        puppet = await puppeteer.launch({
-            handleSIGINT: false,
-            handleSIGTERM: false,
-            handleSIGHUP: false,
-            args: [
-                '--disable-http2',
-            ]
-        });
+        console.log(`Browser.init: starting browser...`);
     }
 
+    const browser = await chromium.launch({
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
+        chromiumSandbox: !runDangerouslyWithoutSandbox,
+        args: [
+            '--disable-http2',
+        ],
+    });
+
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0',
+    });
+
+    // Block resources we don't need for text extraction
+    await context.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (BLOCKED_RESOURCE_TYPES.includes(type)) {
+            return route.abort();
+        }
+        return route.continue();
+    });
+
     process.stdout.write(chalk.dim.green(`web browser running!\n`));
-    return new Browser(puppet, braveAPIKey, screenshotWebpages);
+    return new Browser(browser, context, braveAPIKey, screenshotWebpages);
+}
+
+/* -------------------- ERRORS -------------------- */
+
+/**
+ * Error thrown during page loading. `retryable` indicates whether the task
+ * manager should re-queue this task or drop it immediately.
+ */
+class PageLoadError extends Error {
+    retryable: boolean;
+
+    constructor(message: string, retryable: boolean) {
+        super(message);
+        this.retryable = retryable;
+    }
+}
+
+/* -------------------- HELPERS -------------------- */
+
+/**
+ * Normalize extracted page text before returning it to callers.
+ *
+ * - Trims trailing whitespace from each line
+ * - Collapses runs of more than 2 consecutive blank lines into one
+ * - Trims leading/trailing whitespace from the whole string
+ *
+ * Keeps legitimate paragraph breaks and code block spacing intact while
+ * removing the redundant whitespace that both Readability and innerText
+ * commonly produce.
+ */
+function normalizeWhitespace(text: string): string {
+    const lines = text.split('\n').map(l => l.trimEnd());
+
+    const result: string[] = [];
+    let blankRun = 0;
+    for (const line of lines) {
+        if (line === '') {
+            blankRun++;
+            if (blankRun <= 1) result.push(line);
+        } else {
+            blankRun = 0;
+            result.push(line);
+        }
+    }
+
+    return result.join('\n').trim();
 }

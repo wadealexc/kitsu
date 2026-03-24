@@ -42,7 +42,7 @@ class SystemInfo implements Tool<Input, Output> {
         return InputSchema;
     }
 
-    call(): Output {
+    call(_input: Input, _signal: AbortSignal): Output {
         return {
             osArch: os.arch(),
             osRelease: os.release(),

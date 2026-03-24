@@ -80,10 +80,10 @@ class WebSearch implements Tool<Input, Output> {
         return newReq;
     }
 
-    async call(input: Input): Promise<Output> {
+    async call(input: Input, signal: AbortSignal): Promise<Output> {
         const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
 
-        const responses = await this.browser.searchMulti(queries, this.defaultResultCount, true);
+        const responses = await this.browser.searchMulti(queries, this.defaultResultCount, true, signal);
         const pages: Output = [];
 
         const urls: URL[] = [];
@@ -93,7 +93,7 @@ class WebSearch implements Tool<Input, Output> {
             }
         });
 
-        (await Promise.allSettled(this.browser.fetchContent(true, ...urls))).forEach(result => {
+        (await Promise.allSettled(this.browser.fetchContent(true, signal, ...urls))).forEach(result => {
             if (result.status === 'fulfilled') {
                 pages.push({
                     content: result.value.content,

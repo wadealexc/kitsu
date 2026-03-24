@@ -66,7 +66,7 @@ async function preprocessChatRequest(
     }
 
     let messages = parsed.data.messages as proto.Message[];
-    // Inject system prompt from frontend
+    // Inject system prompt from frontend, if needed
     if (messages[0]?.role !== 'system') {
         if (parsed.data.systemPrompt) {
             console.warn('[chat] Appending system prompt to messages.');
@@ -384,6 +384,7 @@ router.post('/custom-completions', requireAuth, async (
             // Model ended with tool calls. Emit start event
             const toolCalls: proto.ToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
             for (const tc of toolCalls) {
+                console.log(` - ${ctx.value.resolvedModel} calls ${tc.function.name}`);
                 emitSseEvent(res, chatId, messageId, {
                     type: 'tool_call:start',
                     data: {
@@ -395,7 +396,10 @@ router.post('/custom-completions', requireAuth, async (
             }
 
             // Execute all tool calls, then emit results
-            const roundResults = await toolRegistry.executeToolRound(toolCalls);
+            const toolRoundStart = performance.now();
+            const roundResults = await toolRegistry.executeToolRound(toolCalls, ctrl.signal);
+            const toolRoundSec = ((performance.now() - toolRoundStart) / 1000).toFixed(2);
+            console.log(` - ${ctx.value.resolvedModel} tool round completed in ${toolRoundSec}s`);
             for (const r of roundResults) {
                 const resultText = r.result.ok ? r.result.output : `Error: ${r.result.error}`;
                 emitSseEvent(res, chatId, messageId, {

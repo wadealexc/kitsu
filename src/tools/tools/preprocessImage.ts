@@ -159,7 +159,7 @@ class PreprocessImage implements Tool<Input, Output> {
     // The actual preprocessing happens in `beforeRequest`, because
     // due to OWUI tool call semantics, we have no way to attribute a tool
     // call to the completion request/messages it comes from.
-    call(args: Input): Output {
+    call(args: Input, _signal: AbortSignal): Output {
         return {
             oldLabels: args.imageLabels,
             newLabels: args.imageLabels.map(label => {

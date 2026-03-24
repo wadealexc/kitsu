@@ -654,10 +654,6 @@ export const ChatCompletionFormSchema = z.object({
     id: MessageIdSchema,
     parent_id: MessageIdSchema.optional(),
     parent_message: z.record(z.string(), z.any()).optional(),
-    variables: z.record(z.string(), z.any()).optional(),
-    model_item: z.object({
-        // direct: z.boolean().optional(),
-    }).passthrough().optional(),
     params: ModelParamsSchema.optional(),
     webSearchEnabled: z.boolean().optional().default(false),
     generateTitle: z.boolean().optional(),
