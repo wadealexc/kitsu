@@ -11,7 +11,7 @@ import * as schema from '../../src/db/schema.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import { type Chat } from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
-import { type ChatForm, type ChatObject, type FlattenedMessage, type ChatResponse, type NewChatForm, type ChatImportForm } from '../../src/routes/types.js';
+import { type ChatForm, type ChatObject, type ChatResponse, type NewChatForm, type ChatImportForm, type ChatMessage } from '../../src/routes/types.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -54,7 +54,6 @@ function createTestChatObject(
             messages: {},
             currentId: null,
         },
-        messages: [],
         timestamp: currentUnixTimestamp(),
     };
 }
@@ -71,7 +70,6 @@ function createNewChatForm(
             messages: {},
             currentId: null,
         },
-        messages: [],
         timestamp: currentUnixTimestamp(),
     };
 
@@ -89,20 +87,7 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
     const model = 'gpt-4';
 
     const msgId1 = crypto.randomUUID();
-    const msg1: FlattenedMessage & { timestamp: number } = {
-        role: 'user',
-        content: 'Hello',
-        timestamp: now - 2000,
-        model: model,
-    };
-
     const msgId2 = crypto.randomUUID();
-    const msg2: FlattenedMessage & { timestamp: number } = {
-        role: 'assistant',
-        content: 'Hi there!',
-        timestamp: now - 1000,
-        model: model,
-    };
 
     const chatObject: ChatObject = {
         title: title,
@@ -111,25 +96,28 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
         history: {
             messages: {
                 msgId1: {
-                    ...msg1,
                     id: msgId1,
                     parentId: null,
                     childrenIds: [msgId2],
+                    role: 'user',
+                    content: 'Hello',
                     done: false,
                     files: [],
+                    timestamp: now - 2000,
                 },
                 msgId2: {
-                    ...msg2,
                     id: msgId2,
                     parentId: msgId1,
                     childrenIds: [],
+                    role: 'assistant',
+                    content: 'Hi there!',
                     done: false,
                     files: [],
+                    timestamp: now - 1000,
                 },
             },
             currentId: msgId2,
         },
-        messages: [msg1, msg2],
         timestamp: now,
     };
 
@@ -674,7 +662,6 @@ describe('Chat Routes', () => {
                         },
                         currentId: msgId,
                     },
-                    messages: [],
                     timestamp: currentUnixTimestamp(),
                 },
                 folder_id: null,
@@ -893,7 +880,6 @@ describe('Chat Routes', () => {
 
             // Verify initial state
             assert.strictEqual(chat.chat.model, 'gpt-4');
-            assert.strictEqual(chat.chat.messages.length, 2);
 
             // Update only title
             const updateData: ChatForm = {
@@ -916,38 +902,7 @@ describe('Chat Routes', () => {
             assert.strictEqual(response.body.chat.model, 'gpt-4');
         });
 
-        test('should preserve messages array when updating only title', async () => {
-            const { userId, token } = await createUserWithToken('user');
-
-            // Create chat with messages
-            const chat = await createTestChat(userId, 'Original Title');
-
-            // Verify initial state
-            assert.strictEqual(chat.chat.messages.length, 2);
-            assert.strictEqual(chat.chat.messages[0]!.content, 'Hello');
-
-            // Update only title
-            const updateData: ChatForm = {
-                chat: {
-                    title: 'New Title'
-                }
-            };
-
-            const response = await request(app)
-                .post(`/api/v1/chats/${chat.id}`)
-                .set('Authorization', `Bearer ${token}`)
-                .send(updateData)
-                .expect(200);
-
-            // Verify title was updated
-            assert.strictEqual(response.body.title, 'New Title');
-
-            // Verify messages array was preserved (should NOT be cleared)
-            assert.strictEqual(response.body.chat.messages.length, 2);
-            assert.strictEqual(response.body.chat.messages[0].content, 'Hello');
-        });
-
-        test('should preserve model when updating history and messages', async () => {
+        test('should preserve model when updating history', async () => {
             const { userId, token } = await createUserWithToken('user');
 
             // Create chat with model
@@ -976,11 +931,6 @@ describe('Chat Routes', () => {
                         },
                         currentId: msgId,
                     },
-                    messages: [{
-                        role: 'user',
-                        content: 'Updated message',
-                        timestamp: now,
-                    }],
                 },
             };
 
@@ -991,8 +941,8 @@ describe('Chat Routes', () => {
                 .expect(200);
 
             // Verify messages were updated
-            assert.strictEqual(response.body.chat.messages.length, 1);
-            assert.strictEqual(response.body.chat.messages[0].content, 'Updated message');
+            assert.ok(response.body.chat.history.messages[msgId]);
+            assert.strictEqual(response.body.chat.history.messages[msgId].content, 'Updated message');
 
             // Verify model was preserved (should NOT be cleared)
             assert.strictEqual(response.body.chat.model, 'gpt-4');
@@ -1968,7 +1918,6 @@ describe('Chat Routes', () => {
 
             assert.ok(response.body.chat);
             assert.ok(response.body.chat.history);
-            assert.ok(response.body.chat.messages);
         });
 
         test('should create new ID for cloned chat', async () => {

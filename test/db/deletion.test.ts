@@ -17,7 +17,6 @@ function _createChatObject(title: string = 'Chat'): ChatObject {
     return {
         title: title,
         model: '',
-        messages: [],
         history: {
             messages: {},
         },

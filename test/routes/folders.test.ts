@@ -73,7 +73,6 @@ async function createTestChat(userId: string, title: string = 'Test Chat', folde
         chat: {
             title: title,
             model: 'gpt-4',
-            messages: [],
             history: { messages: {} },
             timestamp: 0,
         },

@@ -4,7 +4,7 @@ import * as Chats from '../../../src/db/operations/chats.js';
 import * as Users from '../../../src/db/operations/users.js';
 import * as Folders from '../../../src/db/operations/folders.js';
 import * as Files from '../../../src/db/operations/files.js';
-import type { ChatImportForm, ChatObject, FlattenedMessage } from '../../../src/routes/types.js';
+import type { ChatImportForm, ChatObject } from '../../../src/routes/types.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 import { chatFiles } from '../../../src/db/schema.js';
 
@@ -44,7 +44,6 @@ function createChatWithMessage(title: string = 'Test Chat'): Chats.NewChat {
                 },
                 currentId: messageId,
             },
-            messages: [],
             timestamp: currentUnixTimestamp(),
         },
         folderId: null,

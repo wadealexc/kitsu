@@ -111,8 +111,20 @@ function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm
             { role: 'system', content: 'You are a helpful assistant.' },
             { role: 'user', content: 'Hello' },
         ],
-        chatId: 'local:test',
-        messageId: crypto.randomUUID(),
+        chatId: `local:test`,
+        chat: {
+            id: '',
+            title: '',
+            model: '',
+            history: {
+                messages: {},
+                currentId: null,
+            },
+            timestamp: 0,
+        },
+        params: {
+
+        },
         userMessage: {
             id: '',
             parentId: '',
@@ -125,6 +137,7 @@ function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm
         },
         webSearchEnabled: false,
         generateTitle: false,
+        systemPrompt: 'Test',
         ...overrides,
     };
 }

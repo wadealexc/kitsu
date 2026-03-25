@@ -25,7 +25,7 @@ export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
 // Chat ID schema (UUID v4 format OR "local:<socket_id>" for temporary chats)
 export const ChatIdSchema = z.union([
     z.uuidv4(),  // Permanent chat: UUID v4
-    z.string().regex(/^local:[a-zA-Z0-9_-]+$/),  // Temporary chat: local:<socket_id>
+    z.string().regex(/^local:[a-zA-Z0-9_-]+$/),  // Temporary chat starts with `local:`
 ]);
 export type ChatId = z.infer<typeof ChatIdSchema>;
 

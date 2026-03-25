@@ -860,7 +860,6 @@ describe('Folder Operations', () => {
                     chat: {
                         title: 'Test Chat',
                         model: '',
-                        messages: [],
                         history: {
                             messages: {},
                         },
