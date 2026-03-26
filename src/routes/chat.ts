@@ -12,6 +12,7 @@ import * as Files from '../db/operations/files.js';
 import { StorageProvider } from '../storage/provider.js';
 import { ToolRegistry, type ToolRoundResult } from '../tools/registry.js';
 import type { SseEvent, SseEventPayload, SseUsage } from './sseEvents.js';
+import type { ToolProgress } from '../tools/types.js';
 
 const router = Router();
 
@@ -91,6 +92,8 @@ router.post('/custom-completions', requireAuth, async (
     const roundLogs: RoundLog[] = [];
 
     try {
+        let prevToolExec: ToolExecResult | undefined;
+
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
@@ -103,6 +106,22 @@ router.post('/custom-completions', requireAuth, async (
             // Wait until the model is done responding
             const result = await stream.finished();
             if (!result.ok) throw result.value;
+
+            // Retroactively set duration on previous round's tool call blocks now that
+            // we have the first output timestamp from this round's stream.
+            if (prevToolExec) {
+                const firstOutputMs = stream.firstOutputMs();
+                if (firstOutputMs !== undefined) {
+                    const durationSec = Math.round((firstOutputMs - prevToolExec.toolRoundStartMs) / 1000);
+                    for (const block of blocks) {
+                        if (block.type === 'tool_call' && block.duration === undefined) {
+                            block.duration = durationSec;
+                        }
+                    }
+                }
+                
+                prevToolExec = undefined;
+            }
 
             totalUsage = _accumulateUsage(totalUsage, result.value);
 
@@ -128,6 +147,7 @@ router.post('/custom-completions', requireAuth, async (
 
             // If model did not produce tool calls, we're done
             if (!toolExec) break;
+            prevToolExec = toolExec;
 
             // Append assistant + tool messages to history for next round
             const roundMessage = result.value.choices[0]?.message;
@@ -592,6 +612,7 @@ function _emitSseEvent(
 type ToolExecResult = {
     results: ToolRoundResult[];
     elapsedMs: number;
+    toolRoundStartMs: number;
 };
 
 async function _emitEventsAndExecuteTools(
@@ -611,10 +632,21 @@ async function _emitEventsAndExecuteTools(
         });
     }
 
-    // Execute tool calls
-    const start = performance.now();
-    const roundResults = await toolRegistry.executeToolRound(toolCalls, signal);
-    const elapsedMs = performance.now() - start;
+    // Execute tool calls, forwarding progress events as SSE frames
+    const toolRoundStartMs = performance.now();
+    const onProgress = (toolCallId: string, event: ToolProgress) => {
+        const tc = toolCalls.find(t => t.id === toolCallId);
+        _emitSseEvent(res, ctx.chatId, {
+            type: 'tool_call:progress',
+            data: {
+                id: toolCallId,
+                name: tc?.function.name ?? '',
+                progress: event,
+            },
+        });
+    };
+    const roundResults = await toolRegistry.executeToolRound(toolCalls, signal, onProgress);
+    const elapsedMs = performance.now() - toolRoundStartMs;
 
     // Emit SSE events for each result
     for (const r of roundResults) {
@@ -629,7 +661,7 @@ async function _emitEventsAndExecuteTools(
         });
     }
 
-    return { results: roundResults, elapsedMs };
+    return { results: roundResults, elapsedMs, toolRoundStartMs };
 }
 
 /**

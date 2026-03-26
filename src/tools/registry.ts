@@ -1,7 +1,7 @@
 import { toJSONSchema } from 'zod';
 
 import loadTools from './loader.js';
-import type { Tool, ToolContext, BeforeRequestOptions } from './types.js';
+import type { Tool, ToolContext, BeforeRequestOptions, ToolProgress, ToolEmit } from './types.js';
 import * as proto from '../protocol.js';
 
 export type ToolCallResult =
@@ -63,7 +63,13 @@ export class ToolRegistry {
         }));
     }
 
-    async call(name: string, args: string, signal: AbortSignal): Promise<ToolCallResult> {
+    async call(
+        name: string,
+        args: string,
+        signal: AbortSignal,
+        onProgress?: (toolCallId: string, event: ToolProgress) => void,
+        toolCallId?: string,
+    ): Promise<ToolCallResult> {
         const tool = this.tools.get(name);
         if (!tool) return { ok: false, error: `Unknown tool: ${name}` };
 
@@ -76,8 +82,12 @@ export class ToolRegistry {
             return { ok: false, error: `Validation failed: ${JSON.stringify(validated.error.issues)}` };
         }
 
+        const emit: ToolEmit = (event) => {
+            if (onProgress && toolCallId) onProgress(toolCallId, event);
+        };
+
         try {
-            const result = await tool.call(validated.data, signal);
+            const result = await tool.call(validated.data, signal, emit);
             return { ok: true, output: JSON.stringify(result) };
         } catch (err: any) {
             return { ok: false, error: err?.message ?? String(err) };
@@ -88,9 +98,13 @@ export class ToolRegistry {
      * Runs all tool calls in a single round in parallel.
      * Uses Promise.allSettled so one failure doesn't block the others.
      */
-    async executeToolRound(toolCalls: proto.AssistantToolCall[], signal: AbortSignal): Promise<ToolRoundResult[]> {
+    async executeToolRound(
+        toolCalls: proto.AssistantToolCall[],
+        signal: AbortSignal,
+        onProgress?: (toolCallId: string, event: ToolProgress) => void,
+    ): Promise<ToolRoundResult[]> {
         const promiseResults = await Promise.allSettled(
-            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, signal))
+            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, signal, onProgress, tc.id))
         );
 
         return toolCalls.map((tc, i) => {

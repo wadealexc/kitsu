@@ -60,6 +60,19 @@ export type SseToolCallResultPayload = {
     };
 };
 
+/** Emitted during tool execution to report progress */
+export type SseToolCallProgressPayload = {
+    type: 'tool_call:progress';
+    data: {
+        id: string;       // tool call ID
+        name: string;     // tool name (e.g. 'webSearch')
+        progress: {       // tool-specific payload
+            type: string;
+            [key: string]: unknown;
+        };
+    };
+};
+
 /* -------------------- UNION & TOP-LEVEL -------------------- */
 
 export type SseEventPayload =
@@ -67,7 +80,8 @@ export type SseEventPayload =
     | SseMessageErrorPayload
     | SseTitlePayload
     | SseToolCallStartPayload
-    | SseToolCallResultPayload;
+    | SseToolCallResultPayload
+    | SseToolCallProgressPayload;
 
 export type SseEvent = {
     chat_id: string;

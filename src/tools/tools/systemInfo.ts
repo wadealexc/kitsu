@@ -2,7 +2,7 @@ import os from 'os';
 import bytes from 'bytes';
 
 import { z } from 'zod';
-import type { Tool, ToolContext } from '../types.js';
+import type { Tool, ToolContext, ToolEmit } from '../types.js';
 
 const InputSchema = z.object();
 const OutputSchema = z.object({
@@ -42,7 +42,7 @@ class SystemInfo implements Tool<Input, Output> {
         return InputSchema;
     }
 
-    call(_input: Input, _signal: AbortSignal): Output {
+    call(_input: Input, _signal: AbortSignal, _emit: ToolEmit): Output {
         return {
             osArch: os.arch(),
             osRelease: os.release(),

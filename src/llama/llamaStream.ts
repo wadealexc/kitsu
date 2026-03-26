@@ -133,6 +133,15 @@ export default class LlamaStream extends PassThrough {
     }
 
     /**
+     * Wall-clock timestamp (performance.now) of the first reasoning or content chunk.
+     * Undefined if neither has been observed yet.
+     */
+    firstOutputMs(): number | undefined {
+        if (this.reasoningStartMs === undefined && this.contentStartMs === undefined) return undefined;
+        return Math.min(this.reasoningStartMs ?? Infinity, this.contentStartMs ?? Infinity);
+    }
+
+    /**
      * Wall-clock ms between first and last reasoning chunk.
      * Undefined if no reasoning content was observed.
      */

@@ -442,6 +442,7 @@ export const ToolCallBlockSchema = z.object({
     arguments: z.string(),
     result: z.string().optional(),
     done: z.boolean(),
+    duration: z.number().optional(),  // seconds, set by backend after next round
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 

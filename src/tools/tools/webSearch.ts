@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Tool, ToolContext, BeforeRequestOptions } from '../types.js';
+import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
 import * as proto from '../../protocol.js';
 
@@ -80,12 +80,13 @@ class WebSearch implements Tool<Input, Output> {
         return newReq;
     }
 
-    async call(input: Input, signal: AbortSignal): Promise<Output> {
+    async call(input: Input, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
         const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
 
+        // 1. Search
         const responses = await this.browser.searchMulti(queries, this.defaultResultCount, true, signal);
-        const pages: Output = [];
 
+        // 2. Build URL list
         const urls: URL[] = [];
         responses.forEach(response => {
             try { urls.push(new URL(response.link)) } catch (err: any) {
@@ -93,17 +94,31 @@ class WebSearch implements Tool<Input, Output> {
             }
         });
 
-        (await Promise.allSettled(this.browser.fetchContent(true, signal, ...urls))).forEach(result => {
-            if (result.status === 'fulfilled') {
-                pages.push({
-                    content: result.value.content,
-                    url: result.value.metadata.source.toString(),
-                });
-            } else {
-                console.log(`/tools/webSearch: rejected promise: ${result.reason}`);
-            }
+        // 3. Emit search results
+        emit({
+            type: 'search_results',
+            data: {
+                queries,
+                urls: urls.map(u => ({ url: u.toString(), hostname: u.hostname })),
+            },
         });
 
+        // 4. Track individual page loads with per-page progress
+        const pages: Output = [];
+        const tracked = this.browser.fetchContent(true, signal, ...urls).map((p, i) => {
+            const url = urls[i]!;
+            return p
+                .then(doc => {
+                    emit({ type: 'page_loaded', data: { url: url.toString(), hostname: url.hostname } });
+                    pages.push({ content: doc.content, url: doc.metadata.source.toString() });
+                })
+                .catch(reason => {
+                    console.log(`/tools/webSearch: rejected promise: ${reason}`);
+                    emit({ type: 'page_failed', data: { url: url.toString(), hostname: url.hostname } });
+                });
+        });
+
+        await Promise.all(tracked);
         return pages;
     }
 }

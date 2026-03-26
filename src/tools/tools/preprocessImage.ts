@@ -3,7 +3,7 @@ import { writeFile } from "fs/promises";
 import sharp from 'sharp';
 
 import { z } from 'zod';
-import type { Tool, ToolContext, BeforeRequestOptions } from '../types.js';
+import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
 import * as proto from '../../protocol.js';
 
 const IMAGELABEL_START = `img_`;
@@ -159,7 +159,7 @@ class PreprocessImage implements Tool<Input, Output> {
     // The actual preprocessing happens in `beforeRequest`, because
     // due to OWUI tool call semantics, we have no way to attribute a tool
     // call to the completion request/messages it comes from.
-    call(args: Input, _signal: AbortSignal): Output {
+    call(args: Input, _signal: AbortSignal, _emit: ToolEmit): Output {
         return {
             oldLabels: args.imageLabels,
             newLabels: args.imageLabels.map(label => {
@@ -346,7 +346,7 @@ async function processImage(image: proto.ImageContentPart): Promise<string> {
     const originalBuffer = await loadImageBufferFromContentPart(image);
     const processedBuffer = await preprocessForText(originalBuffer);
 
-    await writeFile('./out.png', processedBuffer);
+    // await writeFile('./out.png', processedBuffer);
 
     const base64 = processedBuffer.toString("base64");
     const dataUrl = `data:image/png;base64,${base64}`;

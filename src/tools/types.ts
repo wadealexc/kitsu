@@ -5,6 +5,15 @@ import * as proto from '../protocol.js';
 
 export type BeforeRequestOptions = { webSearchEnabled: boolean };
 
+/** Progress event emitted by a tool during execution. */
+export type ToolProgress = {
+    type: string;
+    data: unknown;
+};
+
+/** Callback passed to Tool.call for emitting progress events. */
+export type ToolEmit = (event: ToolProgress) => void;
+
 export interface Tool<Input = unknown, Output = unknown> {
     name: () => string;
     description: () => string;
@@ -17,7 +26,7 @@ export interface Tool<Input = unknown, Output = unknown> {
     /**
      * Calls the tool at runtime
      */
-    call: (input: Input, signal: AbortSignal) => Promise<Output> | Output;
+    call: (input: Input, signal: AbortSignal, emit: ToolEmit) => Promise<Output> | Output;
 
     /**
      * Allows the tool to modify a request's messages before being passed to a model
