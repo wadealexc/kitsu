@@ -343,6 +343,14 @@ export class LlamaManager {
     async #send(llama: Llama, job: Job): Promise<void> {
         if (!llama.active) return;
 
+        // Bail early if the request was already cancelled — node-fetch throws an
+        // uncaught exception from its internal abort listener when handed a
+        // pre-aborted signal, so we must avoid calling fetch() in that case.
+        if (job.request.signal?.aborted) {
+            job.reject(new Error('Request was aborted'));
+            return;
+        }
+
         const llamaURL = `http://${llama.serverHost}:${llama.serverPort}` + '/v1/chat/completions';
 
         // Increment active requests, preventing model swaps until this request is processed
