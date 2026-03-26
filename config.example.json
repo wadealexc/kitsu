@@ -16,10 +16,6 @@
         "shim": {
             "port": 8081,
             "host": "192.168.87.30"
-        },
-        "taskModel": {
-            "port": 8090,
-            "host": "192.168.87.30"
         }
     },
     "logs": {
@@ -47,24 +43,6 @@
                     0
                 ]
             }
-        ],
-        "taskModel": {
-            "gguf": "taskModels/Qwen3-4B-Instruct-2507-Q4_K_S",
-            "alias": "qwen3-4b-ins",
-            "args": [
-                "--ctx-size",
-                8192
-            ],
-            "params": {
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 20,
-                "min_p": 0.0,
-                "presence_penalty": 1.0,
-                "chat_template_kwargs": {
-                    "enable_thinking": false
-                }
-            }
-        }
+        ]
     }
 }

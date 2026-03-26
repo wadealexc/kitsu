@@ -153,7 +153,7 @@ router.post('/custom-completions', requireAuth, async (
 
         const finalUsage: SseUsage = _getFinalUsage(totalUsage);
 
-        // Dispatch tasks once completion loop is finished
+        // Dispatch tasks to request model once completion loop is finished
         const taskModel = body.model;
         const taskPromise = generateTitle
             ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)

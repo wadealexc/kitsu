@@ -56,10 +56,6 @@ const PortSchema = z.object({
         port: z.coerce.number().default(8081),
         host: z.string().default('0.0.0.0'),
     }),
-    taskModel: z.object({
-        port: z.coerce.number().default(8090),
-        host: z.string().default('0.0.0.0'),
-    }).optional(),
 });
 
 /**
@@ -73,10 +69,6 @@ const PortSchema = z.object({
  *     },
  *     "shim": {
  *         port: number,                             // default: 8081
- *         host: string                              // default: '0.0.0.0'
- *     },
- *     "taskModel": {                                // OPTIONAL
- *         port: number,                             // default: 8090
  *         host: string                              // default: '0.0.0.0'
  *     },
  * }
@@ -115,7 +107,6 @@ const ModelSchema = z.object({
     path: z.string().default('./models'),
     onStart: z.string().min(1, { message: "Startup model required - this should be the alias of one of the models you defined in config" }),
     models: z.array(ModelEntrySchema).min(1),
-    taskModel: ModelEntrySchema.optional(),
 });
 
 /**
@@ -141,12 +132,7 @@ const ModelSchema = z.object({
  *             // OPTIONAL: Inference defaults (temperature, system prompt, etc.)
  *             "params": { "temperature": 0.7, "system": "You are a helpful assistant." }
  *         }
- *     ],
- *     "taskModel": {                                // OPTIONAL; dedicated task model (title gen, etc.)
- *         "gguf": "...",
- *         "alias": "task-model",
- *         ...
- *     }
+ *     ]
  * }
  * ```
  */
@@ -218,9 +204,5 @@ async function validateFilesExist(config: Config) {
 
     for (const model of modelConfig.models) {
         await validateModelFiles(basePath, model);
-    }
-
-    if (modelConfig.taskModel) {
-        await validateModelFiles(basePath, modelConfig.taskModel);
     }
 }

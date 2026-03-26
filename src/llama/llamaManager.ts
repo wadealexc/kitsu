@@ -84,9 +84,6 @@ type RequestQueueItem = {
  * 
  * A single global `requestQueue` is driven by a polling loop (`startLoop`). The loop
  * handles model start/stop/swap and job dispatch.
- *
- * An optional task model runs on a dedicated port alongside the main model. It never
- * participates in swap/queue logic and is started/stopped with the main model.
  */
 export class LlamaManager {
 
@@ -95,10 +92,6 @@ export class LlamaManager {
     // Main models we can spin up to handle requests
     private llamas: Map<string, Llama>;
     private requestQueue: RequestQueueItem[] = [];
-
-    // Optional task model to handle tasks
-    private taskLlama: Llama | null = null;
-    private taskQueue: Job[] = [];
 
     private sleepAfterMs: number;
     private sleepTimer: { reset: () => void } | null = null;
@@ -110,10 +103,6 @@ export class LlamaManager {
 
     constructor(params: {
         ports: {
-            port: number,
-            host: string,
-        },
-        taskModelPorts?: {
             port: number,
             host: string,
         },
@@ -170,21 +159,6 @@ export class LlamaManager {
         this.defaultLlama = this.llamas.get(defaultModelName)
             ?? (() => { throw new Error(`LlamaManager: configured onStart model not found: ${defaultModelName}`) })();
 
-        // Build task llama if configured - both taskModel and taskModelPorts must be provided together
-        const hasTaskModel = !!params.models.taskModel;
-        const hasTaskPorts = !!params.taskModelPorts;
-        if (hasTaskModel !== hasTaskPorts) {
-            throw new Error(`LlamaManager: taskModel and taskModelPorts must both be provided or both omitted`);
-        }
-        if (params.models.taskModel && params.taskModelPorts) {
-            this.taskLlama = buildLlama(
-                params.models.taskModel,
-                basePath,
-                params.taskModelPorts.host,
-                params.taskModelPorts.port,
-            );
-        }
-
         this.sleepAfterMs = params.sleepAfterXSeconds * 1000;
 
         this.logDirectory = params.logDirectory;
@@ -203,28 +177,18 @@ export class LlamaManager {
         await this.#swapOnIdle();
 
         const jobsDispatched = this.#dispatchJobs();
-        const tasksDispatched = this.#dispatchTasks();
-        if (jobsDispatched || tasksDispatched) this.sleepTimer?.reset();
+        if (jobsDispatched) this.sleepTimer?.reset();
     }
 
     /**
-     * Start any inactive models, if needed. Starts both the current
-     * requested model and the task model. Does nothing if a model is
-     * already running.
+     * Start any inactive models, if needed. Does nothing if model
+     * is already running
      */
     async #startModels(): Promise<void> {
-        const promises: Promise<void>[] = [];
         const cur = this.requestQueue.at(0);
         
-        if (cur && !cur.llama.active) {
-            promises.push(this.#start(cur.llama));
-
-            // Start task model alongside main model
-            if (this.taskLlama && !this.taskLlama.active)
-                promises.push(this.#start(this.taskLlama));
-        }
-
-        await Promise.all(promises);
+        if (cur && !cur.llama.active)
+            await this.#start(cur.llama);
     }
 
     /**
@@ -266,24 +230,6 @@ export class LlamaManager {
         }
 
         return jobs.length > 0;
-    }
-
-    /**
-     * Dispatch all queued tasks for the task model to llama-server
-     * 
-     * @returns true if any tasks were dispatched
-     */
-    #dispatchTasks(): boolean {
-        if (!this.taskLlama || !this.taskLlama.active || this.taskQueue.length === 0) 
-            return false;
-
-        const tasks = this.taskQueue;
-        this.taskQueue = [];
-        for (const task of tasks) {
-            this.#send(this.taskLlama, task);
-        }
-
-        return tasks.length > 0;
     }
 
     /* -------------------- PUBLIC METHODS -------------------- */
@@ -332,20 +278,12 @@ export class LlamaManager {
      * Submit a completion request. Returns a promise that resolves with the response
      * once the model is active and the request is dispatched.
      */
-    completions(req: LlamaRequest, opts?: { taskModel?: boolean }): Promise<LlamaResponse> {
-        const job: Job = initJob(req);
-
-        // For tasks, ensure we have a task model configured, then push to its queue
-        if (opts?.taskModel) {
-            if (!this.taskLlama) throw new Error(`LlamaManager: task model not configured`);
-            this.taskQueue.push(job);
-            return job.promise;
-        }
-
+    completions(req: LlamaRequest): Promise<LlamaResponse> {
         const llama: Llama | undefined = this.llamas.get(req.body.model);
         if (!llama) throw new Error(`LlamaManager: model not found: ${req.body.model}`);
 
         // Push job to existing queue entry or create a new one
+        const job: Job = initJob(req);
         let found = false;
         for (const item of this.requestQueue) {
             if (item.llama === llama) {
@@ -373,15 +311,9 @@ export class LlamaManager {
             }
         }
 
-        for (const job of this.taskQueue) {
-            job.reject(new Error(`LlamaManager: server stopped`));
-        }
-
         this.requestQueue = [];
-        this.taskQueue = [];
 
         const allLlamas = [...this.llamas.values()];
-        if (this.taskLlama) allLlamas.push(this.taskLlama);
         await Promise.all(allLlamas.map(llama => this.#stop(llama)));
     }
 
@@ -391,7 +323,6 @@ export class LlamaManager {
      */
     forceStopServer(): void {
         const allLlamas = [...this.llamas.values()];
-        if (this.taskLlama) allLlamas.push(this.taskLlama);
 
         for (const llama of allLlamas) {
             if (!llama.active) continue;
@@ -724,9 +655,8 @@ export class LlamaManager {
         const mainBusy = this.requestQueue.some(item =>
             item.jobs.length > 0 || (item.llama.active?.requests ?? 0) > 0
         );
-        const taskBusy = this.taskQueue.length > 0 || (this.taskLlama?.active?.requests ?? 0) > 0;
 
-        if (mainBusy || taskBusy) {
+        if (mainBusy) {
             console.log(`sleep timer elapsed, but a llama seems busy; skipping`);
             return;
         }
@@ -770,18 +700,6 @@ export class LlamaManager {
     }
 
     /* -------------------- GETTERS -------------------- */
-
-    hasTaskModel(): boolean {
-        return this.taskLlama !== null;
-    }
-
-    getTaskModel(): string | undefined {
-        return this.taskLlama?.model.name;
-    }
-
-    getTaskModelInfo(): proto.ModelInfo | undefined {
-        return this.taskLlama?.model;
-    }
 
     getModelInfo(name: string): proto.ModelInfo | undefined {
         return this.llamas.get(name)?.model;

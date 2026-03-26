@@ -6,9 +6,8 @@ import cookieParser from 'cookie-parser';
 import chalk from 'chalk';
 
 import { readConfig } from './config.js';
-import * as proto from './protocol.js';
 import * as middleware from './server/middleware.js';
-import { LlamaManager, type LlamaResponse } from './llama/llamaManager.js';
+import { LlamaManager } from './llama/llamaManager.js';
 import * as Browser from './browser/browser.js';
 import { ToolRegistry } from './tools/registry.js';
 import authsRouter from './routes/auths.js';
@@ -77,7 +76,6 @@ const tools = new ToolRegistry({ browser });
 // Start llama-server
 const llama = new LlamaManager({
     ports: cfg.ports.llamaCpp,
-    taskModelPorts: cfg.ports.taskModel,
     llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
     logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
     sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
