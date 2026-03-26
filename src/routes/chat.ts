@@ -235,14 +235,16 @@ async function doTasks(
     }
 
     const startTime = performance.now();
+    let title: string = _fallbackTitle(ctx);
     try {
         if (ctx.isLocalChat) {
             log(`local chat - skipping title generation`);
             return;
         }
 
-        // TODO - this breaks if firstUserMessage has content parts and task model
-        // does not have mmproj
+        // TODO - this breaks if firstUserMessage has image content and 
+        // task model does not have mmproj. Should probably do text-only
+        // for speed, anyway.
         const taskResponse = await llama.completions({
             body: {
                 stream: false,
@@ -253,14 +255,28 @@ async function doTasks(
                         content: SYSTEM_PROMPT_TITLEGEN,
                     },
                     ctx.firstUserMessage,
-                ]
+                ],
+                // So, this is kind of a janky hack specific to Qwen3.5
+                // It turns out, qwen3.5 generates a TON of reasoning tokens when
+                // it doesn't have any tools available. When it has even one tool
+                // definition available, it's far more efficient.
+                //
+                // I'm adding a nonsense tool definition here for this reason.
+                // If the model (for whatever reason) ends up calling the tool,
+                // the fallbacks below will handle it.
+                tools: [{
+                    type: 'function',
+                    function: {
+                        name: 'invalid_tool',
+                        description: 'do not call this tool',
+                    }
+                }]
             },
             signal: signal
         });
 
         const result = await taskResponse.stream.finished();
 
-        let title: string = fallbackTitle(ctx);
         if (!result.ok) {
             log(`title generation received failing response: ${result.value}`);
         } else {
@@ -280,20 +296,18 @@ async function doTasks(
                 // "chat_template_kwargs": { "enable_thinking": false }
                 title = taskResult.content || taskResult.reasoning_content || title;
             }
-        }
-
-        log(`generated title: ${title}`);
-        await Chats.updateChat(ctx.chatId, { chat: { title } });
-        emitTitle(title);
+        }  
     } catch (err) {
-        const title = fallbackTitle(ctx);
-        log(`title generation failed: ${err}`);
-        log(`using fallback title: ${title}`);
-        emitTitle(title);
+        title = _fallbackTitle(ctx);
+        log(`title generation failed; using fallback: ${err}`);
     } finally {
         const endTime = performance.now();
         const seconds = (endTime - startTime) / 1000;
         log(`(title generation) time elapsed: ${seconds} sec`);
+        
+        // TODO - it's a bit messy.
+        emitTitle(title);
+        try { await Chats.updateChat(ctx.chatId, { chat: { title } }) } catch { }
     }
 }
 
@@ -757,33 +771,33 @@ function _getFinalUsage(info: UsageInfo): SseUsage {
 }
 
 /**
- * Returns true if the CompletionResponse indicates the model wants tool calls.
- */
-function hasToolCalls(response: proto.CompletionResponse): boolean {
-    return response.choices.some(
-        c => c.finish_reason === 'tool_calls' || (c.message.tool_calls && c.message.tool_calls.length > 0),
-    );
-}
-
-/**
  * Generate a title for a chat if no task model is available
  */
-function fallbackTitle(ctx: ChatRequestContext): string {
+function _fallbackTitle(ctx: ChatRequestContext): string {
     // Fallback: send "first 3 words" of user message
     let message = ctx.firstUserMessage.content;
     let title: string | undefined;
     if (Array.isArray(message)) {
         title = message.find((msg) => msg.type === 'text')?.text;
-        if (!title) {
-            title = 'New Chat';
-        } else {
-            title = title.split(' ').slice(0, 3).join(' ');
-        }
+        if (!title) title = 'New Chat';
     } else {
-        title = message.split(' ').slice(0, 3).join(' ');
+        title = message;
     }
 
-    return title;
+    return _normalizeTitle(title);
+}
+
+/**
+ * Split string by spaces, trim to max 5 words and capitalize first
+ * letter of each word, then join with space again
+ */
+function _normalizeTitle(title: string): string {
+    return title
+        .trim()
+        .split(/\s+/)
+        .slice(0, 5)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
 }
 
 export default router;
