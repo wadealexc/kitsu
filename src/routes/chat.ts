@@ -85,12 +85,6 @@ router.post('/custom-completions', requireAuth, async (
     res.status(200);
     res.flushHeaders();
 
-    // Dispatch tasks concurrently with the completion loop
-    const taskModel = llama.getTaskModel();
-    const taskPromise = (taskModel && generateTitle)
-        ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
-        : Promise.resolve();
-
     let totalUsage: UsageInfo = _newUsageInfo();
     let finalContent = '';
     const blocks: Types.MessageBlock[] = [];
@@ -158,6 +152,12 @@ router.post('/custom-completions', requireAuth, async (
         }
 
         const finalUsage: SseUsage = _getFinalUsage(totalUsage);
+
+        // Dispatch tasks once completion loop is finished
+        const taskModel = body.model;
+        const taskPromise = generateTitle
+            ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
+            : Promise.resolve();
 
         res.write('data: [DONE]\n\n');
         await taskPromise;
@@ -256,7 +256,7 @@ async function doTasks(
                 ]
             },
             signal: signal
-        }, { taskModel: true });
+        });
 
         const result = await taskResponse.stream.finished();
 
