@@ -30,11 +30,11 @@ const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
 //
 // e.g. if we try to load `youtube.com/kitty` and `youtube.com/doggo`, both
 // apply towards the `youtube.com` rate limit.
-const MAX_REQUESTS_PER_HOST_PER_MIN = 5;
+const MAX_REQUESTS_PER_HOST_PER_MIN = 20;
 
 // The max number of pages we'll try to load at once. This caps the number of
 // `page.goto` tasks we have active at any given moment.
-const MAX_CONCURRENT_PAGE_LOADS = 10;
+const MAX_CONCURRENT_PAGE_LOADS = 20;
 
 // If a page load fails, we retry it up to this number of times
 const MAX_RETRIES_PER_PAGE = 3;
@@ -286,8 +286,8 @@ export class Browser {
                 this.tasks.drop(task, `url is blacklisted: ${task.url}`);
                 continue;
             } else if (this.getRateLimit(task.url) > MAX_REQUESTS_PER_HOST_PER_MIN) {
-                console.log(`Rate limit encountered for url ${task.url}; deferring`);
-                this.tasks.defer(task);
+                console.log(`Rate limit encountered for url ${task.url}; dropping`);
+                this.tasks.drop(task, `url is self-ratelimited: ${task.url}`);
                 continue;
             }
 
@@ -310,7 +310,7 @@ export class Browser {
                         this.tasks.defer(task);
                     } else {
                         console.log(`loading page failed for url ${task.url} (dropping). reason: ${reason}`);
-                        this.tasks.drop(task, `${reason}`);
+                        this.tasks.drop(task, reason);
                     }
                 })
                 .finally(() => {

@@ -115,7 +115,7 @@ export class TaskManager<T> {
      * @throws if the task was not found in `this.active|this.waiting`
      */
     defer(task: PageLoad<T>, retryTime?: number) {
-        this.#mustRemoveTask(task, ...[this.active, this.waiting]);
+        this.#mustRemoveTask(task, ...[this.active, this.waiting, this.deferred]);
 
         this.deferred.push({
             ...task,
