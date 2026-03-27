@@ -39,6 +39,7 @@ type Llama = {
     model: proto.ModelInfo,
     serverHost: string,
     serverPort: string,
+    loading: boolean,
     active: {
         requests: number,
         proc: ChildProcess,
@@ -49,6 +50,10 @@ type Llama = {
 export type LlamaRequest = {
     body: proto.CompletionRequest,
     signal: AbortSignal,
+    emit?: {
+        onQueue: () => void,
+        onLoading: () => void,
+    },
 };
 
 export type LlamaResponse = {
@@ -143,6 +148,7 @@ export class LlamaManager {
                 },
                 serverHost: host,
                 serverPort: port.toString(),
+                loading: false,
                 active: null,
             };
         };
@@ -186,9 +192,9 @@ export class LlamaManager {
      */
     async #startModels(): Promise<void> {
         const cur = this.requestQueue.at(0);
-        
+
         if (cur && !cur.llama.active)
-            await this.#start(cur.llama);
+            await this.#start(cur);
     }
 
     /**
@@ -210,7 +216,7 @@ export class LlamaManager {
         this.requestQueue.shift();
 
         await this.#stop(cur.llama);
-        await this.#start(next.llama);
+        await this.#start(next);
     }
 
     /**
@@ -295,6 +301,16 @@ export class LlamaManager {
 
         // Model not in queue: push job as new queue entry
         if (!found) this.requestQueue.push({ llama, jobs: [job] });
+
+        // Look at the first entry in the queue and emit events according
+        // to the requested llama's status
+        const first = this.requestQueue.at(0);
+        if (req.emit && first) {
+            if (first.llama !== llama)      // waiting for another model
+                req.emit.onQueue();
+            else if (llama.loading)         // currently being loaded
+                req.emit.onLoading();
+        }
 
         return job.promise;
     }
@@ -479,10 +495,14 @@ export class LlamaManager {
      * Sets `llama.active` synchronously, then polls until ready. On failure, kills the
      * process and resets `llama.active = null` before rejecting.
      *
-     * @param llama The llama to start
+     * @param req The requested llama along with its jobs
      */
-    #start(llama: Llama): Promise<void> {
+    #start(req: RequestQueueItem): Promise<void> {
+        const llama = req.llama;
         if (llama.active) throw new Error(`LlamaManager.#start: llama ${llama.model.name} already running`);
+        
+        llama.loading = true;
+        for (const job of req.jobs) job.request.emit?.onLoading();
 
         const model: proto.ModelInfo = llama.model;
 
@@ -569,6 +589,7 @@ export class LlamaManager {
         return new Promise<void>((resolve, reject) => {
             this.#pollServer(llama)
                 .then(async () => {
+                    llama.loading = false;
                     resolve();
                     this.#logVRAM();
                 })
@@ -578,6 +599,7 @@ export class LlamaManager {
                     if (llama.active) {
                         try { process.kill(-llama.active.proc.pid!, 'SIGKILL') } catch { }
                     }
+                    llama.loading = false;
                     llama.active = null;
                     reject(err);
                 });

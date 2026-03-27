@@ -39,6 +39,16 @@ export type SseTitlePayload = {
     data: string;
 };
 
+export type SseModelQueuedPayload = {
+    type: 'model:queued'
+    data?: never,
+};
+
+export type SseModelLoadingPayload = {
+    type: 'model:loading',
+    data?: never,
+};
+
 /** Emitted when the LLM requests a tool call */
 export type SseToolCallStartPayload = {
     type: 'tool_call:start';
@@ -79,6 +89,8 @@ export type SseEventPayload =
     | SseCompletionPayload
     | SseMessageErrorPayload
     | SseTitlePayload
+    | SseModelQueuedPayload
+    | SseModelLoadingPayload
     | SseToolCallStartPayload
     | SseToolCallResultPayload
     | SseToolCallProgressPayload;

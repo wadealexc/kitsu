@@ -97,8 +97,14 @@ router.post('/custom-completions', requireAuth, async (
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
-            const response = await llama.completions({ body, signal: ctrl.signal });
-            const stream = response.stream;
+            const stream = (await llama.completions({ 
+                body, 
+                signal: ctrl.signal,
+                emit: {
+                    onQueue: _emitCallback(res, chatId, { type: 'model:queued' }),
+                    onLoading: _emitCallback(res, chatId, { type: 'model:loading' }),
+                },
+            })).stream;
 
             // Pipe llama -> done filter -> res (keep res open between rounds)
             stream.withDoneFilter().pipe(res, { end: false });
@@ -592,7 +598,7 @@ async function _persistChat(ctx: ChatRequestContext, data: PersistData): Promise
     }
 }
 
-/* -------------------- HELPERS -------------------- */
+/* -------------------- EVENTS -------------------- */
 
 /**
  * Writes a typed `event: chat-event` SSE frame to the response.
@@ -607,6 +613,20 @@ function _emitSseEvent(
         data: payload,
     };
     res.write(`event: chat-event\ndata: ${JSON.stringify(frame)}\n\n`);
+}
+
+/**
+ * Returns a callback function that will emit the provided SSE event when called
+ */
+function _emitCallback(
+    res: Response,
+    chatId: string,
+    payload: SseEventPayload,
+): (() => void) {
+    return () => { 
+        console.log(`emit: ${payload.type}`);
+        _emitSseEvent(res, chatId, payload);
+    };
 }
 
 type ToolExecResult = {
@@ -664,6 +684,8 @@ async function _emitEventsAndExecuteTools(
     return { results: roundResults, elapsedMs, toolRoundStartMs };
 }
 
+/* -------------------- HELPERS -------------------- */
+
 /**
  * Updates the blocks array for one completion round.
  * 
@@ -711,8 +733,6 @@ function _accumulateBlocks(
     return '';
 }
 
-/* -------------------- LOGGING -------------------- */
-
 type RoundLog = {
     round: number;
     totalMs: number;
@@ -740,8 +760,6 @@ function _logCompletion(model: string, roundLogs: RoundLog[]): void {
     }
     console.log(lines.join('\n'));
 }
-
-/* -------------------- USAGE -------------------- */
 
 type UsageInfo = {
     prompt_tokens: number;
