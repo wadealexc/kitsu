@@ -700,6 +700,9 @@ export class LlamaManager {
         const minutesStr = minutes > 0 ? ` ${minutes} min` : '';
         const secondsStr = seconds > 0 ? ` ${seconds} sec` : '';
 
+        // TODO: `await` here creates a race condition. If a completion request arrives
+        // just after we `await`, we can end up killing the llama-server process
+        // before we attempt to fulfill the request
         console.log(`no activity after${minutesStr}${secondsStr}; going to sleep...`);
         await this.stopServer();
     }

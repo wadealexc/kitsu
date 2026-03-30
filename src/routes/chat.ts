@@ -186,7 +186,13 @@ router.post('/custom-completions', requireAuth, async (
             : Promise.resolve();
 
         res.write('data: [DONE]\n\n');
-        await taskPromise;
+
+        // Emit usage immediately so the frontend can show the usage icon without
+        // waiting for title generation (taskPromise) to complete.
+        _emitSseEvent(res, chatId, {
+            type: 'chat:completion',
+            data: { done: true, usage: finalUsage },
+        });
 
         await _persistChat(ctx.value, {
             content: finalContent,
@@ -195,15 +201,18 @@ router.post('/custom-completions', requireAuth, async (
             done: true
         });
 
-        _emitSseEvent(res, chatId, {
-            type: 'chat:completion',
-            data: { done: true, usage: finalUsage },
-        });
+        // Title generation runs after persist — chat:title event is emitted inside doTasks()
+        await taskPromise;
 
         res.end();
     } catch (err: any) {
         console.error(`[custom-completions] mid-stream error:`, err);
         const errMsg = err?.message ?? String(err);
+
+        _emitSseEvent(res, chatId, {
+            type: 'chat:message:error',
+            data: { error: { content: errMsg } },
+        });
 
         await _persistChat(ctx.value, {
             content: finalContent,
@@ -211,11 +220,6 @@ router.post('/custom-completions', requireAuth, async (
             usage: totalUsage,
             done: false,
             error: { content: errMsg }
-        });
-
-        _emitSseEvent(res, chatId, {
-            type: 'chat:message:error',
-            data: { error: { content: errMsg } },
         });
 
         res.end();
