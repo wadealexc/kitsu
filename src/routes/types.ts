@@ -874,6 +874,12 @@ export const FileContentQuerySchema = z.object({
 });
 export type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
 
+// File content extraction response (for POST /api/v1/files/extract)
+export const FileExtractResponseSchema = z.object({
+    content: z.string(),
+});
+export type FileExtractResponse = z.infer<typeof FileExtractResponseSchema>;
+
 
 /* -------------------- VERSION SCHEMAS -------------------- */
 

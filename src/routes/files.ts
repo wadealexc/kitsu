@@ -1,5 +1,7 @@
 import { Router, type Response } from 'express';
 import path from 'path';
+import { PDFParse } from 'pdf-parse';
+import mammoth from 'mammoth';
 import multer from 'multer';
 
 import * as Types from './types.js';
@@ -25,6 +27,9 @@ const ALLOWED_EXTENSIONS = [
     '.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.odt',
     '.xls', '.xlsx', '.ppt', '.pptx', '.csv',
 
+    // Code / text
+    '.json', '.xml', '.yaml', '.yml', '.html', '.htm', '.css', '.js', '.ts',
+
     // Images
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp',
 
@@ -44,10 +49,10 @@ function validateFileExtension(filename: string): boolean {
 }
 
 /**
- * Extract text content from a file buffer for text-extractable MIME types.
- * Returns the UTF-8 string for plain text types, undefined otherwise.
+ * Extract text content from a file buffer.
+ * Returns the extracted string for supported types, undefined for unsupported types.
  */
-function extractTextContent(buffer: Buffer, mimeType: string): string | undefined {
+async function extractTextContent(buffer: Buffer, mimeType: string): Promise<string | undefined> {
     const textMimeTypes = [
         'text/plain', 'text/markdown', 'text/csv', 'text/html',
         'text/css', 'text/javascript', 'text/xml',
@@ -56,6 +61,25 @@ function extractTextContent(buffer: Buffer, mimeType: string): string | undefine
 
     if (textMimeTypes.some((t) => mimeType.startsWith(t)) || mimeType.startsWith('text/')) {
         return buffer.toString('utf-8');
+    }
+
+    if (mimeType === 'application/pdf') {
+        try {
+            const parser = new PDFParse({ data: buffer });
+            const result = await parser.getText();
+            return result.text;
+        } catch {
+            return undefined;
+        }
+    }
+
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        try {
+            const result = await mammoth.extractRawText({ buffer });
+            return result.value;
+        } catch {
+            return undefined;
+        }
     }
 
     return undefined;
@@ -107,7 +131,7 @@ router.post('/', requireAuth, upload.single('file'), async (
             const uploadPath = await StorageProvider.uploadFile(fileBuffer);
 
             // Extract text content for text-based file types
-            const textContent = extractTextContent(fileBuffer, mimeType);
+            const textContent = await extractTextContent(fileBuffer, mimeType);
 
             // Create file record
             const newFile = await Files.createFile({
@@ -140,6 +164,38 @@ router.post('/', requireAuth, upload.single('file'), async (
         console.error('File upload error:', error);
         return res.status(500).json({ detail: 'File upload failed' });
     }
+});
+
+/* -------------------- FILE CONTENT EXTRACTION -------------------- */
+
+/**
+ * POST /api/v1/files/extract
+ * Access Control: Any verified user
+ *
+ * Extract text content from an uploaded file without storing it.
+ *
+ * @body multipart form-data with 'file' field
+ * @returns {Types.FileExtractResponse} - extracted text content
+ */
+router.post('/extract', requireAuth, upload.single('file'), async (
+    multerReq,
+    res: Response<Types.FileExtractResponse | Types.ErrorResponse>
+) => {
+    const req = multerReq as unknown as Types.TypedRequest<{}, {}, {}>;
+
+    if (!req.file) return res.status(400).json({ detail: 'File required' });
+
+    if (!validateFileExtension(req.file.originalname)) return res.status(400).json({
+        detail: 'File type not allowed'
+    });
+
+    const content = await extractTextContent(req.file.buffer, req.file.mimetype);
+
+    if (content === undefined) {
+        return res.status(400).json({ detail: 'Content extraction not supported for this file type' });
+    }
+
+    return res.json({ content });
 });
 
 /* -------------------- FILE RETRIEVAL BY ID -------------------- */
