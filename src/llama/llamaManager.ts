@@ -226,7 +226,7 @@ export class LlamaManager {
      */
     #dispatchJobs(): boolean {
         const cur = this.requestQueue.at(0);
-        if (!cur || !cur.llama.active || cur.jobs.length === 0) 
+        if (!cur || !cur.llama.active || cur.jobs.length === 0)
             return false;
 
         const jobs = cur.jobs;
@@ -269,9 +269,9 @@ export class LlamaManager {
     wake(modelName: string): 'idle' | 'queued' | 'active' {
         const llama = this.llamas.get(modelName);
         if (!llama) throw new Error(`wake: model not found: ${modelName}`);
-        
+
         // Already in queue - no action needed
-        if (this.requestQueue.some(item => item.llama === llama)) 
+        if (this.requestQueue.some(item => item.llama === llama))
             return 'queued';
 
         // Add to queue - loop will handle start/swap
@@ -432,7 +432,7 @@ export class LlamaManager {
                 llama.active.requests--;
                 llama.active.proc.removeListener('exit', prematureExit);
             }
-            
+
             job.reject(new Error(err));
         }
     }
@@ -500,7 +500,7 @@ export class LlamaManager {
     #start(req: RequestQueueItem): Promise<void> {
         const llama = req.llama;
         if (llama.active) throw new Error(`LlamaManager.#start: llama ${llama.model.name} already running`);
-        
+
         llama.loading = true;
         for (const job of req.jobs) job.request.emit?.onLoading();
 
@@ -544,6 +544,7 @@ export class LlamaManager {
         // Spawn llama-server as a detached process, making it the leader of a new
         // process group. This means that we can send a kill signal to `-pid` to also
         // send a signal to any child processes it spawns.
+        const startTime = performance.now();
         const proc = spawn(LLAMA_SERVER_BIN, args, {
             stdio: ['ignore', out, err],
             detached: true,
@@ -589,6 +590,15 @@ export class LlamaManager {
         return new Promise<void>((resolve, reject) => {
             this.#pollServer(llama)
                 .then(async () => {
+                    const endTime = performance.now();
+                    const seconds = (endTime - startTime) / 1000;
+                    process.stdout.write(
+                        `${chalk.dim.green(`model loaded!`)} ${chalk.magenta(llama.model.name)} ` +
+                        `is listening on port ${chalk.cyan(llama.serverPort)} ` +
+                        `(pid ${llama.active!.proc.pid}) [elapsed: ${seconds.toFixed(2)}s]` +
+                        '\n'
+                    );
+                    
                     llama.loading = false;
                     resolve();
                     this.#logVRAM();
@@ -642,12 +652,6 @@ export class LlamaManager {
                     clearTimeout(reqTimeout);
 
                     if (success) {
-                        process.stdout.write(
-                            `${chalk.dim.green(`model loaded!`)} ${chalk.magenta(llama.model.name)} ` +
-                            `is listening on port ${chalk.cyan(llama.serverPort)} ` +
-                            `(pid ${llama.active.proc.pid}) ` +
-                            '\n'
-                        );
                         resolve();
                         return;
                     }
@@ -772,7 +776,7 @@ export class LlamaManager {
         if (this.requestQueue.some(l => l.llama === llama)) {
             return 'queued';
         }
-        
+
         return 'idle';
     }
 }

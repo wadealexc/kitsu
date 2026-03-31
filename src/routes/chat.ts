@@ -333,7 +333,7 @@ async function doTasks(
     } finally {
         const endTime = performance.now();
         const seconds = (endTime - startTime) / 1000;
-        log(`(title generation) time elapsed: ${seconds} sec`);
+        log(`(title generation) time elapsed: ${seconds.toFixed(2)} sec`);
         
         // TODO - it's a bit messy.
         emitTitle(title);
