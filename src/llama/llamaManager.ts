@@ -1,5 +1,6 @@
 import path from 'path';
 import * as fs from 'node:fs';
+import * as readline from 'node:readline';
 import http from 'node:http';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import fetch, { Headers } from 'node-fetch';
@@ -21,10 +22,10 @@ const SHUTDOWN_GRACE_MS = 5000;
 const POLL_TIMEOUT_MS = 100;
 
 // Frequency of pings sent to `llama-server` on startup
-const POLL_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 100;
 
 // Number of times to ping `llama-server` process before giving up on life
-// (total wait time ms: NUM_RETRIES * POLL_INTERVAL_MS -> 20 seconds)
+// (total wait time: NUM_RETRIES * POLL_INTERVAL_MS = 20 seconds)
 const NUM_RETRIES = 200;
 
 // How often the main dispatch loop ticks
@@ -544,11 +545,23 @@ export class LlamaManager {
         // Spawn llama-server as a detached process, making it the leader of a new
         // process group. This means that we can send a kill signal to `-pid` to also
         // send a signal to any child processes it spawns.
+        //
+        // We use 'pipe' for stdout/stderr so we can prepend timestamps to each line
+        // before writing to the log file.
         const startTime = performance.now();
         const proc = spawn(LLAMA_SERVER_BIN, args, {
-            stdio: ['ignore', out, err],
+            stdio: ['ignore', 'pipe', 'pipe'],
             detached: true,
         });
+
+        const pipeWithTimestamps = (stream: NodeJS.ReadableStream, fd: number) => {
+            readline.createInterface({ input: stream }).on('line', (line) => {
+                fs.writeSync(fd, `[${new Date().toISOString()}] ${line}\n`);
+            });
+        };
+
+        if (proc.stdout) pipeWithTimestamps(proc.stdout, out);
+        if (proc.stderr) pipeWithTimestamps(proc.stderr, err);
 
         // 'error' is emitted when:
         // - process could not be spawned
