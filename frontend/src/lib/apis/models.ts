@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '$lib/constants';
-import type { ModelResponse, ModelAccessResponse, ModelForm } from '@backend/routes/types.js';
+import type { ModelResponse, ModelAccessResponse, ModelForm } from '@backend/routes/types';
 
 export const getModels = async (token: string): Promise<ModelResponse[]> => {
     const route = '/models';

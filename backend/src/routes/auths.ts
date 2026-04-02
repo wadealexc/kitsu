@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { StringValue } from 'ms';
 
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, requireAdmin } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';
@@ -9,7 +9,6 @@ import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
 import * as JWT from './jwt.js';
 import { DEFAULT_USER_ROLE } from '../db/schema.js';
-import type { UserRole } from './types.js';
 import { HttpError, BadRequestError, NotFoundError } from './errors.js';
 
 const router = Router();
@@ -285,24 +284,6 @@ router.post('/update/password', requireAuth, async (
         console.error('Update password error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
     }
-});
-
-/**
- * POST /api/v1/auths/update/timezone
- * Access Control: Requires HTTPBearer authentication (JWT token)
- *
- * Update the current user's timezone preference.
- *
- * @param {Types.UpdateTimezoneForm} - IANA timezone string (e.g., 'America/New_York')
- * @returns {Types.StatusResponse} - success status
- */
-router.post('/update/timezone', requireAuth, (
-    req: Types.TypedRequest<{}, Types.UpdateTimezoneForm>,
-    res: Response<Types.StatusResponse | Types.ErrorResponse>
-) => {
-    // TODO: Timezone field removed from schema - this endpoint is a no-op
-    // Kept for backward compatibility with frontend
-    return res.json({ status: true });
 });
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */

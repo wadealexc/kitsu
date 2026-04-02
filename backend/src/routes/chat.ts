@@ -2,16 +2,16 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import chalk from 'chalk';
 
 import { LlamaManager } from '../llama/llamaManager.js';
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth } from './middleware.js';
-import * as proto from '../protocol.js';
+import * as proto from '../protocol/index.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
 import * as Models from '../db/operations/models.js';
 import * as Files from '../db/operations/files.js';
 import { StorageProvider } from '../storage/provider.js';
 import { ToolRegistry, type ToolRoundResult } from '../tools/registry.js';
-import type { SseEvent, SseEventPayload, SseUsage } from './sseEvents.js';
+import type { SseEvent, SseEventPayload, SseUsage } from '../protocol/sse.js';
 import type { ToolProgress } from '../tools/types.js';
 
 const router = Router();

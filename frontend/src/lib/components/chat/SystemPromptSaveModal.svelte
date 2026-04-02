@@ -1,13 +1,13 @@
 <script lang="ts">
     import { temporaryChatEnabled } from '$lib/stores';
-    import type { FolderModel, ModelResponse } from '@backend/routes/types';
+    import type { Folder, ModelResponse } from '@backend/routes/types';
     import type { SessionUser } from '$lib/stores';
     import Modal from '$lib/components/common/Modal.svelte';
     import XMark from '$lib/components/icons/XMark.svelte';
 
     export let show = false;
     export let systemPrompt: string = '';
-    export let folder: FolderModel | null = null;
+    export let folder: Folder | null = null;
     export let model: ModelResponse | null = null;
     export let user: SessionUser | undefined = undefined;
     export let onSave: (data: { target: SaveTarget; prompt: string }) => void = () => {};

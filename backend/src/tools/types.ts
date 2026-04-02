@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import type { Browser } from '../browser/browser.js';
-import * as proto from '../protocol.js';
+import * as proto from '../protocol/index.js';
 
 export type BeforeRequestOptions = { webSearchEnabled: boolean };
 

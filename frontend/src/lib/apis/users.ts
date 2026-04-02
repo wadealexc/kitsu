@@ -3,10 +3,10 @@ import { getUserPosition } from '$lib/utils';
 import type {
     UserModelListResponse,
     UserActiveResponse,
-    UserModel,
+    User,
     UserSettings,
     UserUpdateForm
-} from '@backend/routes/types.js';
+} from '@backend/routes/types';
 
 export const getUsers = async (
     token: string,
@@ -165,7 +165,7 @@ export const updateUserById = async (
     token: string,
     userId: string,
     user: UserUpdateForm
-): Promise<UserModel> => {
+): Promise<User> => {
     const route = `/users/${userId}/update`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',

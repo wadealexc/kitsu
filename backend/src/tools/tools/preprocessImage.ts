@@ -4,7 +4,7 @@ import sharp from 'sharp';
 
 import { z } from 'zod';
 import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
-import * as proto from '../../protocol.js';
+import * as proto from '../../protocol/index.js';
 
 const IMAGELABEL_START = `img_`;
 const PREPROCESSED_IMAGE_SUFFIX = `_p`;

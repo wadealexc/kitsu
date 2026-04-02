@@ -2,7 +2,7 @@
     import { toast } from 'svelte-sonner';
     import { goto } from '$app/navigation';
     import { onMount, createEventDispatcher, tick, onDestroy } from 'svelte';
-    import type { ChatResponse } from '@backend/routes/types.js';
+    import type { Chat } from '@backend/routes/types';
     const dispatch = createEventDispatcher();
 
     import {
@@ -38,7 +38,7 @@
 
     export let onDragEnd: (event: DragEvent) => void = () => {};
 
-    let chat: ChatResponse | null = null;
+    let chat: Chat | null = null;
 
     let mouseOver = false;
     let draggable = false;

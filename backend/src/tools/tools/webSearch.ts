@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
-import * as proto from '../../protocol.js';
+import * as proto from '../../protocol/index.js';
 
 const MAX_SEARCH_TERMS = 3;
 

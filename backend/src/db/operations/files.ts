@@ -3,7 +3,7 @@ import { eq, desc, inArray } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client.js';
 import { files } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { FileData } from '../../routes/types.js';
+import type { FileData } from '../../routes/types/index.js';
 import * as Chats from './chats.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 

@@ -11,7 +11,7 @@ import * as schema from '../../src/db/schema.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import { type Chat } from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
-import { type ChatForm, type ChatObject, type ChatResponse, type NewChatForm, type ChatImportForm, type ChatMessage } from '../../src/routes/types.js';
+import { type ChatForm, type ChatObject, type NewChatForm, type ChatImportForm } from '../../src/routes/types/index.js';
 import chatsRouter from '../../src/routes/chats.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
@@ -138,23 +138,6 @@ async function createMultipleChats(userId: string, count: number): Promise<Chat[
         chats.push(chat);
     }
     return chats;
-}
-
-function toApiChatResponse(chat: Chat): ChatResponse {
-    const response: any = {
-        id: chat.id,
-        userId: chat.userId,
-        title: chat.title,
-        chat: chat.chat,
-        updatedAt: chat.updatedAt,
-        createdAt: chat.createdAt,
-        meta: chat.meta ?? {},
-    };
-
-    if (chat.shareId != null) response.shareId = chat.shareId;
-    if (chat.folderId != null) response.folderId = chat.folderId;
-
-    return response;
 }
 
 /* -------------------- TESTS -------------------- */
@@ -523,9 +506,9 @@ describe('Chat Routes', () => {
                 .set('Authorization', `Bearer ${token}`)
                 .expect(200);
 
-            // Optional fields should be null
-            assert.strictEqual(response.body.shareId, undefined);
-            assert.strictEqual(response.body.folderId, undefined);
+            // Unset fields should be null
+            assert.strictEqual(response.body.shareId, null);
+            assert.strictEqual(response.body.folderId, null);
         });
 
         test('should fail without authentication token', async () => {
@@ -579,7 +562,7 @@ describe('Chat Routes', () => {
                 .expect(200);
 
             assert.deepStrictEqual(response.body.meta, {});
-            assert.strictEqual(response.body.shareId, undefined);
+            assert.strictEqual(response.body.shareId, null);
         });
 
         test('should accept folder_id in request', async () => {
@@ -1086,7 +1069,7 @@ describe('Chat Routes', () => {
                 .send({ folderId: null })
                 .expect(200);
 
-            assert.strictEqual(response.body.folderId, undefined);
+            assert.strictEqual(response.body.folderId, null);
         });
 
         test('should return 404 when chat not found', async () => {
@@ -1189,8 +1172,8 @@ describe('Chat Routes', () => {
             assert.ok(Array.isArray(response.body));
             assert.strictEqual(response.body.length, 2);
 
-            const chats = [chat1, chat2].map(c => toApiChatResponse(c));
-            const chatResponses = response.body as ChatResponse[];
+            const chats = [chat1, chat2];
+            const chatResponses = response.body as Chat[];
 
             // Verify full chat data is returned
             for (const chat of chats) {
@@ -1231,8 +1214,8 @@ describe('Chat Routes', () => {
             assert.ok(Array.isArray(response.body));
             assert.strictEqual(response.body.length, 4);
 
-            const chats = [parentChat, child1Chat, child2Chat, childChildChat].map(c => toApiChatResponse(c));
-            const chatResponses = response.body as ChatResponse[];
+            const chats = [parentChat, child1Chat, child2Chat, childChildChat];
+            const chatResponses = response.body as Chat[];
 
             // Verify full chat data is returned
             for (const chat of chats) {
@@ -1718,8 +1701,8 @@ describe('Chat Routes', () => {
             assert.notStrictEqual(cloneResponse.body.id, originalChat.id);
             assert.strictEqual(cloneResponse.body.userId, user2Id);
             assert.strictEqual(cloneResponse.body.title, 'Shared Chat');
-            assert.strictEqual(cloneResponse.body.shareId, undefined);
-            assert.strictEqual(cloneResponse.body.folderId, undefined);
+            assert.strictEqual(cloneResponse.body.shareId, null);
+            assert.strictEqual(cloneResponse.body.folderId, null);
 
             // Verify chat content is copied
             assert.ok(cloneResponse.body.chat);
@@ -1765,7 +1748,7 @@ describe('Chat Routes', () => {
                 .set('Authorization', `Bearer ${token2}`)
                 .expect(200);
 
-            assert.strictEqual(cloneResponse.body.shareId, undefined);
+            assert.strictEqual(cloneResponse.body.shareId, null);
         });
 
         test('should clear folder_id on cloned chat', async () => {
@@ -1788,7 +1771,7 @@ describe('Chat Routes', () => {
                 .set('Authorization', `Bearer ${token2}`)
                 .expect(200);
 
-            assert.strictEqual(cloneResponse.body.folderId, undefined);
+            assert.strictEqual(cloneResponse.body.folderId, null);
         });
 
         test('should return 404 when chat not shared', async () => {
@@ -1861,8 +1844,8 @@ describe('Chat Routes', () => {
             assert.notStrictEqual(response.body.id, originalChat.id);
             assert.strictEqual(response.body.userId, userId);
             assert.strictEqual(response.body.title, 'Original Chat');
-            assert.strictEqual(response.body.shareId, undefined);
-            assert.strictEqual(response.body.folderId, undefined);
+            assert.strictEqual(response.body.shareId, null);
+            assert.strictEqual(response.body.folderId, null);
         });
 
         test('should clone with custom title', async () => {
@@ -1929,7 +1912,7 @@ describe('Chat Routes', () => {
                 .send({})
                 .expect(200);
 
-            assert.strictEqual(response.body.shareId, undefined);
+            assert.strictEqual(response.body.shareId, null);
         });
 
         test('should clear folder_id on cloned chat', async () => {
@@ -1945,7 +1928,7 @@ describe('Chat Routes', () => {
                 .send({})
                 .expect(200);
 
-            assert.strictEqual(response.body.folderId, undefined);
+            assert.strictEqual(response.body.folderId, null);
         });
 
         test('should return 404 when chat not found', async () => {
@@ -2043,7 +2026,7 @@ describe('Chat Routes', () => {
                 .expect(200);
 
             assert.strictEqual(response.body.length, 3);
-            const titles = response.body.map((c: ChatResponse) => c.title).sort();
+            const titles = response.body.map((c: Chat) => c.title).sort();
             assert.deepStrictEqual(titles, ['Chat A', 'Chat B', 'Chat C']);
         });
 

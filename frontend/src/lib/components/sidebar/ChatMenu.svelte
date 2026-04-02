@@ -14,7 +14,7 @@
     import { createMessagesList } from '$lib/utils';
     import Download from '$lib/components/icons/Download.svelte';
     import Folder from '$lib/components/icons/Folder.svelte';
-    import type { ChatResponse } from '@backend/routes/types';
+    import type { Chat } from '@backend/routes/types';
 
     export let shareHandler: Function;
     export let moveChatHandler: Function;
@@ -28,7 +28,7 @@
 
     let show = false;
 
-    const getChatAsText = async (chat: ChatResponse) => {
+    const getChatAsText = async (chat: Chat) => {
         const history = chat.chat.history;
         const messages = createMessagesList(history, history.currentId);
         const chatText = messages.reduce((a, message, i, arr) => {

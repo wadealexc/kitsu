@@ -1,4 +1,4 @@
-import type { ModelParams } from './routes/types.js';
+import type { ModelParams } from '../routes/types/index.js';
 
 export interface ModelInfo {
     name: string;

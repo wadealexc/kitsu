@@ -5,7 +5,7 @@
  */
 
 import { Router, type Response } from 'express';
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth } from './middleware.js';
 
 const router = Router();

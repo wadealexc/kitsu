@@ -10,11 +10,11 @@ import * as Auths from '../src/db/operations/auths.js';
 import * as Files from '../src/db/operations/files.js';
 import * as Chats from '../src/db/operations/chats.js';
 import * as Folders from '../src/db/operations/folders.js';
-import type { FileMeta, FileData, ChatObject, FolderMeta, FolderData } from '../src/routes/types.js';
+import type { FileMeta, FileData, ChatObject, FolderMeta, FolderData } from '../src/routes/types/index.js';
 import * as schema from '../src/db/schema.js';
 import { databasePath } from '../src/db/client.js';
 import { db } from '../src/db/client.js';
-import type { UserRole } from '../src/routes/types.js';
+import type { UserRole } from '../src/routes/types/index.js';
 import { currentUnixTimestamp } from '../src/db/utils.js';
 
 /**

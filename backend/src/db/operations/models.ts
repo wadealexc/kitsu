@@ -1,9 +1,9 @@
-import { eq, ne, desc, asc, or, and, like, SQL, count } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '../client.js';
 import { models, users } from '../schema.js';
 import { currentUnixTimestamp } from '../utils.js';
-import type { ModelForm, UserRole } from '../../routes/types.js';
+import type { UserRole } from '../../routes/types/index.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 
 const TABLE = 'model';

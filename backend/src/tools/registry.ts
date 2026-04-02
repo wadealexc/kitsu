@@ -2,7 +2,7 @@ import { toJSONSchema } from 'zod';
 
 import loadTools from './loader.js';
 import type { Tool, ToolContext, BeforeRequestOptions, ToolProgress, ToolEmit } from './types.js';
-import * as proto from '../protocol.js';
+import * as proto from '../protocol/index.js';
 
 export type ToolCallResult =
     | { ok: true; output: string }

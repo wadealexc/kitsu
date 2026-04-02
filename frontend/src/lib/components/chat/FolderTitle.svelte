@@ -4,7 +4,7 @@
     import { toast } from 'svelte-sonner';
 
     import { selectedFolder } from '$lib/stores';
-    import type { FolderData, FolderMeta, FolderModel } from '@backend/routes/types.js';
+    import type { FolderData, FolderMeta, Folder as FolderRecord } from '@backend/routes/types';
 
     import { deleteFolderById, getFolderById, updateFolderById } from '$lib/apis/folders';
     import { getChatsByFolderId } from '$lib/apis/chats';
@@ -16,7 +16,7 @@
     import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
     import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 
-    export let folder: FolderModel;
+    export let folder: FolderRecord;
 
     export let onUpdate: Function = () => {};
     export let onDelete: Function = () => {};

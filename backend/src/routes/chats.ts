@@ -1,6 +1,6 @@
 import { Router, type Response, type NextFunction } from 'express';
 
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, validateChatId, validateShareId, validateFolderId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Chats from '../db/operations/chats.js';
@@ -81,27 +81,14 @@ router.get(['/', '/list'], requireAuth, async (
  */
 router.get('/all', requireAuth, async (
     req: Types.TypedRequest,
-    res: Response<Types.ChatResponse[] | Types.ErrorResponse>
+    res: Response<Types.Chat[] | Types.ErrorResponse>
 ) => {
     const userId = req.user!.id;
 
     try {
         const chats = await Chats.getChatsByUserId(userId, db);
 
-        // Map to response format
-        const response: Types.ChatResponse[] = chats.map(chat => ({
-            id: chat.id,
-            userId: chat.userId,
-            title: chat.title,
-            chat: chat.chat,
-            updatedAt: chat.updatedAt,
-            createdAt: chat.createdAt,
-            shareId: chat.shareId || undefined,
-            meta: chat.meta || {},
-            folderId: chat.folderId || undefined,
-        }));
-
-        return res.json(response);
+        return res.json(chats);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -127,7 +114,7 @@ router.get('/all', requireAuth, async (
  */
 router.get('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const chatId = req.params.id;
     const userId = req.user!.id;
@@ -136,19 +123,7 @@ router.get('/:id', validateChatId, requireAuth, async (
         const chat = await Chats.getChatByIdAndUserId(chatId, userId, db);
         if (!chat) throw NotFoundError('Chat not found');
 
-        const response: Types.ChatResponse = {
-            id: chat.id,
-            userId: chat.userId,
-            title: chat.title,
-            chat: chat.chat,
-            updatedAt: chat.updatedAt,
-            createdAt: chat.createdAt,
-            shareId: chat.shareId || undefined,
-            meta: chat.meta || {},
-            folderId: chat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(chat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -176,7 +151,7 @@ router.get('/:id', validateChatId, requireAuth, async (
  */
 router.post('/new', requireAuth, async (
     req: Types.TypedRequest<{}, Types.NewChatForm>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const body = Types.NewChatFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -196,19 +171,7 @@ router.post('/new', requireAuth, async (
         }, db);
         // console.log(`POST chats/new:\n${JSON.stringify(newChat, null, 2)}`);
 
-        const response: Types.ChatResponse = {
-            id: newChat.id,
-            userId: newChat.userId,
-            title: newChat.title,
-            chat: newChat.chat,
-            updatedAt: newChat.updatedAt,
-            createdAt: newChat.createdAt,
-            shareId: newChat.shareId || undefined,
-            meta: newChat.meta || {},
-            folderId: newChat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(newChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -235,7 +198,7 @@ router.post('/new', requireAuth, async (
  */
 router.post('/:id', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.ChatForm>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const body = Types.ChatFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -257,19 +220,7 @@ router.post('/:id', validateChatId, requireAuth, async (
         const updatedChat = await Chats.updateChat(chatId, body.data, db);
         // console.log(`POST chats/${chatId}:\n${JSON.stringify(updatedChat, null, 2)}`);
 
-        const response: Types.ChatResponse = {
-            id: updatedChat.id,
-            userId: updatedChat.userId,
-            title: updatedChat.title,
-            chat: updatedChat.chat,
-            updatedAt: updatedChat.updatedAt,
-            createdAt: updatedChat.createdAt,
-            shareId: updatedChat.shareId || undefined,
-            meta: updatedChat.meta || {},
-            folderId: updatedChat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(updatedChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -361,7 +312,7 @@ router.delete('/', requireAuth, async (
  */
 router.post('/import', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ChatImportForm[]>,
-    res: Response<Types.ChatResponse[] | Types.ErrorResponse>
+    res: Response<Types.Chat[] | Types.ErrorResponse>
 ) => {
     const userId = req.user!.id;
     const body = req.body;
@@ -374,30 +325,18 @@ router.post('/import', requireAuth, async (
     for (let i = 0; i < body.length; i++) {
         const result = Types.ChatImportFormSchema.safeParse(body[i]);
         if (!result.success) {
-            return res.status(400).json({ 
-                detail: `Invalid chat at index ${i}`, errors: result.error.issues 
+            return res.status(400).json({
+                detail: `Invalid chat at index ${i}`, errors: result.error.issues
             });
         }
-        
+
         chatsData.push(result.data);
     }
 
     try {
         const imported = await Chats.importChats(userId, chatsData, db);
 
-        const response: Types.ChatResponse[] = imported.map(chat => ({
-            id: chat.id,
-            userId: chat.userId,
-            title: chat.title,
-            chat: chat.chat,
-            updatedAt: chat.updatedAt,
-            createdAt: chat.createdAt,
-            shareId: chat.shareId || undefined,
-            meta: chat.meta || {},
-            folderId: chat.folderId || undefined,
-        }));
-
-        return res.json(response);
+        return res.json(imported);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -425,7 +364,7 @@ router.post('/import', requireAuth, async (
  */
 router.post('/:id/share', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const chatId = req.params.id;
     const userId = req.user!.id;
@@ -439,19 +378,7 @@ router.post('/:id/share', validateChatId, requireAuth, async (
         // Update the existing chat's shareId
         const updatedChat = await Chats.shareChat(chatId, db);
 
-        const response: Types.ChatResponse = {
-            id: updatedChat.id,
-            userId: updatedChat.userId,
-            title: updatedChat.title,
-            chat: updatedChat.chat,
-            updatedAt: updatedChat.updatedAt,
-            createdAt: updatedChat.createdAt,
-            shareId: updatedChat.shareId || undefined,
-            meta: updatedChat.meta || {},
-            folderId: updatedChat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(updatedChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -477,7 +404,7 @@ router.post('/:id/share', validateChatId, requireAuth, async (
  */
 router.get('/share/:shareId', validateShareId, requireAuth, async (
     req: Types.TypedRequest<Types.ShareIdParams>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const shareId = req.params.shareId;
 
@@ -485,19 +412,7 @@ router.get('/share/:shareId', validateShareId, requireAuth, async (
         const chat = await Chats.getChatByShareId(shareId, db);
         if (!chat) throw NotFoundError('Chat not found');
 
-        const response: Types.ChatResponse = {
-            id: chat.id,
-            userId: chat.userId,
-            title: chat.title,
-            chat: chat.chat,
-            updatedAt: chat.updatedAt,
-            createdAt: chat.createdAt,
-            shareId: chat.shareId || undefined,
-            meta: chat.meta || {},
-            folderId: chat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(chat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -563,7 +478,7 @@ router.delete('/:id/share', validateChatId, requireAuth, async (
  */
 router.post('/:shareId/clone/shared', validateShareId, requireAuth, async (
     req: Types.TypedRequest<Types.ShareIdParams>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const shareId = req.params.shareId;
     const userId = req.user!.id;
@@ -579,19 +494,7 @@ router.post('/:shareId/clone/shared', validateShareId, requireAuth, async (
             folderId: null,  // Don't copy folder assignment
         }, db);
 
-        const response: Types.ChatResponse = {
-            id: clonedChat.id,
-            userId: clonedChat.userId,
-            title: clonedChat.title,
-            chat: clonedChat.chat,
-            updatedAt: clonedChat.updatedAt,
-            createdAt: clonedChat.createdAt,
-            shareId: undefined,  // Clone is not shared
-            meta: clonedChat.meta || {},
-            folderId: undefined,  // Clone is not in folder
-        };
-
-        return res.json(response);
+        return res.json(clonedChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -618,7 +521,7 @@ router.post('/:shareId/clone/shared', validateShareId, requireAuth, async (
  */
 router.post('/:id/clone', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.CloneForm>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const body = Types.CloneFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -648,19 +551,7 @@ router.post('/:id/clone', validateChatId, requireAuth, async (
             folderId: null,  // Don't copy folder assignment
         }, db);
 
-        const response: Types.ChatResponse = {
-            id: clonedChat.id,
-            userId: clonedChat.userId,
-            title: clonedChat.title,
-            chat: clonedChat.chat,
-            updatedAt: clonedChat.updatedAt,
-            createdAt: clonedChat.createdAt,
-            shareId: undefined,
-            meta: clonedChat.meta || {},
-            folderId: undefined,
-        };
-
-        return res.json(response);
+        return res.json(clonedChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -689,7 +580,7 @@ router.post('/:id/clone', validateChatId, requireAuth, async (
  */
 router.post('/:id/folder', validateChatId, requireAuth, async (
     req: Types.TypedRequest<Types.ChatIdParams, Types.ChatFolderIdForm>,
-    res: Response<Types.ChatResponse | Types.ErrorResponse>
+    res: Response<Types.Chat | Types.ErrorResponse>
 ) => {
     const body = Types.ChatFolderIdFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -717,19 +608,7 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
             db
         );
 
-        const response: Types.ChatResponse = {
-            id: updatedChat.id,
-            userId: updatedChat.userId,
-            title: updatedChat.title,
-            chat: updatedChat.chat,
-            updatedAt: updatedChat.updatedAt,
-            createdAt: updatedChat.createdAt,
-            shareId: updatedChat.shareId || undefined,
-            meta: updatedChat.meta || {},
-            folderId: updatedChat.folderId || undefined,
-        };
-
-        return res.json(response);
+        return res.json(updatedChat);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -755,7 +634,7 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
  */
 router.get('/folder/:folderId', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
-    res: Response<Types.ChatResponse[] | Types.ErrorResponse>
+    res: Response<Types.Chat[] | Types.ErrorResponse>
 ) => {
     const folderId = req.params.folderId;
     const userId = req.user!.id;
@@ -766,19 +645,7 @@ router.get('/folder/:folderId', validateFolderId, requireAuth, async (
 
         const chats = await Chats.getChatsByFolderIdAndUserId(folderIds, userId, {}, db);
 
-        const response: Types.ChatResponse[] = chats.map(chat => ({
-            id: chat.id,
-            userId: chat.userId,
-            title: chat.title,
-            chat: chat.chat,
-            updatedAt: chat.updatedAt,
-            createdAt: chat.createdAt,
-            shareId: chat.shareId || undefined,
-            meta: chat.meta || {},
-            folderId: chat.folderId || undefined,
-        }));
-
-        return res.json(response);
+        return res.json(chats);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });

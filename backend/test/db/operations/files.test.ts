@@ -6,7 +6,7 @@ import { type File } from '../../../src/db/operations/files.js';
 import * as Users from '../../../src/db/operations/users.js';
 import * as Chats from '../../../src/db/operations/chats.js';
 import { files } from '../../../src/db/schema.js';
-import type { FileMeta, FileData } from '../../../src/routes/types.js';
+import type { FileMeta, FileData } from '../../../src/routes/types/index.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */

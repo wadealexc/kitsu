@@ -6,11 +6,10 @@
  */
 
 import { Router, type Response } from 'express';
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, validateFolderId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Folders from '../db/operations/folders.js';
-import type { Folder } from '../db/operations/folders.js';
 import * as Chats from '../db/operations/chats.js';
 import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 
@@ -49,11 +48,11 @@ router.get('/', requireAuth, async (
  * Get a specific folder by ID with all details.
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
- * @returns {Types.FolderModel} - full folder object
+ * @returns {Types.Folder} - full folder object
  */
 router.get('/:folderId', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
-    res: Response<Types.FolderModel | Types.ErrorResponse>
+    res: Response<Types.Folder | Types.ErrorResponse>
 ) => {
     const { folderId } = req.params;
     const userId = req.user!.id;
@@ -62,7 +61,7 @@ router.get('/:folderId', validateFolderId, requireAuth, async (
         const folder = await Folders.getFolderById(folderId, userId, db);
         if (!folder) throw NotFoundError('Folder not found');
 
-        return res.json(toFolderModel(folder));
+        return res.json(folder);
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -87,11 +86,11 @@ router.get('/:folderId', validateFolderId, requireAuth, async (
  * Create a new root-level folder for the user.
  *
  * @body {Types.FolderForm} - folder creation data
- * @returns {Types.FolderModel} - created folder object
+ * @returns {Types.Folder} - created folder object
  */
 router.post('/', requireAuth, async (
     req: Types.TypedRequest<{}, Types.FolderForm>,
-    res: Response<Types.FolderModel | Types.ErrorResponse>
+    res: Response<Types.Folder | Types.ErrorResponse>
 ) => {
     const body = Types.FolderFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -107,7 +106,7 @@ router.post('/', requireAuth, async (
         // Create folder at root level
         const folder = await Folders.createFolder({ ...body.data, userId }, db);
 
-        return res.json(toFolderModel(folder));
+        return res.json(folder);
     } catch (error: any) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -131,11 +130,11 @@ router.post('/', requireAuth, async (
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @body {Types.FolderUpdateForm} - folder update data
- * @returns {Types.FolderModel} - updated folder object
+ * @returns {Types.Folder} - updated folder object
  */
 router.post('/:folderId/update', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderUpdateForm>,
-    res: Response<Types.FolderModel | Types.ErrorResponse>
+    res: Response<Types.Folder | Types.ErrorResponse>
 ) => {
     const body = Types.FolderUpdateFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -158,7 +157,7 @@ router.post('/:folderId/update', validateFolderId, requireAuth, async (
             db
         );
 
-        return res.json(toFolderModel(folder));
+        return res.json(folder);
     } catch (error: any) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -182,11 +181,11 @@ router.post('/:folderId/update', validateFolderId, requireAuth, async (
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @body {Types.FolderParentIdForm} - new parent ID
- * @returns {Types.FolderModel} - updated folder object
+ * @returns {Types.Folder} - updated folder object
  */
 router.post('/:folderId/update/parent', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderParentIdForm>,
-    res: Response<Types.FolderModel | Types.ErrorResponse>
+    res: Response<Types.Folder | Types.ErrorResponse>
 ) => {
     const body = Types.FolderParentIdFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -208,7 +207,7 @@ router.post('/:folderId/update/parent', validateFolderId, requireAuth, async (
             db
         );
 
-        return res.json(toFolderModel(folder));
+        return res.json(folder);
     } catch (error: any) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -232,11 +231,11 @@ router.post('/:folderId/update/parent', validateFolderId, requireAuth, async (
  *
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @body {Types.FolderIsExpandedForm} - expansion state
- * @returns {Types.FolderModel} - updated folder object
+ * @returns {Types.Folder} - updated folder object
  */
 router.post('/:folderId/update/expanded', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderIsExpandedForm>,
-    res: Response<Types.FolderModel | Types.ErrorResponse>
+    res: Response<Types.Folder | Types.ErrorResponse>
 ) => {
     const body = Types.FolderIsExpandedFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -258,7 +257,7 @@ router.post('/:folderId/update/expanded', validateFolderId, requireAuth, async (
             db
         );
 
-        return res.json(toFolderModel(folder));
+        return res.json(folder);
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });
@@ -344,37 +343,12 @@ router.delete('/:folderId', validateFolderId, requireAuth, async (
 /* -------------------- HELPER FUNCTIONS -------------------- */
 
 /**
- * Convert Folder to FolderModel format (API response)
- * Handles field translation from DB schema to API schema
- */
-function toFolderModel(folder: Folder): Types.FolderModel {
-    return {
-        id: folder.id,
-        parentId: folder.parentId,
-        userId: folder.userId,
-        name: folder.name,
-        meta: folder.meta,
-        data: folder.data,
-        isExpanded: folder.isExpanded,
-        createdAt: folder.createdAt,
-        updatedAt: folder.updatedAt,
-    };
-}
-
-/**
  * Convert Folder to FolderNameIdResponse format (lightweight list response)
  * Handles field translation from DB schema to API schema
  */
-function toFolderNameIdResponse(folder: Folder): Types.FolderNameIdResponse {
-    return {
-        id: folder.id,
-        name: folder.name,
-        meta: folder.meta,
-        parentId: folder.parentId,
-        isExpanded: folder.isExpanded,
-        createdAt: folder.createdAt,
-        updatedAt: folder.updatedAt,
-    };
+function toFolderNameIdResponse(folder: Types.Folder): Types.FolderNameIdResponse {
+    const { userId: _, data: __, ...response } = folder;
+    return response;
 }
 
 export default router;

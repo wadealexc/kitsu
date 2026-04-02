@@ -3,7 +3,7 @@
     import dayjs from 'dayjs';
     import { createEventDispatcher } from 'svelte';
     import { updateUserById } from '$lib/apis/users';
-    import type { SessionUserResponse, UserModel } from '@backend/routes/types.js';
+    import type { SessionUserResponse, User } from '@backend/routes/types';
 
     import Modal from '$lib/components/common/Modal.svelte';
     import localizedFormat from 'dayjs/plugin/localizedFormat';
@@ -13,7 +13,7 @@
     dayjs.extend(localizedFormat);
 
     export let show = false;
-    export let selectedUser: UserModel;
+    export let selectedUser: User;
     export let sessionUser: SessionUserResponse;
 
     $: if (show) {
@@ -26,7 +26,7 @@
         }
     };
 
-    let _user: UserModel = { ...selectedUser };
+    let _user: User = { ...selectedUser };
 
     const submitHandler = async () => {
         const res = await updateUserById(localStorage.token, selectedUser.id, _user).catch(

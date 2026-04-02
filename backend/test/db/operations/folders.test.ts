@@ -6,7 +6,7 @@ import type { Folder, NewFolder } from '../../../src/db/operations/folders.js';
 import * as Users from '../../../src/db/operations/users.js';
 import * as Chats from '../../../src/db/operations/chats.js';
 import { folders } from '../../../src/db/schema.js';
-import type { FolderData } from '../../../src/routes/types.js';
+import type { FolderData } from '../../../src/routes/types/index.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */

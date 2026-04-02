@@ -9,7 +9,7 @@
     import { toast } from 'svelte-sonner';
 
     import { getUsers, deleteUserById } from '$lib/apis/users';
-    import type { UserModel } from '@backend/routes/types';
+    import type { User } from '@backend/routes/types';
 
     import Pagination from '$lib/components/common/Pagination.svelte';
     import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -25,14 +25,14 @@
 
     let page = 1;
 
-    let users: UserModel[] | null = null;
+    let users: User[] | null = null;
     let total: number | null = null;
 
     let query = '';
     let orderBy: 'role' | 'username' | 'lastActiveAt' | 'createdAt' = 'createdAt';
     let direction: 'asc' | 'desc' = 'asc';
 
-    let selectedUser: UserModel | null = null;
+    let selectedUser: User | null = null;
 
     let showDeleteConfirmDialog = false;
 

@@ -1,9 +1,9 @@
 import type {
     ChatObject,
-    ChatResponse,
+    Chat,
     ChatTitleIdResponse,
     FolderChatListItemResponse
-} from '@backend/routes/types.js';
+} from '@backend/routes/types';
 
 export type ChatListItem = ChatTitleIdResponse & { timeRange: string };
 
@@ -14,7 +14,7 @@ export const createNewChat = async (
     token: string,
     chat: ChatObject,
     folderId?: string
-): Promise<ChatResponse> => {
+): Promise<Chat> => {
     const route = '/chats/new';
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -34,7 +34,7 @@ export const createNewChat = async (
     return await res.json();
 };
 
-export const importChats = async (token: string, chats: object[]): Promise<ChatResponse[]> => {
+export const importChats = async (token: string, chats: object[]): Promise<Chat[]> => {
     const route = '/chats/import';
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -91,7 +91,7 @@ export const getChatList = async (
     }));
 };
 
-export const getAllChats = async (token: string): Promise<ChatResponse[]> => {
+export const getAllChats = async (token: string): Promise<Chat[]> => {
     const route = '/chats/all';
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
@@ -158,7 +158,7 @@ export const getChatListBySearchText = async (
 export const getChatsByFolderId = async (
     token: string,
     folderId: string
-): Promise<ChatResponse[]> => {
+): Promise<Chat[]> => {
     const route = `/chats/folder/${folderId}`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
@@ -205,7 +205,7 @@ export const getChatListByFolderId = async (
     return await res.json();
 };
 
-export const getChatById = async (token: string, id: string): Promise<ChatResponse> => {
+export const getChatById = async (token: string, id: string): Promise<Chat> => {
     const route = `/chats/${id}`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
@@ -224,7 +224,7 @@ export const getChatById = async (token: string, id: string): Promise<ChatRespon
     return await res.json();
 };
 
-export const getChatByShareId = async (token: string, share_id: string): Promise<ChatResponse> => {
+export const getChatByShareId = async (token: string, share_id: string): Promise<Chat> => {
     const route = `/chats/share/${share_id}`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
@@ -247,7 +247,7 @@ export const cloneChatById = async (
     token: string,
     id: string,
     title?: string
-): Promise<ChatResponse> => {
+): Promise<Chat> => {
     const route = `/chats/${id}/clone`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -267,7 +267,7 @@ export const cloneChatById = async (
     return await res.json();
 };
 
-export const cloneSharedChatById = async (token: string, id: string): Promise<ChatResponse> => {
+export const cloneSharedChatById = async (token: string, id: string): Promise<Chat> => {
     const route = `/chats/${id}/clone/shared`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -286,7 +286,7 @@ export const cloneSharedChatById = async (token: string, id: string): Promise<Ch
     return await res.json();
 };
 
-export const shareChatById = async (token: string, id: string): Promise<ChatResponse> => {
+export const shareChatById = async (token: string, id: string): Promise<Chat> => {
     const route = `/chats/${id}/share`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -309,7 +309,7 @@ export const updateChatFolderIdById = async (
     token: string,
     id: string,
     folderId: string | null
-): Promise<ChatResponse> => {
+): Promise<Chat> => {
     const route = `/chats/${id}/folder`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -352,7 +352,7 @@ export const updateChatById = async (
     token: string,
     id: string,
     chat: Partial<ChatObject>
-): Promise<ChatResponse> => {
+): Promise<Chat> => {
     const route = `/chats/${id}`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',

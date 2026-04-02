@@ -6,7 +6,7 @@ import * as Models from '../../../src/db/operations/models.js';
 import type { Model, NewModel } from '../../../src/db/operations/models.js';
 import * as Users from '../../../src/db/operations/users.js';
 import { models } from '../../../src/db/schema.js';
-import type { ModelForm, AccessControl } from '../../../src/routes/types.js';
+import type { ModelForm } from '../../../src/routes/types/index.js';
 import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */

@@ -5,11 +5,9 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
 
-    import { userSignIn, userSignUp, updateUserTimezone } from '$lib/apis/auths';
+    import { userSignIn, userSignUp } from '$lib/apis/auths';
 
     import { APP_NAME, config, user } from '$lib/stores';
-
-    import { getUserTimezone } from '$lib/utils';
 
     import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
     import type { SessionUserResponse } from '@backend/routes/types';
@@ -32,12 +30,6 @@
             }
 
             user.set(sessionUser);
-
-            // Update user timezone
-            const timezone = getUserTimezone();
-            if (sessionUser.token && timezone) {
-                updateUserTimezone(sessionUser.token, timezone);
-            }
 
             if (!redirectPath) {
                 redirectPath = $page.url.searchParams.get('redirect') || '/';

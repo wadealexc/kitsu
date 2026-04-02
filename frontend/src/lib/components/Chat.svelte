@@ -9,7 +9,7 @@
     import { type Unsubscriber } from 'svelte/store';
 
     import type {
-        ChatResponse,
+        Chat,
         ChatHistory,
         ChatMessage,
         ChatMessageFile,
@@ -17,9 +17,9 @@
         ToolCallBlock,
         ContentBlock,
         ReasoningBlock,
-        FolderModel
-    } from '@backend/routes/types.js';
-    import type { SseEvent } from '@backend/routes/sseEvents.js';
+        Folder
+    } from '@backend/routes/types';
+    import type { SseEvent } from '@backend/protocol/sse.js';
     import type { Message } from '@backend/protocol';
 
     import {
@@ -110,7 +110,7 @@
     let toolProgress: Map<string, WebSearchProgress> | undefined = undefined;
     let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined = undefined;
 
-    let chat: ChatResponse | null = null;
+    let chat: Chat | null = null;
 
     let history: ChatHistory = {
         messages: {},
@@ -239,7 +239,7 @@
     };
 
     // Set selectedModel to current folder model, if set
-    const setModelFromFolder = (folder: FolderModel) => {
+    const setModelFromFolder = (folder: Folder) => {
         if (folder.data?.modelId && $selectedModel?.id !== folder.data.modelId) {
             selectedModel.set(resolveModel(folder.data.modelId));
             console.log('Set selectedModel from folder data:', folder.data.modelId);
@@ -247,7 +247,7 @@
     };
 
     // Sync current folder model with backend
-    const persistFolderModel = async (folder: FolderModel, model: Model) => {
+    const persistFolder = async (folder: Folder, model: Model) => {
         if (folder.data?.modelId !== model.id) {
             await updateFolderById(localStorage.token, folder.id, {
                 data: {
@@ -258,7 +258,7 @@
     };
 
     $: if ($selectedFolder && $selectedModel) {
-        persistFolderModel($selectedFolder, $selectedModel);
+        persistFolder($selectedFolder, $selectedModel);
     }
 
     let pageUnsubscribe: Unsubscriber;
@@ -312,7 +312,7 @@
         // model we used in that folder.
         // TODO - this should be more visible, either in folder settings or apparent
         // when using the folder that it has an associated model.
-        selectedFolderUnsubscribe = selectedFolder.subscribe(async (folder: FolderModel | null) => {
+        selectedFolderUnsubscribe = selectedFolder.subscribe(async (folder: Folder | null) => {
             if (folder) setModelFromFolder(folder);
         });
 

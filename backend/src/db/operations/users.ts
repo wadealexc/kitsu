@@ -1,8 +1,8 @@
-import { eq, ne, desc, asc, or, like, sql, count } from 'drizzle-orm';
+import { eq, ne, desc, asc, or, like, count } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '../client.js';
 import { users, validateUsername, DEFAULT_USER_ROLE } from '../schema.js';
-import type { UserSettings, UserRole } from '../../routes/types.js';
+import type { UserSettings, UserRole } from '../../routes/types/index.js';
 import { currentUnixTimestamp } from '../utils.js';
 import { DatabaseError, RecordCreationError, RecordNotFoundError } from '../errors.js';
 

@@ -1,7 +1,7 @@
 import { type Response } from 'node-fetch';
 import { PassThrough, Transform, type TransformCallback } from 'stream';
 
-import * as proto from '../protocol.js';
+import * as proto from '../protocol/index.js';
 
 type LlamaStreamEvents = {
     response: (response: Response) => void,

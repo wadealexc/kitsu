@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '$lib/constants';
-import type { FileModelResponse } from '@backend/routes/types.js';
+import type { FileModelResponse } from '@backend/routes/types';
 
 export const uploadFile = async (token: string, file: File): Promise<FileModelResponse> => {
     const route = '/files/';

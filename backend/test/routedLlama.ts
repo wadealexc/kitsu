@@ -4,7 +4,7 @@ import path from 'path';
 import type { LlamaRequest, LlamaResponse } from "../src/llama/llamaManager.js";
 import LlamaStream from "../src/llama/llamaStream.js";
 import type { ModelConfig } from '../src/config.js';
-import * as proto from '../src/protocol.js';
+import * as proto from '../src/protocol/index.js';
 
 /**
  * Pass completions requests to existing kitsu-backend server

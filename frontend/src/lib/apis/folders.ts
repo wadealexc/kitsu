@@ -1,15 +1,15 @@
 import { API_BASE_URL } from '$lib/constants';
 import type {
-    FolderModel,
+    Folder,
     FolderNameIdResponse,
     FolderForm,
     FolderUpdateForm
-} from '@backend/routes/types.js';
+} from '@backend/routes/types';
 
 export const createNewFolder = async (
     token: string,
     folderForm: FolderForm
-): Promise<FolderModel> => {
+): Promise<Folder> => {
     const route = '/folders/';
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -48,7 +48,7 @@ export const getFolders = async (token: string): Promise<FolderNameIdResponse[]>
     return await res.json();
 };
 
-export const getFolderById = async (token: string, id: string): Promise<FolderModel> => {
+export const getFolderById = async (token: string, id: string): Promise<Folder> => {
     const route = `/folders/${id}`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
@@ -71,7 +71,7 @@ export const updateFolderById = async (
     token: string,
     id: string,
     folderForm: FolderUpdateForm
-): Promise<FolderModel> => {
+): Promise<Folder> => {
     const route = `/folders/${id}/update`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -95,7 +95,7 @@ export const updateFolderIsExpandedById = async (
     token: string,
     id: string,
     isExpanded: boolean
-): Promise<FolderModel> => {
+): Promise<Folder> => {
     const route = `/folders/${id}/update/expanded`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
@@ -119,7 +119,7 @@ export const updateFolderParentIdById = async (
     token: string,
     id: string,
     parentId: string | null
-): Promise<FolderModel> => {
+): Promise<Folder> => {
     const route = `/folders/${id}/update/parent`;
     const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',

@@ -1,11 +1,10 @@
 import { Router, type Response, type NextFunction } from 'express';
 
 import type { LlamaManager } from '../llama/llamaManager.js';
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, requireAdmin } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Models from '../db/operations/models.js';
-import { type Model } from '../db/operations/models.js';
 import * as Users from '../db/operations/users.js';
 import { HttpError, NotFoundError, BadRequestError, UnauthorizedError } from './errors.js';
 
@@ -27,7 +26,7 @@ const router = Router();
  */
 router.get('/', requireAuth, async (
     req: Types.TypedRequest<{}, any, Types.ModelsQuery>,
-    res: Response<Types.ModelStatusResponse[] | Types.ErrorResponse>,
+    res: Response<Types.ModelResponse[] | Types.ErrorResponse>,
     next: NextFunction
 ) => {
     const query = Types.ModelsQuerySchema.safeParse(req.query);
@@ -44,7 +43,7 @@ router.get('/', requireAuth, async (
 
         // Fetch custom models accessible to this user, filtered to those with available base models
         const allCustomModels = await Models.getCustomModels(db);
-        const availableModels: Types.ModelStatusResponse[] = allCustomModels
+        const availableModels: Types.ModelResponse[] = allCustomModels
             .filter(model => baseModelNames.some(base => base === model.baseModelId))
             .filter(model => Models.hasAccess(model, userId, 'read'))
             .map(model => toModelStatusResponse(
@@ -444,29 +443,20 @@ router.delete('/delete/all', requireAdmin, async (
 });
 
 function toModelStatusResponse(
-    model: Model, 
-    contextLength: number | undefined, 
+    model: Types.Model,
+    contextLength: number | undefined,
     status: 'idle' | 'queued' | 'active'
-): Types.ModelStatusResponse {
+): Types.ModelResponse {
     return {
         ...toModelResponse(model, contextLength),
         status,
     };
 }
 
-function toModelResponse(model: Model, contextLength?: number): Types.ModelResponse {
+function toModelResponse(model: Types.Model, contextLength?: number): Types.ModelResponse {
     return {
-        id: model.id,
-        userId: model.userId,
-        baseModelId: model.baseModelId,
-        name: model.name,
-        params: model.params,
-        meta: model.meta,
-        isPublic: model.isPublic,
-        isActive: model.isActive,
-        updatedAt: model.updatedAt,
-        createdAt: model.createdAt,
-        ...(contextLength !== undefined ? { contextLength: contextLength } : {}),
+        ...model,
+        ...(contextLength !== undefined ? { contextLength } : {}),
     };
 }
 
@@ -475,16 +465,7 @@ function toModelAccessResponse(
     canWrite: boolean
 ): Types.ModelAccessResponse {
     return {
-        id: modelUser.id,
-        userId: modelUser.userId,
-        baseModelId: modelUser.baseModelId,
-        name: modelUser.name,
-        params: modelUser.params,
-        meta: modelUser.meta,
-        isPublic: modelUser.isPublic,
-        isActive: modelUser.isActive,
-        updatedAt: modelUser.updatedAt,
-        createdAt: modelUser.createdAt,
+        ...toModelResponse(modelUser),
         user: modelUser.user ? {
             id: modelUser.user.id,
             username: modelUser.user.username,

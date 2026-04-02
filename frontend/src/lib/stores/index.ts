@@ -4,7 +4,7 @@ import type {
     ModelResponse,
     SessionUserResponse,
     FolderNameIdResponse,
-    FolderModel
+    Folder
 } from '@backend/routes/types';
 import type { ChatListItem } from '$lib/apis/chats';
 export type SessionUser = SessionUserResponse;
@@ -25,7 +25,7 @@ export const chatTitle = writable('');
 export const chats: Writable<ChatListItem[] | null> = writable(null);
 export const folders: Writable<FolderNameIdResponse[]> = writable([]);
 
-export const selectedFolder: Writable<FolderModel | null> = writable(null);
+export const selectedFolder: Writable<Folder | null> = writable(null);
 
 export const models: Writable<Model[]> = writable([]);
 

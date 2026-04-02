@@ -141,6 +141,8 @@
             [tempId]: {
                 id: tempId,
                 name: validName,
+                parentId: null,
+                meta: null,
                 isExpanded: false,
                 createdAt: Date.now(),
                 updatedAt: Date.now()

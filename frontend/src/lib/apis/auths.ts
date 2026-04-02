@@ -5,7 +5,7 @@ import type {
     AdminConfig,
     UpdateProfileResponse,
     UpdateProfileForm
-} from '@backend/routes/types.js';
+} from '@backend/routes/types';
 
 export const getAdminConfig = async (token: string): Promise<AdminConfig> => {
     const route = '/auths/admin/config';
@@ -146,23 +146,6 @@ export const updateUserProfile = async (
     }
 
     return await res.json();
-};
-
-export const updateUserTimezone = async (token: string, timezone: string): Promise<void> => {
-    const route = '/auths/update/timezone';
-    const res = await fetch(`${API_BASE_URL}${route}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ timezone })
-    });
-
-    if (!res.ok) {
-        const err = await res.json();
-        throw err.detail ?? `Request failed: ${route}`;
-    }
 };
 
 export const updateUserPassword = async (

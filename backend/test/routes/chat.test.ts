@@ -12,8 +12,8 @@ import * as schema from '../../src/db/schema.js';
 import chatRouter from '../../src/routes/chat.js';
 import { ToolRegistry } from '../../src/tools/registry.js';
 import { MockLlama } from '../mockLlama.js';
-import type { SseEvent } from '../../src/routes/sseEvents.js';
-import * as Types from '../../src/routes/types.js';
+import type { SseEvent } from '../../src/protocol/sse.js';
+import * as Types from '../../src/routes/types/index.js';
 
 /* -------------------- TEST SETUP -------------------- */
 

@@ -9,11 +9,11 @@
 
     import { mobile, selectedFolder, showSidebar } from '$lib/stores';
     import type {
-        ChatResponse,
+        Chat,
         FolderChatListItemResponse,
         FolderData,
         FolderMeta
-    } from '@backend/routes/types.js';
+    } from '@backend/routes/types';
     import type { SidebarFolder } from '$lib/types';
 
     import {
@@ -155,7 +155,7 @@
                             } else if (type === 'chat') {
                                 open = true;
 
-                                let chat: ChatResponse | null = await getChatById(
+                                let chat: Chat | null = await getChatById(
                                     localStorage.token,
                                     id
                                 ).catch((error) => {

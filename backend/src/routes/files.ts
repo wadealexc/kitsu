@@ -4,7 +4,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import multer from 'multer';
 
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, validateFileId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Files from '../db/operations/files.js';
@@ -149,17 +149,8 @@ router.post('/', requireAuth, upload.single('file'), async (
             return newFile;
         });
 
-        const response: Types.FileModelResponse = {
-            id: file.id,
-            userId: file.userId,
-            filename: file.filename,
-            data: file.data,
-            meta: file.meta,
-            createdAt: file.createdAt,
-            updatedAt: file.updatedAt,
-        };
-
-        return res.json(response);
+        const { path: _, accessControl: __, ...fileResponse } = file;
+        return res.json(fileResponse);
     } catch (error) {
         console.error('File upload error:', error);
         return res.status(500).json({ detail: 'File upload failed' });
@@ -223,15 +214,8 @@ router.get('/:fileId', validateFileId, requireAuth, async (
         const hasAccess = await Files.hasFileAccess(fileId, userId, 'read', db);
         if (!hasAccess) throw UnauthorizedError('User does not have access to file');
 
-        return res.json({
-            id: file.id,
-            userId: file.userId,
-            filename: file.filename,
-            data: file.data,
-            meta: file.meta,
-            createdAt: file.createdAt,
-            updatedAt: file.updatedAt,
-        });
+        const { path: _, accessControl: __, ...fileResponse } = file;
+        return res.json(fileResponse);
     } catch (error) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });

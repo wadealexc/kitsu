@@ -10,7 +10,7 @@ import type {
     AccessControl,
     ModelParams,
     ModelMeta,
-} from '../routes/types.js';
+} from '../routes/types/index.js';
 
 /* -------------------- USER TABLE -------------------- */
 

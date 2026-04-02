@@ -8,7 +8,7 @@ import fetch, { Headers } from 'node-fetch';
 import chalk from 'chalk';
 
 import { type ModelConfig, type ModelEntry } from '../config.js';
-import * as proto from '../protocol.js';
+import * as proto from '../protocol/index.js';
 import LlamaStream from './llamaStream.js';
 
 // Command to start llama‑server via submodule

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { toast } from 'svelte-sonner';
     import { deleteSharedChatById, getChatById, shareChatById } from '$lib/apis/chats';
-    import type { ChatResponse } from '@backend/routes/types';
+    import type { Chat } from '@backend/routes/types';
     import { copyToClipboard } from '$lib/utils';
 
     import Modal from '../common/Modal.svelte';
@@ -10,7 +10,7 @@
 
     export let chatId: string;
 
-    let chat: ChatResponse | null = null;
+    let chat: Chat | null = null;
     let shareUrl = null;
     const copyUrlToClipboard = async (url: string) => {
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -47,7 +47,7 @@
 
     export let show = false;
 
-    const isDifferentChat = (_chat: ChatResponse | null) => {
+    const isDifferentChat = (_chat: Chat | null) => {
         if (!chat) {
             return true;
         }

@@ -6,10 +6,10 @@
     import dayjs from 'dayjs';
 
     import type {
-        ChatResponse,
+        Chat,
         ChatHistory,
         ChatMessage
-    } from '@backend/routes/types.js';
+    } from '@backend/routes/types';
 
     import { settings, applySettingsDefaults, chatId, APP_NAME, models } from '$lib/stores';
     import { createMessagesList } from '$lib/utils';
@@ -27,7 +27,7 @@
 
     let loaded = false;
 
-    let chat: ChatResponse | null = null;
+    let chat: Chat | null = null;
     let title = '';
     let selectedModel: string = '';
 

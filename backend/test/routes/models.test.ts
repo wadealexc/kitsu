@@ -11,7 +11,7 @@ import * as Models from '../../src/db/operations/models.js';
 import { type Model } from '../../src/db/operations/models.js';
 import { MockLlama } from '../mockLlama.js';
 import modelsRouter from '../../src/routes/models.js';
-import type { ModelForm } from '../../src/routes/types.js';
+import type { ModelForm } from '../../src/routes/types/index.js';
 
 /* -------------------- TEST SETUP -------------------- */
 

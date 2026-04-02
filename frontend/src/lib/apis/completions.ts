@@ -2,9 +2,9 @@ import { EventSourceParserStream } from 'eventsource-parser/stream';
 import type { ParsedEvent } from 'eventsource-parser';
 
 import { API_BASE_URL } from '$lib/constants';
-import type { ChatCompletionForm } from '@backend/routes/types.js';
-import type { SseEvent } from '@backend/routes/sseEvents.js';
-import type { ChatMessageUsage } from '@backend/routes/types.js';
+import type { ChatCompletionForm } from '@backend/routes/types';
+import type { SseEvent } from '@backend/protocol/sse.js';
+import type { ChatMessageUsage } from '@backend/routes/types';
 
 export type StreamTimings = {
     predicted_n: number;

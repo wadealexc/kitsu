@@ -2,8 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 
 /// <reference path="./express.d.ts" />
 
-import type { TypedRequest } from './types.js';
-import * as Types from './types.js';
+import type { TypedRequest } from './types/index.js';
+import * as Types from './types/index.js';
 import * as JWT from './jwt.js';
 import * as Users from '../db/operations/users.js';
 import { db } from '../db/client.js';

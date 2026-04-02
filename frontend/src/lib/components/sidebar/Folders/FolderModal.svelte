@@ -7,7 +7,7 @@
     import { toast } from 'svelte-sonner';
     import Textarea from '$lib/components/common/Textarea.svelte';
     import { getFolderById } from '$lib/apis/folders';
-    import type { FolderData, FolderMeta, FolderModel } from '@backend/routes/types';
+    import type { FolderData, FolderMeta, Folder } from '@backend/routes/types';
     export let show = false;
     export let onSubmit: (e: { name: string; meta: FolderMeta; data: FolderData }) => void = (
         e
@@ -16,7 +16,7 @@
     export let folderId: string | null = null;
     export let edit = false;
 
-    let folder: FolderModel | null = null;
+    let folder: Folder | null = null;
     let name = '';
     let meta: FolderMeta = {};
     let data: FolderData = {

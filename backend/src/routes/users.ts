@@ -1,12 +1,10 @@
 import { Router, type Response, type NextFunction } from 'express';
 
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
 import { db } from '../db/client.js';
 import * as Users from '../db/operations/users.js';
-import type { User } from '../db/operations/users.js';
 import * as Auths from '../db/operations/auths.js';
-import type { UserRole } from './types.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
 
 const router = Router();
@@ -47,20 +45,7 @@ router.get('/', requireAdmin, async (
             limit: pageSize,
         }, db);
 
-        // Convert to UserModel format
-        const userList: Types.UserModel[] = users.map(user => ({
-            id: user.id,
-            username: user.username,
-            role: user.role,
-            lastActiveAt: user.lastActiveAt,
-            updatedAt: user.updatedAt,
-            createdAt: user.createdAt,
-        }));
-
-        return res.json({
-            users: userList,
-            total,
-        });
+        return res.json({ users, total });
     } catch (error) {
         console.error('Get users error:', error);
         return res.status(500).json({ detail: 'Internal server error' });
@@ -115,7 +100,7 @@ router.get('/all', requireAdmin, async (
  */
 router.post('/:userId/update', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
-    res: Response<Types.UserModel | Types.ErrorResponse>
+    res: Response<Types.User | Types.ErrorResponse>
 ) => {
     const body = Types.UserUpdateFormSchema.safeParse(req.body);
     if (!body.success) {
@@ -170,15 +155,7 @@ router.post('/:userId/update', validateUserId, requireAdmin, async (
             return updated;
         });
 
-        // Convert to response format
-        return res.json({
-            id: updatedUser.id,
-            username: updatedUser.username,
-            role: updatedUser.role,
-            lastActiveAt: updatedUser.lastActiveAt,
-            updatedAt: updatedUser.updatedAt,
-            createdAt: updatedUser.createdAt,
-        });
+        return res.json(updatedUser);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
             return res.status(error.statusCode).json({ detail: error.message });

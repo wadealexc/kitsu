@@ -3,7 +3,7 @@
     import Switch from '$lib/components/common/Switch.svelte';
     import { onMount } from 'svelte';
     import { toast } from 'svelte-sonner';
-    import type { AdminConfig } from '@backend/routes/types.js';
+    import type { AdminConfig } from '@backend/routes/types';
 
     export let saveHandler: Function;
 

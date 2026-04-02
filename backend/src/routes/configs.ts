@@ -5,7 +5,7 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import * as Types from './types.js';
+import * as Types from './types/index.js';
 import { requireAdmin } from './middleware.js';
 
 const router = Router();

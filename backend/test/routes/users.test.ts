@@ -11,7 +11,7 @@ import * as schema from '../../src/db/schema.js';
 import * as Users from '../../src/db/operations/users.js';
 import * as Auths from '../../src/db/operations/auths.js';
 import * as JWT from '../../src/routes/jwt.js';
-import { type UserRole } from '../../src/routes/types.js';
+import { type UserRole } from '../../src/routes/types/index.js';
 import usersRouter from '../../src/routes/users.js';
 
 /* -------------------- TEST SETUP -------------------- */

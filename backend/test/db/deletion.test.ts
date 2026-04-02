@@ -8,7 +8,7 @@ import * as Auths from '../../src/db/operations/auths.js';
 import * as Chats from '../../src/db/operations/chats.js';
 import * as Folders from '../../src/db/operations/folders.js';
 import * as Files from '../../src/db/operations/files.js';
-import type { ChatObject, NewChatForm } from '../../src/routes/types.js';
+import type { ChatObject, NewChatForm } from '../../src/routes/types/index.js';
 import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
