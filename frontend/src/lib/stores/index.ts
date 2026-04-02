@@ -40,7 +40,7 @@ export type Config = {
 };
 
 const DEFAULT_CONFIG: Config = {
-    name: 'Placeholder',
+    name: 'kitsu',
     features: {
         auth: true,
         enable_signup: true

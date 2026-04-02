@@ -16,7 +16,7 @@ router.get('/', (
     res: Response<any | Types.ErrorResponse>
 ) => {
     res.json({
-        name: 'Placeholder',
+        name: 'kitsu',
         default_locale: 'en-US',
         features: {
             auth: true,

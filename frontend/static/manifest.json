@@ -1,6 +1,6 @@
 {
-  "name": "Kitsu",
-  "short_name": "Kitsu",
+  "name": "kitsu",
+  "short_name": "kitsu",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#343541",
