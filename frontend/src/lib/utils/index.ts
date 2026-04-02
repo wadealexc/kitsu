@@ -217,7 +217,7 @@ export const convertOpenAIChats = (_chats: any[]): any[] => {
         if (validateChat(chat)) {
             chats.push({
                 id: convo['id'],
-                user_id: '',
+                userId: '',
                 title: convo['title'],
                 chat: chat,
                 timestamp: convo['create_time']

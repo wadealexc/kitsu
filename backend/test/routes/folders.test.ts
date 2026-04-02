@@ -104,10 +104,10 @@ describe('GET /api/v1/folders/', () => {
         const folder = response.body[0];
         assert.ok(folder.id);
         assert.ok(folder.name);
-        assert.strictEqual(folder.parent_id, null);
-        assert.strictEqual(folder.is_expanded, false);
-        assert.ok(typeof folder.created_at === 'number');
-        assert.ok(typeof folder.updated_at === 'number');
+        assert.strictEqual(folder.parentId, null);
+        assert.strictEqual(folder.isExpanded, false);
+        assert.ok(typeof folder.createdAt === 'number');
+        assert.ok(typeof folder.updatedAt === 'number');
     });
 
     test('should return empty array when user has no folders', async () => {
@@ -149,7 +149,7 @@ describe('GET /api/v1/folders/', () => {
 
         assert.strictEqual(response.body.length, 2);
         const childFolder = response.body.find((f: any) => f.name === 'Child');
-        assert.strictEqual(childFolder.parent_id, parent.id);
+        assert.strictEqual(childFolder.parentId, parent.id);
     });
 
     test('should fail without authentication token', async () => {
@@ -187,10 +187,10 @@ describe('POST /api/v1/folders/', () => {
             .expect(200);
 
         assert.ok(response.body.id);
-        assert.strictEqual(response.body.user_id, userId);
+        assert.strictEqual(response.body.userId, userId);
         assert.strictEqual(response.body.name, 'My New Folder');
-        assert.strictEqual(response.body.parent_id, null);
-        assert.strictEqual(response.body.is_expanded, false);
+        assert.strictEqual(response.body.parentId, null);
+        assert.strictEqual(response.body.isExpanded, false);
         assert.strictEqual(response.body.meta.icon, ':star:');
         assert.strictEqual(response.body.data.systemPrompt, 'You are helpful');
     });
@@ -279,7 +279,7 @@ describe('GET /api/v1/folders/:folder_id', () => {
 
         assert.strictEqual(response.body.id, folder.id);
         assert.strictEqual(response.body.name, 'Test Folder');
-        assert.strictEqual(response.body.user_id, userId);
+        assert.strictEqual(response.body.userId, userId);
         assert.ok(response.body.meta);
         assert.ok(response.body.data);
     });
@@ -372,13 +372,13 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             .send({
                 data: {
                     systemPrompt: 'Updated prompt',
-                    model_id: 'gpt-4'
+                    modelId: 'gpt-4'
                 }
             })
             .expect(200);
 
         assert.strictEqual(response.body.data.systemPrompt, 'Updated prompt');
-        assert.strictEqual(response.body.data.model_id, 'gpt-4');
+        assert.strictEqual(response.body.data.modelId, 'gpt-4');
     });
 
     test('should merge data and meta with existing values', async () => {
@@ -388,7 +388,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
             'Test Folder',
             undefined,
             { icon: ':folder:' },
-            { systemPrompt: 'Original', model_id: 'gpt-4' }
+            { systemPrompt: 'Original', modelId: 'gpt-4' }
         ), db);
 
         const response = await request(app)
@@ -401,7 +401,7 @@ describe('POST /api/v1/folders/:folder_id/update', () => {
 
         // Original fields should still be present
         assert.strictEqual(response.body.data.systemPrompt, 'Original');
-        assert.ok(response.body.data.model_id);
+        assert.ok(response.body.data.modelId);
         // New field should be added
         assert.ok(response.body.data.files);
     });
@@ -502,10 +502,10 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${child.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: parent2.id })
+            .send({ parentId: parent2.id })
             .expect(200);
 
-        assert.strictEqual(response.body.parent_id, parent2.id);
+        assert.strictEqual(response.body.parentId, parent2.id);
     });
 
     test('should move folder to root level', async () => {
@@ -516,10 +516,10 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${child.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: null })
+            .send({ parentId: null })
             .expect(200);
 
-        assert.strictEqual(response.body.parent_id, null);
+        assert.strictEqual(response.body.parentId, null);
     });
 
     test('should prevent circular reference (folder as own parent)', async () => {
@@ -529,7 +529,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: folder.id })
+            .send({ parentId: folder.id })
             .expect(400);
 
         assert.ok(response.body.detail);
@@ -544,7 +544,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${parent.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: grandchild.id })
+            .send({ parentId: grandchild.id })
             .expect(400);
 
         assert.ok(response.body.detail);
@@ -558,7 +558,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: nonExistentId })
+            .send({ parentId: nonExistentId })
             .expect(400);
 
         assert.ok(response.body.detail);
@@ -575,7 +575,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${child.id}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: parent2.id })
+            .send({ parentId: parent2.id })
             .expect(400);
 
         assert.ok(response.body.detail);
@@ -588,7 +588,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${nonExistentId}/update/parent`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ parent_id: null })
+            .send({ parentId: null })
             .expect(400);
 
         assert.strictEqual(response.body.detail, `folder record with id '${nonExistentId}' not found`);
@@ -600,7 +600,7 @@ describe('POST /api/v1/folders/:folder_id/update/parent', () => {
 
         await request(app)
             .post(`/api/v1/folders/${folder.id}/update/parent`)
-            .send({ parent_id: null })
+            .send({ parentId: null })
             .expect(401);
     });
 });
@@ -617,10 +617,10 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ is_expanded: true })
+            .send({ isExpanded: true })
             .expect(200);
 
-        assert.strictEqual(response.body.is_expanded, true);
+        assert.strictEqual(response.body.isExpanded, true);
     });
 
     test('should update expansion state to false', async () => {
@@ -635,10 +635,10 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ is_expanded: false })
+            .send({ isExpanded: false })
             .expect(200);
 
-        assert.strictEqual(response.body.is_expanded, false);
+        assert.strictEqual(response.body.isExpanded, false);
     });
 
     test('should return 400 when folder not found', async () => {
@@ -648,7 +648,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${nonExistentId}/update/expanded`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ is_expanded: true })
+            .send({ isExpanded: true })
             .expect(400);
 
         assert.strictEqual(response.body.detail, `folder record with id '${nonExistentId}' not found`);
@@ -663,7 +663,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         await request(app)
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
             .set('Authorization', `Bearer ${token2}`)
-            .send({ is_expanded: true })
+            .send({ isExpanded: true })
             .expect(400);
     });
 
@@ -673,7 +673,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
 
         await request(app)
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
-            .send({ is_expanded: true })
+            .send({ isExpanded: true })
             .expect(401);
     });
 
@@ -684,7 +684,7 @@ describe('POST /api/v1/folders/:folder_id/update/expanded', () => {
         const response = await request(app)
             .post(`/api/v1/folders/${folder.id}/update/expanded`)
             .set('Authorization', `Bearer ${token}`)
-            .send({ is_expanded: 'not_a_boolean' })
+            .send({ isExpanded: 'not_a_boolean' })
             .expect(400);
 
         assert.ok(response.body.detail);
@@ -719,7 +719,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         const response = await request(app)
             .delete(`/api/v1/folders/${folder.id}`)
-            .query({ delete_contents: true })
+            .query({ deleteContents: true })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -742,7 +742,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         const response = await request(app)
             .delete(`/api/v1/folders/${folder.id}`)
-            .query({ delete_contents: false })
+            .query({ deleteContents: false })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -783,7 +783,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         await request(app)
             .delete(`/api/v1/folders/${parent.id}`)
-            .query({ delete_contents: true })
+            .query({ deleteContents: true })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -809,7 +809,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         await request(app)
             .delete(`/api/v1/folders/${parent.id}`)
-            .query({ delete_contents: true })
+            .query({ deleteContents: true })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -828,7 +828,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         await request(app)
             .delete(`/api/v1/folders/${parent.id}`)
-            .query({ delete_contents: false })
+            .query({ deleteContents: false })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
@@ -878,7 +878,7 @@ describe('DELETE /api/v1/folders/:folder_id', () => {
 
         const response = await request(app)
             .delete(`/api/v1/folders/${folder.id}`)
-            .query({ delete_contents: 'invalid_boolean' })
+            .query({ deleteContents: 'invalid_boolean' })
             .set('Authorization', `Bearer ${token}`)
             .expect(400);
 

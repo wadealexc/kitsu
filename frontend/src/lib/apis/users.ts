@@ -11,7 +11,7 @@ import type {
 export const getUsers = async (
     token: string,
     query?: string,
-    orderBy?: 'role' | 'username' | 'last_active_at' | 'created_at',
+    orderBy?: 'role' | 'username' | 'lastActiveAt' | 'createdAt',
     direction?: 'asc' | 'desc',
     page = 1
 ): Promise<UserModelListResponse> => {
@@ -24,7 +24,7 @@ export const getUsers = async (
     }
 
     if (orderBy) {
-        searchParams.set('order_by', orderBy);
+        searchParams.set('orderBy', orderBy);
     }
 
     if (direction) {

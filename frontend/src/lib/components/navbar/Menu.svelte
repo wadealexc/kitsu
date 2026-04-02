@@ -157,7 +157,7 @@
                             transition={flyAndScale}
                             sideOffset={8}
                         >
-                            {#each $folders.sort((a, b) => b.updated_at - a.updated_at) as folder}
+                            {#each $folders.sort((a, b) => b.updatedAt - a.updatedAt) as folder}
                                 {#if folder?.id}
                                     <DropdownMenu.Item
                                         class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl"

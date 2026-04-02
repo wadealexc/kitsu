@@ -48,17 +48,17 @@
                     return {
                         chat: chat.chat,
                         meta: chat.meta ?? {},
-                        folder_id: chat?.folder_id ?? null,
-                        created_at: chat?.created_at ?? null,
-                        updated_at: chat?.updated_at ?? null
+                        folderId: chat?.folderId ?? null,
+                        createdAt: chat?.createdAt ?? null,
+                        updatedAt: chat?.updatedAt ?? null
                     };
                 } else {
                     return {
                         chat: chat,
                         meta: {},
-                        folder_id: null,
-                        created_at: chat?.created_at ?? null,
-                        updated_at: chat?.updated_at ?? null
+                        folderId: null,
+                        createdAt: chat?.createdAt ?? null,
+                        updatedAt: chat?.updatedAt ?? null
                     };
                 }
             })

@@ -181,7 +181,7 @@ router.post('/create', requireAuth, async (
         // Validate base model is available in LlamaManager
         const llama = req.app.locals.llama as LlamaManager;
         const baseModelNames = llama.getAllModelNames();
-        if (!baseModelNames.includes(formData.base_model_id)) throw BadRequestError('base model not found');
+        if (!baseModelNames.includes(formData.baseModelId)) throw BadRequestError('base model not found');
 
         // Check if model ID already exists in database
         const existing = await Models.getModelById(formData.id, db);
@@ -191,12 +191,12 @@ router.post('/create', requireAuth, async (
         const newModel = await Models.insertNewModel({
             id: formData.id,
             userId,
-            baseModelId: formData.base_model_id,
+            baseModelId: formData.baseModelId,
             name: formData.name,
             params: formData.params,
             meta: formData.meta,
             isPublic: formData.isPublic,
-            isActive: formData.is_active,
+            isActive: formData.isActive,
         }, db);
 
         res.status(200).json(toModelResponse(newModel));
@@ -293,22 +293,22 @@ router.post('/model/update', requireAuth, async (
         if (!canWrite) throw UnauthorizedError('write access required');
 
         // If baseModelId is being changed, validate it's available in llamaManager
-        if (formData.base_model_id !== model.baseModelId) {
+        if (formData.baseModelId !== model.baseModelId) {
             const llama = req.app.locals.llama as LlamaManager;
             const baseModelNames = llama.getAllModelNames();
 
-            if (!baseModelNames.includes(formData.base_model_id))
-                throw BadRequestError(`base model '${formData.base_model_id}' not found`);
+            if (!baseModelNames.includes(formData.baseModelId))
+                throw BadRequestError(`base model '${formData.baseModelId}' not found`);
         }
 
         // Update model in database
         const updated = await Models.updateModelById(formData.id, {
-            baseModelId: formData.base_model_id,
+            baseModelId: formData.baseModelId,
             name: formData.name,
             params: formData.params,
             meta: formData.meta,
             isPublic: formData.isPublic,
-            isActive: formData.is_active,
+            isActive: formData.isActive,
         }, db);
         res.status(200).json(toModelResponse(updated));
     } catch (error) {
@@ -402,7 +402,7 @@ router.get('/base', requireAdmin, async (
             const modelInfo = llama.getModelInfo(name);
             return toModelResponse({
                 id: name,
-                userId: userId,
+                userId,
                 baseModelId: name,
                 name: name,
                 params: modelInfo?.params ?? {},
@@ -457,16 +457,16 @@ function toModelStatusResponse(
 function toModelResponse(model: Model, contextLength?: number): Types.ModelResponse {
     return {
         id: model.id,
-        user_id: model.userId,
-        base_model_id: model.baseModelId,
+        userId: model.userId,
+        baseModelId: model.baseModelId,
         name: model.name,
         params: model.params,
         meta: model.meta,
         isPublic: model.isPublic,
-        is_active: model.isActive,
-        updated_at: model.updatedAt,
-        created_at: model.createdAt,
-        ...(contextLength !== undefined ? { context_length: contextLength } : {}),
+        isActive: model.isActive,
+        updatedAt: model.updatedAt,
+        createdAt: model.createdAt,
+        ...(contextLength !== undefined ? { contextLength: contextLength } : {}),
     };
 }
 
@@ -476,21 +476,21 @@ function toModelAccessResponse(
 ): Types.ModelAccessResponse {
     return {
         id: modelUser.id,
-        user_id: modelUser.userId,
-        base_model_id: modelUser.baseModelId,
+        userId: modelUser.userId,
+        baseModelId: modelUser.baseModelId,
         name: modelUser.name,
         params: modelUser.params,
         meta: modelUser.meta,
         isPublic: modelUser.isPublic,
-        is_active: modelUser.isActive,
-        updated_at: modelUser.updatedAt,
-        created_at: modelUser.createdAt,
+        isActive: modelUser.isActive,
+        updatedAt: modelUser.updatedAt,
+        createdAt: modelUser.createdAt,
         user: modelUser.user ? {
             id: modelUser.user.id,
             username: modelUser.user.username,
             role: modelUser.user.role,
         } : null,
-        write_access: canWrite,
+        writeAccess: canWrite,
     };
 }
 

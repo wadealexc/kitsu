@@ -70,7 +70,7 @@
                 return [];
             }
         );
-        _folders.set(folderList.sort((a, b) => b.updated_at - a.updated_at));
+        _folders.set(folderList.sort((a, b) => b.updatedAt - a.updatedAt));
 
         folders = {};
 
@@ -87,20 +87,20 @@
 
         // Second pass: Tie child folders to their parents
         for (const folder of folderList) {
-            if (folder.parent_id) {
+            if (folder.parentId) {
                 // Ensure the parent folder is initialized if it doesn't exist
-                if (!folders[folder.parent_id]) {
-                    folders[folder.parent_id] = {} as SidebarFolder; // Create a placeholder if not already present
+                if (!folders[folder.parentId]) {
+                    folders[folder.parentId] = {} as SidebarFolder; // Create a placeholder if not already present
                 }
 
                 // Initialize childrenIds array if it doesn't exist and add the current folder id
-                folders[folder.parent_id].childrenIds = folders[folder.parent_id].childrenIds
-                    ? [...(folders[folder.parent_id].childrenIds ?? []), folder.id]
+                folders[folder.parentId].childrenIds = folders[folder.parentId].childrenIds
+                    ? [...(folders[folder.parentId].childrenIds ?? []), folder.id]
                     : [folder.id];
 
                 // Sort the children by updated_at field
-                (folders[folder.parent_id].childrenIds ?? []).sort((a: string, b: string) => {
-                    return folders[b].updated_at - folders[a].updated_at;
+                (folders[folder.parentId].childrenIds ?? []).sort((a: string, b: string) => {
+                    return folders[b].updatedAt - folders[a].updatedAt;
                 });
             }
         }
@@ -120,7 +120,7 @@
         }
 
         let validName: string = name;
-        const rootFolders = Object.values(folders).filter((folder) => folder.parent_id === null);
+        const rootFolders = Object.values(folders).filter((folder) => folder.parentId === null);
         if (rootFolders.find((folder) => folder.name?.toLowerCase() === validName.toLowerCase())) {
             // If a folder with the same name already exists, append a number to the name
             let i = 1;
@@ -141,9 +141,9 @@
             [tempId]: {
                 id: tempId,
                 name: validName,
-                is_expanded: false,
-                created_at: Date.now(),
-                updated_at: Date.now()
+                isExpanded: false,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
             }
         };
 
@@ -204,9 +204,9 @@
                     {
                         chat: item.chat,
                         meta: item?.meta ?? {},
-                        folder_id: folderId,
-                        created_at: item?.created_at ?? null,
-                        updated_at: item?.updated_at ?? null
+                        folderId: folderId,
+                        createdAt: item?.createdAt ?? null,
+                        updatedAt: item?.updatedAt ?? null
                     }
                 ]);
             }
@@ -824,7 +824,7 @@
                         const { type, id, item } = e.detail;
 
                         if (type === 'folder') {
-                            if (folders[id].parent_id === null) {
+                            if (folders[id].parentId === null) {
                                 return;
                             }
 
@@ -886,9 +886,9 @@
                                     {
                                         chat: item.chat,
                                         meta: item?.meta ?? {},
-                                        folder_id: null,
-                                        created_at: item?.created_at ?? null,
-                                        updated_at: item?.updated_at ?? null
+                                        folderId: null,
+                                        createdAt: item?.createdAt ?? null,
+                                        updatedAt: item?.updatedAt ?? null
                                     }
                                 ]);
                                 chat = importResult?.[0] ?? null;
@@ -896,7 +896,7 @@
 
                             if (chat) {
                                 console.log(chat);
-                                if (chat.folder_id) {
+                                if (chat.folderId) {
                                     const res = await updateChatFolderIdById(
                                         localStorage.token,
                                         chat.id,
@@ -906,13 +906,13 @@
                                         return null;
                                     });
 
-                                    folderRegistry[chat.folder_id]?.setFolderItems();
+                                    folderRegistry[chat.folderId]?.setFolderItems();
                                 }
 
                                 initChatList();
                             }
                         } else if (type === 'folder') {
-                            if (folders[id].parent_id === null) {
+                            if (folders[id].parentId === null) {
                                 return;
                             }
 
@@ -935,14 +935,14 @@
                         <div class="pt-1.5">
                             {#if $chats}
                                 {#each $chats as chat, idx (`chat-${chat?.id ?? idx}`)}
-                                    {#if idx === 0 || (idx > 0 && chat.time_range !== $chats[idx - 1].time_range)}
+                                    {#if idx === 0 || (idx > 0 && chat.timeRange !== $chats[idx - 1].timeRange)}
                                         <div
                                             class="w-full pl-2.5 text-xs text-gray-500 dark:text-gray-600 font-medium {idx ===
                                             0
                                                 ? ''
                                                 : 'pt-5'} pb-1.5"
                                         >
-                                            {chat.time_range}
+                                            {chat.timeRange}
                                         </div>
                                     {/if}
 

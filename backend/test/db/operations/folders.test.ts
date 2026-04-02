@@ -505,7 +505,7 @@ describe('Folder Operations', () => {
             const folder = await Folders.createFolder(
                 createTestFolderForm(userId, 'Test Folder', undefined, undefined, {
                     systemPrompt: 'Original prompt',
-                    model_id: 'model1'
+                    modelId: 'model1'
                 }),
                 db
             );
@@ -520,7 +520,7 @@ describe('Folder Operations', () => {
             assert.ok(updated);
             assert.ok(updated.data);
             assert.strictEqual(updated.data.systemPrompt, 'Updated prompt');
-            assert.deepStrictEqual(updated.data.model_id, 'model1');
+            assert.deepStrictEqual(updated.data.modelId, 'model1');
         });
 
         test('should perform partial update', async () => {
@@ -1100,10 +1100,10 @@ describe('Folder Operations', () => {
                         type: 'collection',
                         id: 'collection-1',
                         name: 'Knowledge Base',
-                        collection_name: 'kb-main',
+                        collectionName: 'kb-main',
                     },
                 ],
-                model_id: 'model-1',
+                modelId: 'model-1',
             };
 
             const folder = await Folders.createFolder(
@@ -1126,7 +1126,7 @@ describe('Folder Operations', () => {
                 files: [
                     { type: 'file', id: 'file-1', name: 'doc1.pdf' },
                 ],
-                model_id: 'model-1',
+                modelId: 'model-1',
             };
 
             const folder = await Folders.createFolder(
@@ -1153,7 +1153,7 @@ describe('Folder Operations', () => {
             assert.ok(updated.data);
             assert.strictEqual(updated.data.systemPrompt, 'Updated prompt');
             assert.strictEqual(updated.data.files?.length, 2);
-            assert.deepStrictEqual(updated.data.model_id, 'model-1');
+            assert.deepStrictEqual(updated.data.modelId, 'model-1');
         });
     });
 });

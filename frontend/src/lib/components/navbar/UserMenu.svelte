@@ -57,7 +57,7 @@
                     user.set(undefined);
                     localStorage.removeItem('token');
 
-                    location.href = res?.redirect_url ?? '/auth';
+                    location.href = res?.redirectUrl ?? '/auth';
                     show = false;
                 }}
             >

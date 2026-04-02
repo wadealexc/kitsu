@@ -34,7 +34,7 @@ router.get('/', requireAdmin, async (
         });
     }
 
-    const { page, query: searchQuery, order_by: orderBy, direction } = query.data;
+    const { page, query: searchQuery, orderBy, direction } = query.data;
     const pageSize = 30;
     const skip = (page - 1) * pageSize;
 
@@ -52,9 +52,9 @@ router.get('/', requireAdmin, async (
             id: user.id,
             username: user.username,
             role: user.role,
-            last_active_at: user.lastActiveAt,
-            updated_at: user.updatedAt,
-            created_at: user.createdAt,
+            lastActiveAt: user.lastActiveAt,
+            updatedAt: user.updatedAt,
+            createdAt: user.createdAt,
         }));
 
         return res.json({
@@ -104,7 +104,7 @@ router.get('/all', requireAdmin, async (
 });
 
 /**
- * POST /api/v1/users/{user_id}/update
+ * POST /api/v1/users/{userId}/update
  * Access Control: Requires HTTPBearer authentication and admin role
  *
  * Update a user's profile, role, username, and optionally password.
@@ -113,7 +113,7 @@ router.get('/all', requireAdmin, async (
  * @param {Types.UserUpdateForm} - Updated user data
  * @returns {Types.UserModel} - updated user
  */
-router.post('/:user_id/update', validateUserId, requireAdmin, async (
+router.post('/:userId/update', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams, Types.UserUpdateForm>,
     res: Response<Types.UserModel | Types.ErrorResponse>
 ) => {
@@ -125,7 +125,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
         });
     }
 
-    const userId = req.params.user_id;
+    const userId = req.params.userId;
     const { role, username, password } = body.data;
 
     try {
@@ -175,9 +175,9 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
             id: updatedUser.id,
             username: updatedUser.username,
             role: updatedUser.role,
-            last_active_at: updatedUser.lastActiveAt,
-            updated_at: updatedUser.updatedAt,
-            created_at: updatedUser.createdAt,
+            lastActiveAt: updatedUser.lastActiveAt,
+            updatedAt: updatedUser.updatedAt,
+            createdAt: updatedUser.createdAt,
         });
     } catch (error: unknown) {
         if (error instanceof HttpError) {
@@ -195,7 +195,7 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
 });
 
 /**
- * DELETE /api/v1/users/{user_id}
+ * DELETE /api/v1/users/{userId}
  * Access Control: Requires HTTPBearer authentication and admin role
  *
  * Delete a user account. Cannot delete the primary admin.
@@ -203,11 +203,11 @@ router.post('/:user_id/update', validateUserId, requireAdmin, async (
  * @param {Types.UserIdParams} - User ID to delete
  * @returns {boolean} - true if deletion successful
  */
-router.delete('/:user_id', validateUserId, requireAdmin, async (
+router.delete('/:userId', validateUserId, requireAdmin, async (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
-    const userId = req.params.user_id;
+    const userId = req.params.userId;
 
     try {
         // Check if user exists
@@ -238,7 +238,7 @@ router.delete('/:user_id', validateUserId, requireAdmin, async (
 /* -------------------- AUTHENTICATED ENDPOINTS -------------------- */
 
 /**
- * GET /api/v1/users/{user_id}
+ * GET /api/v1/users/{userId}
  * Access Control: Requires HTTPBearer authentication (any verified user)
  *
  * Get detailed information about a specific user, including their active status and groups.
@@ -246,11 +246,11 @@ router.delete('/:user_id', validateUserId, requireAdmin, async (
  * @param {Types.UserIdParams} - User ID to retrieve
  * @returns {Types.UserActiveResponse} - user details with active status
  */
-router.get('/:user_id', validateUserId, requireAuth, async (
+router.get('/:userId', validateUserId, requireAuth, async (
     req: Types.TypedRequest<Types.UserIdParams>,
     res: Response<Types.UserActiveResponse | Types.ErrorResponse>
 ) => {
-    let userId = req.params.user_id;
+    let userId = req.params.userId;
 
     try {
         const user = await Users.getUserById(userId, db);
@@ -263,7 +263,7 @@ router.get('/:user_id', validateUserId, requireAuth, async (
 
         const response: Types.UserActiveResponse = {
             username: user.username,
-            is_active: true,  // TODO: Replace with actual activity check
+            isActive: true,  // TODO: Replace with actual activity check
         };
 
         return res.json(response);

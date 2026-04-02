@@ -612,10 +612,7 @@ function _emitSseEvent(
     chatId: string,
     payload: SseEventPayload,
 ): void {
-    const frame: SseEvent = {
-        chat_id: chatId ?? '',
-        data: payload,
-    };
+    const frame: SseEvent = { chatId, data: payload };
     res.write(`event: chat-event\ndata: ${JSON.stringify(frame)}\n\n`);
 }
 

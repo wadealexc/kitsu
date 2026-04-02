@@ -201,7 +201,7 @@
     };
 
     const resolveModel = (id: string): Model | null =>
-        $models.find((m) => m.id === id && m.is_active) ?? null;
+        $models.find((m) => m.id === id && m.isActive) ?? null;
 
     $: if ($selectedModel && chatIdProp !== '') {
         saveSessionSelectedModel($selectedModel);
@@ -240,18 +240,18 @@
 
     // Set selectedModel to current folder model, if set
     const setModelFromFolder = (folder: FolderModel) => {
-        if (folder.data?.model_id && $selectedModel?.id !== folder.data.model_id) {
-            selectedModel.set(resolveModel(folder.data.model_id));
-            console.log('Set selectedModel from folder data:', folder.data.model_id);
+        if (folder.data?.modelId && $selectedModel?.id !== folder.data.modelId) {
+            selectedModel.set(resolveModel(folder.data.modelId));
+            console.log('Set selectedModel from folder data:', folder.data.modelId);
         }
     };
 
     // Sync current folder model with backend
     const persistFolderModel = async (folder: FolderModel, model: Model) => {
-        if (folder.data?.model_id !== model.id) {
+        if (folder.data?.modelId !== model.id) {
             await updateFolderById(localStorage.token, folder.id, {
                 data: {
-                    model_id: model.id
+                    modelId: model.id
                 }
             });
         }
@@ -349,11 +349,11 @@
 
         // If we don't have a model selected, try to resolve a model from other locations
         if (!$selectedModel) {
-            const availableModels = $models.filter((m) => m.is_active);
+            const availableModels = $models.filter((m) => m.isActive);
             let candidateId: string = '';
 
-            if ($selectedFolder?.data?.model_id) {
-                candidateId = $selectedFolder.data.model_id;
+            if ($selectedFolder?.data?.modelId) {
+                candidateId = $selectedFolder.data.modelId;
             } else if (sessionStorage.selectedModel) {
                 candidateId = sessionStorage.selectedModel;
                 sessionStorage.removeItem('selectedModel');
@@ -410,8 +410,8 @@
         chatTitle.set(chatContent.title);
 
         // Load folder data so the folder system prompt is available for resolution
-        if (chat.folder_id) {
-            const folder = await getFolderById(localStorage.token, chat.folder_id).catch(
+        if (chat.folderId) {
+            const folder = await getFolderById(localStorage.token, chat.folderId).catch(
                 () => null
             );
             if (folder) selectedFolder.set(folder);
@@ -567,12 +567,12 @@
         } else if (target === 'model' && $selectedModel) {
             const updated = await updateModelById(localStorage.token, $selectedModel.id, {
                 id: $selectedModel.id,
-                base_model_id: $selectedModel.base_model_id,
+                baseModelId: $selectedModel.baseModelId,
                 name: $selectedModel.name,
                 meta: $selectedModel.meta,
                 params: { ...$selectedModel.params, system: newPrompt },
                 isPublic: $selectedModel.isPublic,
-                is_active: $selectedModel.is_active
+                isActive: $selectedModel.isActive
             });
             models.update((ms) => ms.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
             selectedModel.update((m) =>
@@ -581,12 +581,12 @@
         } else if (target === 'new-model' && $selectedModel) {
             const newModel = await createNewModel(localStorage.token, {
                 id: crypto.randomUUID(),
-                base_model_id: $selectedModel.base_model_id,
+                baseModelId: $selectedModel.baseModelId,
                 name: `${$selectedModel.name} (Custom)`,
                 meta: $selectedModel.meta,
                 params: { ...$selectedModel.params, system: newPrompt },
                 isPublic: false,
-                is_active: true
+                isActive: true
             });
             const freshModels = await getModels(localStorage.token);
             models.set(freshModels);
@@ -730,9 +730,9 @@
             {
                 id: _chatId,
                 title: 'New Chat',
-                updated_at: Date.now() / 1000,
-                created_at: Date.now() / 1000,
-                time_range: ''
+                updatedAt: Date.now() / 1000,
+                createdAt: Date.now() / 1000,
+                timeRange: ''
             },
             ...(list ?? [])
         ]);
@@ -848,7 +848,7 @@
             generationController = controller;
             generating = true;
             autoScroll = true;
-            const contextTotal = model.context_length ?? 0;
+            const contextTotal = model.contextLength ?? 0;
             streamContext.set(null);
             toolProgress = new Map<string, WebSearchProgress>();
             modelStatus = undefined;

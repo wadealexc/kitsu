@@ -23,7 +23,7 @@
                 goto('/models');
             }
 
-            if (!model?.write_access) {
+            if (!model?.writeAccess) {
                 toast.error('You do not have permission to edit this model');
                 goto('/models');
             }

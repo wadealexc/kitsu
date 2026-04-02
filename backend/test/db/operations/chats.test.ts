@@ -186,8 +186,8 @@ describe('Chat Operations', () => {
             const [chat1] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                created_at: now - 1000,
-                updated_at: now - 1000,
+                createdAt: now - 1000,
+                updatedAt: now - 1000,
             }], db);
             assert.ok(chat1);
 
@@ -296,8 +296,8 @@ describe('Chat Operations', () => {
             const [chat] = await Chats.importChats(userId, [{
                 chat: createTestChatObject('Chat 1'),
                 meta: {},
-                created_at: now - 1000,
-                updated_at: now - 1000,
+                createdAt: now - 1000,
+                updatedAt: now - 1000,
             }], db);
             assert.ok(chat);
             const originalUpdatedAt = chat.updatedAt;
@@ -779,8 +779,8 @@ describe('Chat Operations', () => {
             const chatsData: ChatImportForm[] = [
                 {
                     chat: createTestChatObject('Chat'),
-                    created_at: createdAt,
-                    updated_at: updatedAt,
+                    createdAt: createdAt,
+                    updatedAt: updatedAt,
                     meta: {},
                 },
             ];

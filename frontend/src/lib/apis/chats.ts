@@ -5,7 +5,7 @@ import type {
     FolderChatListItemResponse
 } from '@backend/routes/types.js';
 
-export type ChatListItem = ChatTitleIdResponse & { time_range: string };
+export type ChatListItem = ChatTitleIdResponse & { timeRange: string };
 
 import { API_BASE_URL } from '$lib/constants';
 import { getTimeRange } from '$lib/utils';
@@ -23,7 +23,7 @@ export const createNewChat = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ chat, folder_id: folderId ?? null })
+        body: JSON.stringify({ chat, folderId: folderId ?? null })
     });
 
     if (!res.ok) {
@@ -57,7 +57,7 @@ export const importChats = async (token: string, chats: object[]): Promise<ChatR
 export const getChatList = async (
     token: string,
     page: number | null = null,
-    include_folders: boolean = false
+    includeFolders: boolean = false
 ): Promise<ChatListItem[]> => {
     const searchParams = new URLSearchParams();
 
@@ -65,8 +65,8 @@ export const getChatList = async (
         searchParams.append('page', `${page}`);
     }
 
-    if (include_folders) {
-        searchParams.append('include_folders', 'true');
+    if (includeFolders) {
+        searchParams.append('includeFolders', 'true');
     }
 
     const route = '/chats/';
@@ -87,7 +87,7 @@ export const getChatList = async (
     const json: ChatTitleIdResponse[] = await res.json();
     return json.map((chat) => ({
         ...chat,
-        time_range: getTimeRange(chat.updated_at)
+        timeRange: getTimeRange(chat.updatedAt)
     }));
 };
 
@@ -318,7 +318,7 @@ export const updateChatFolderIdById = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ folder_id: folderId })
+        body: JSON.stringify({ folderId })
     });
 
     if (!res.ok) {

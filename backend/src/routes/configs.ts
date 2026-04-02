@@ -20,7 +20,7 @@ router.get('/', (
         default_locale: 'en-US',
         features: {
             auth: true,
-            enable_signup: true,
+            enableSignup: true,
         },
     });
 });

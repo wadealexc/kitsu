@@ -285,7 +285,7 @@ describe('File Routes', () => {
                 .expect(200);
 
             assert.ok(response.body.id);
-            assert.strictEqual(response.body.user_id, userId);
+            assert.strictEqual(response.body.userId, userId);
             assert.strictEqual(response.body.filename, 'test.txt');
             assert.ok(response.body.meta);
             assert.strictEqual(response.body.meta.name, 'test.txt');
@@ -404,12 +404,12 @@ describe('File Routes', () => {
                 .expect(200);
 
             assert.strictEqual(response.body.id, file.id);
-            assert.strictEqual(response.body.user_id, userId);
+            assert.strictEqual(response.body.userId, userId);
             assert.strictEqual(response.body.filename, 'test.txt');
             assert.ok(response.body.data);
             assert.ok(response.body.meta);
-            assert.ok(typeof response.body.created_at === 'number');
-            assert.ok(typeof response.body.updated_at === 'number');
+            assert.ok(typeof response.body.createdAt === 'number');
+            assert.ok(typeof response.body.updatedAt === 'number');
         });
 
         test('should return 401 when user is admin but not authorized', async () => {

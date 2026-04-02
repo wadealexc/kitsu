@@ -51,11 +51,11 @@ router.get('/', requireAuth, async (
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @returns {Types.FolderModel} - full folder object
  */
-router.get('/:folder_id', validateFolderId, requireAuth, async (
+router.get('/:folderId', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
-    const { folder_id: folderId } = req.params;
+    const { folderId } = req.params;
     const userId = req.user!.id;
 
     try {
@@ -133,7 +133,7 @@ router.post('/', requireAuth, async (
  * @body {Types.FolderUpdateForm} - folder update data
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update', validateFolderId, requireAuth, async (
+router.post('/:folderId/update', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderUpdateForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
@@ -145,7 +145,7 @@ router.post('/:folder_id/update', validateFolderId, requireAuth, async (
         });
     }
 
-    const { folder_id: folderId } = req.params;
+    const { folderId } = req.params;
     const userId = req.user!.id;
     const { name, data, meta } = body.data;
 
@@ -184,7 +184,7 @@ router.post('/:folder_id/update', validateFolderId, requireAuth, async (
  * @body {Types.FolderParentIdForm} - new parent ID
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update/parent', validateFolderId, requireAuth, async (
+router.post('/:folderId/update/parent', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderParentIdForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
@@ -196,8 +196,8 @@ router.post('/:folder_id/update/parent', validateFolderId, requireAuth, async (
         });
     }
 
-    const { parent_id: parentId } = body.data;
-    const { folder_id: folderId } = req.params;
+    const { parentId } = body.data;
+    const { folderId } = req.params;
     const userId = req.user!.id;
 
     try {
@@ -234,7 +234,7 @@ router.post('/:folder_id/update/parent', validateFolderId, requireAuth, async (
  * @body {Types.FolderIsExpandedForm} - expansion state
  * @returns {Types.FolderModel} - updated folder object
  */
-router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, async (
+router.post('/:folderId/update/expanded', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, Types.FolderIsExpandedForm>,
     res: Response<Types.FolderModel | Types.ErrorResponse>
 ) => {
@@ -246,9 +246,9 @@ router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, async 
         });
     }
 
-    const { folder_id: folderId } = req.params;
+    const { folderId } = req.params;
     const userId = req.user!.id;
-    const { is_expanded: isExpanded } = body.data;
+    const { isExpanded } = body.data;
 
     try {
         const folder = await Folders.updateFolderExpanded(
@@ -284,7 +284,7 @@ router.post('/:folder_id/update/expanded', validateFolderId, requireAuth, async 
  * @query {Types.FolderDeleteQuery} - deletion options
  * @returns {boolean} - true on success
  */
-router.delete('/:folder_id', validateFolderId, requireAuth, async (
+router.delete('/:folderId', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, any, Types.FolderDeleteQuery>,
     res: Response<boolean | Types.ErrorResponse>
 ) => {
@@ -296,9 +296,9 @@ router.delete('/:folder_id', validateFolderId, requireAuth, async (
         });
     }
 
-    const { folder_id: folderId } = req.params;
+    const { folderId } = req.params;
     const userId = req.user!.id;
-    const { delete_contents: deleteContents } = query.data;
+    const { deleteContents } = query.data;
 
     try {
         // Check if folder exists
@@ -350,14 +350,14 @@ router.delete('/:folder_id', validateFolderId, requireAuth, async (
 function toFolderModel(folder: Folder): Types.FolderModel {
     return {
         id: folder.id,
-        parent_id: folder.parentId,
-        user_id: folder.userId,
+        parentId: folder.parentId,
+        userId: folder.userId,
         name: folder.name,
         meta: folder.meta,
         data: folder.data,
-        is_expanded: folder.isExpanded,
-        created_at: folder.createdAt,
-        updated_at: folder.updatedAt,
+        isExpanded: folder.isExpanded,
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
     };
 }
 
@@ -370,10 +370,10 @@ function toFolderNameIdResponse(folder: Folder): Types.FolderNameIdResponse {
         id: folder.id,
         name: folder.name,
         meta: folder.meta,
-        parent_id: folder.parentId,
-        is_expanded: folder.isExpanded,
-        created_at: folder.createdAt,
-        updated_at: folder.updatedAt,
+        parentId: folder.parentId,
+        isExpanded: folder.isExpanded,
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
     };
 }
 

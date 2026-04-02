@@ -74,7 +74,7 @@
 
                                     <div class="text-xs text-gray-500">
                                         {'Created at'}
-                                        {dayjs(selectedUser.created_at * 1000).format('LL')}
+                                        {dayjs(selectedUser.createdAt * 1000).format('LL')}
                                     </div>
                                 </div>
 

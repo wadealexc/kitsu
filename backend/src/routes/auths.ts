@@ -190,8 +190,8 @@ router.get('/', requireAuth, (
         username: user.username,
         role: user.role,
         token: token,
-        token_type: 'Bearer',
-        expires_at: JWT.getTokenExpiration(token),
+        tokenType: 'Bearer',
+        expiresAt: JWT.getTokenExpiration(token),
     });
 });
 
@@ -258,7 +258,7 @@ router.post('/update/password', requireAuth, async (
         });
     }
 
-    const { password, new_password: newPassword } = body.data;
+    const { password, newPassword } = body.data;
     const user = req.user!;
 
     try {
@@ -364,8 +364,8 @@ function toSessionUserResponse(
         username: user.username,
         role: user.role,
         token,
-        token_type: 'Bearer',
-        expires_at: expiresAt,
+        tokenType: 'Bearer',
+        expiresAt: expiresAt,
     };
 }
 

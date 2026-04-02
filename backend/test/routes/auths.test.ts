@@ -53,9 +53,9 @@ describe('POST /api/v1/auths/signup', () => {
         assert.ok(res.body);
         assert.strictEqual(res.body.username, 'admin');
         assert.strictEqual(res.body.role, 'admin'); // First user is admin
-        assert.strictEqual(res.body.token_type, 'Bearer');
+        assert.strictEqual(res.body.tokenType, 'Bearer');
         assert.ok(res.body.token);
-        assert.ok(res.body.expires_at);
+        assert.ok(res.body.expiresAt);
     });
 
     test('creates subsequent users with default role', async () => {
@@ -210,14 +210,14 @@ describe('POST /api/v1/auths/signup', () => {
             });
 
         assert.strictEqual(res.status, 200);
-        assert.ok(res.body.expires_at);
-        assert.strictEqual(typeof res.body.expires_at, 'number');
+        assert.ok(res.body.expiresAt);
+        assert.strictEqual(typeof res.body.expiresAt, 'number');
 
         // Should be approximately 7 days in the future
         const now = Math.floor(Date.now() / 1000);
         const sevenDays = 7 * 24 * 3600;
-        assert.ok(res.body.expires_at > now);
-        assert.ok(res.body.expires_at < now + sevenDays + 60); // Allow 1 min variance
+        assert.ok(res.body.expiresAt > now);
+        assert.ok(res.body.expiresAt < now + sevenDays + 60); // Allow 1 min variance
     });
 });
 
@@ -253,8 +253,8 @@ describe('POST /api/v1/auths/signin', () => {
         assert.ok(res.body);
         assert.strictEqual(res.body.username, testUsername);
         assert.ok(res.body.token);
-        assert.strictEqual(res.body.token_type, 'Bearer');
-        assert.ok(res.body.expires_at);
+        assert.strictEqual(res.body.tokenType, 'Bearer');
+        assert.ok(res.body.expiresAt);
     });
 
     test('generates valid JWT token', async () => {
@@ -399,7 +399,7 @@ describe('POST /api/v1/auths/signin', () => {
 
         assert.strictEqual(res.status, 200);
         const decoded = JWT.verifyToken(res.body.token);
-        assert.strictEqual(res.body.expires_at, decoded.exp);
+        assert.strictEqual(res.body.expiresAt, decoded.exp);
     });
 });
 
@@ -436,7 +436,7 @@ describe('GET /api/v1/auths/', () => {
         assert.strictEqual(res.body.username, 'user');
         assert.ok(res.body.role);
         assert.ok(res.body.token);
-        assert.strictEqual(res.body.token_type, 'Bearer');
+        assert.strictEqual(res.body.tokenType, 'Bearer');
     });
 
     test('refreshes cookie on session check', async () => {
@@ -459,11 +459,11 @@ describe('GET /api/v1/auths/', () => {
             .set('Authorization', `Bearer ${testToken}`);
 
         assert.strictEqual(res.status, 200);
-        assert.ok(res.body.expires_at);
-        assert.strictEqual(typeof res.body.expires_at, 'number');
+        assert.ok(res.body.expiresAt);
+        assert.strictEqual(typeof res.body.expiresAt, 'number');
 
         const decoded = JWT.verifyToken(testToken);
-        assert.strictEqual(res.body.expires_at, decoded.exp);
+        assert.strictEqual(res.body.expiresAt, decoded.exp);
     });
 
     test('rejects request without token', async () => {
@@ -920,7 +920,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: testPassword,
-                new_password: newPassword,
+                newPassword: newPassword,
             });
 
         assert.strictEqual(res.status, 200);
@@ -952,7 +952,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: testPassword,
-                new_password: testPassword,
+                newPassword: testPassword,
             });
 
         assert.strictEqual(res.status, 200);
@@ -974,7 +974,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: 'wrongpassword',
-                new_password: 'newpassword456',
+                newPassword: 'newpassword456',
             });
 
         assert.strictEqual(res.status, 400);
@@ -996,7 +996,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: testPassword,
-                new_password: 'short',
+                newPassword: 'short',
             });
 
         assert.strictEqual(res.status, 400);
@@ -1013,7 +1013,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: testPassword,
-                new_password: tooLongPassword,
+                newPassword: tooLongPassword,
             });
 
         assert.strictEqual(res.status, 400);
@@ -1026,7 +1026,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .post('/api/v1/auths/update/password')
             .send({
                 password: testPassword,
-                new_password: 'newpassword456',
+                newPassword: 'newpassword456',
             });
 
         assert.strictEqual(res.status, 401);
@@ -1039,7 +1039,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', 'Bearer invalid-token')
             .send({
                 password: testPassword,
-                new_password: 'newpassword456',
+                newPassword: 'newpassword456',
             });
 
         assert.strictEqual(res.status, 401);
@@ -1051,7 +1051,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .post('/api/v1/auths/update/password')
             .set('Authorization', `Bearer ${testToken}`)
             .send({
-                new_password: 'newpassword456',
+                newPassword: 'newpassword456',
             });
 
         assert.strictEqual(res.status, 400);
@@ -1076,7 +1076,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: '',
-                new_password: 'newpassword456',
+                newPassword: 'newpassword456',
             });
 
         assert.strictEqual(res.status, 400);
@@ -1088,7 +1088,7 @@ describe('POST /api/v1/auths/update/password', () => {
             .set('Authorization', `Bearer ${testToken}`)
             .send({
                 password: testPassword,
-                new_password: '',
+                newPassword: '',
             });
 
         assert.strictEqual(res.status, 400);

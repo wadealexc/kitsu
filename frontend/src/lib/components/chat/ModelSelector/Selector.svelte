@@ -23,7 +23,7 @@
     let selectedModel: Model | null = null;
     $: selectedModel = $models.find((model) => model.id === value) ?? null;
 
-    $: filteredModels = $models.filter((model) => model.is_active);
+    $: filteredModels = $models.filter((model) => model.isActive);
 
     $: if (show) {
         resetView();

@@ -85,7 +85,7 @@
 
     const createFromBaseModel = (baseModel: ModelResponse) => {
         sessionStorage.model = JSON.stringify({
-            base_model_id: baseModel.id,
+            baseModelId: baseModel.id,
             name: `${baseModel.name}-custom`,
             params: baseModel.params ?? {},
             meta: { description: '' }
@@ -95,7 +95,7 @@
 
     const createFromSharedModel = (model: Model) => {
         sessionStorage.model = JSON.stringify({
-            base_model_id: model.base_model_id,
+            baseModelId: model.baseModelId,
             name: `${model.name} (Mine)`,
             params: model.params ?? {},
             meta: { description: '' }
@@ -214,12 +214,12 @@
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <div
-                        class="flex transition rounded-2xl w-full p-2.5 {model.user_id === $user?.id
+                        class="flex transition rounded-2xl w-full p-2.5 {model.userId === $user?.id
                             ? 'cursor-pointer dark:hover:bg-gray-850/50 hover:bg-gray-50'
                             : 'cursor-default dark:hover:bg-gray-850/50 hover:bg-gray-50'}"
                         id="model-item-{model.id}"
                         on:click={() => {
-                            if (model.user_id === $user?.id) {
+                            if (model.userId === $user?.id) {
                                 goto(`/models/edit?id=${encodeURIComponent(model.id)}`);
                             }
                         }}
@@ -245,9 +245,9 @@
                                             </Tooltip>
 
                                             <div class="flex items-center gap-1">
-                                                {#if model.user_id === $user?.id}
+                                                {#if model.userId === $user?.id}
                                                     <div
-                                                        class="flex {model.is_active
+                                                        class="flex {model.isActive
                                                             ? ''
                                                             : 'text-gray-500'}"
                                                     >
@@ -286,12 +286,12 @@
                                                                 }}
                                                             >
                                                                 <Tooltip
-                                                                    content={model.is_active
+                                                                    content={model.isActive
                                                                         ? 'Enabled'
                                                                         : 'Disabled'}
                                                                 >
                                                                     <Switch
-                                                                        bind:state={model.is_active}
+                                                                        bind:state={model.isActive}
                                                                         on:change={async () => {
                                                                             toggleModelById(
                                                                                 localStorage.token,
@@ -329,13 +329,13 @@
 
                                         <div class=" flex gap-1 pr-2 -mt-1 items-center">
                                             <Tooltip
-                                                content={model.base_model_id}
+                                                content={model.baseModelId}
                                                 className=" w-fit text-left"
                                                 placement="top-start"
                                             >
                                                 <div class="flex gap-1 text-xs overflow-hidden">
                                                     <div class="line-clamp-1">
-                                                        {model.base_model_id}
+                                                        {model.baseModelId}
                                                     </div>
                                                 </div>
                                             </Tooltip>

@@ -121,20 +121,20 @@ export const requireVerified = async <P = {}, B = any, Q = any>(
 /* -------------------- PARAMETER VALIDATION MIDDLEWARE -------------------- */
 
 /**
- * UUID validation middleware for :user_id parameter.
- * If user_id doesn't match UUID v4 format, skip to next route with next('route').
- * This prevents :user_id from matching non-UUID routes like /permissions or /search.
+ * UUID validation middleware for :userId parameter.
+ * If userId doesn't match UUID v4 format, skip to next route with next('route').
+ * This prevents :userId from matching non-UUID routes like /permissions or /search.
  *
- * Generic constraint allows this to work with any params type that includes user_id.
+ * Generic constraint allows this to work with any params type that includes userId.
  *
  * @returns next('route') if validation fails (skips to next route)
  */
-export const validateUserId = <P extends { user_id: Types.UserId }>(
+export const validateUserId = <P extends { userId: Types.UserId }>(
     req: TypedRequest<P>,
     res: Response,
     next: NextFunction
 ): void => {
-    const parsed = Types.UserIdSchema.safeParse(req.params.user_id);
+    const parsed = Types.UserIdSchema.safeParse(req.params.userId);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route (e.g., /permissions, /search)
@@ -169,20 +169,20 @@ export const validateChatId = <P extends { id: Types.ChatId }>(
 };
 
 /**
- * Share ID validation middleware for :share_id parameter.
+ * Share ID validation middleware for :shareId parameter.
  * Validates share ID format (UUID v4).
  * If validation fails, skip to next route with next('route').
  *
- * Generic constraint allows this to work with any params type that includes share_id.
+ * Generic constraint allows this to work with any params type that includes shareId.
  *
  * @returns next('route') if validation fails (skips to next route)
  */
-export const validateShareId = <P extends { share_id: Types.ShareId }>(
+export const validateShareId = <P extends { shareId: Types.ShareId }>(
     req: TypedRequest<P>,
     res: Response,
     next: NextFunction
 ): void => {
-    const parsed = Types.ShareIdSchema.safeParse(req.params.share_id);
+    const parsed = Types.ShareIdSchema.safeParse(req.params.shareId);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route
@@ -192,20 +192,20 @@ export const validateShareId = <P extends { share_id: Types.ShareId }>(
 };
 
 /**
- * Folder ID validation middleware for :folder_id parameter.
+ * Folder ID validation middleware for :folderId parameter.
  * Validates folder ID format (UUID v4).
  * If validation fails, skip to next route with next('route').
  *
- * Generic constraint allows this to work with any params type that includes folder_id.
+ * Generic constraint allows this to work with any params type that includes folderId.
  *
  * @returns next('route') if validation fails (skips to next route)
  */
-export const validateFolderId = <P extends { folder_id: Types.FolderId }>(
+export const validateFolderId = <P extends { folderId: Types.FolderId }>(
     req: TypedRequest<P>,
     res: Response,
     next: NextFunction
 ): void => {
-    const parsed = Types.FolderIdSchema.safeParse(req.params.folder_id);
+    const parsed = Types.FolderIdSchema.safeParse(req.params.folderId);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route
@@ -215,20 +215,20 @@ export const validateFolderId = <P extends { folder_id: Types.FolderId }>(
 };
 
 /**
- * File ID validation middleware for :file_id parameter.
+ * File ID validation middleware for :fileId parameter.
  * Validates file ID format (UUID v4).
  * If validation fails, skip to next route with next('route').
  *
- * Generic constraint allows this to work with any params type that includes file_id.
+ * Generic constraint allows this to work with any params type that includes fileId.
  *
  * @returns next('route') if validation fails (skips to next route)
  */
-export const validateFileId = <P extends { file_id: Types.FileId }>(
+export const validateFileId = <P extends { fileId: Types.FileId }>(
     req: TypedRequest<P>,
     res: Response,
     next: NextFunction
 ): void => {
-    const parsed = Types.FileIdSchema.safeParse(req.params.file_id);
+    const parsed = Types.FileIdSchema.safeParse(req.params.fileId);
 
     if (!parsed.success) {
         return next('route'); // Skip to next route
@@ -238,7 +238,7 @@ export const validateFileId = <P extends { file_id: Types.FileId }>(
 };
 
 /**
- * Combined Chat ID and Message ID validation middleware for routes like :id/messages/:message_id.
+ * Combined Chat ID and Message ID validation middleware for routes like :id/messages/:messageId.
  * Validates both chat ID format (UUID v4 OR "local:<socket_id>") and message ID format (UUID v4).
  * If either validation fails, skip to next route with next('route').
  *
@@ -246,13 +246,13 @@ export const validateFileId = <P extends { file_id: Types.FileId }>(
  *
  * @returns next('route') if validation fails (skips to next route)
  */
-export const validateChatAndMessageId = <P extends { id: Types.ChatId; message_id: Types.MessageId }>(
+export const validateChatAndMessageId = <P extends { id: Types.ChatId; messageId: Types.MessageId }>(
     req: TypedRequest<P>,
     res: Response,
     next: NextFunction
 ): void => {
     const chatIdParsed = Types.ChatIdSchema.safeParse(req.params.id);
-    const messageIdParsed = Types.MessageIdSchema.safeParse(req.params.message_id);
+    const messageIdParsed = Types.MessageIdSchema.safeParse(req.params.messageId);
 
     if (!chatIdParsed.success || !messageIdParsed.success) {
         return next('route'); // Skip to next route

@@ -168,7 +168,7 @@
                                     {mode === 'signin' ? 'Sign in' : 'Create Account'}
                                 </button>
 
-                                {#if $config.features.enable_signup}
+                                {#if $config.features.enableSignup}
                                     <div class=" mt-4 text-sm text-center">
                                         {mode === 'signin'
                                             ? "Don't have an account?"

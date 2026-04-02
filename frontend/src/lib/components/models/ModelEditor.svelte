@@ -28,7 +28,7 @@
 
     let info: ModelForm = {
         id: '',
-        base_model_id: '',
+        baseModelId: '',
         name: '',
         meta: {
             description: undefined
@@ -37,7 +37,7 @@
             system: ''
         },
         isPublic: true,
-        is_active: true
+        isActive: true
     };
 
     $: if (!edit) {
@@ -189,7 +189,7 @@
                                     <div>
                                         <select
                                             class="dark:bg-gray-900 text-sm w-full bg-transparent outline-hidden"
-                                            bind:value={info.base_model_id}
+                                            bind:value={info.baseModelId}
                                             required
                                         >
                                             <option value={null} class=" text-gray-900"
@@ -204,7 +204,7 @@
                                     </div>
                                 {:else}
                                     <div class="text-sm text-gray-600 dark:text-gray-400">
-                                        {info.base_model_id ?? '—'}
+                                        {info.baseModelId ?? '—'}
                                     </div>
                                 {/if}
                             </div>

@@ -15,11 +15,11 @@ const DEFAULT_CHAT_TITLE = "New Chat";
 
 // Generic type for Express requests with typed params, body, and/or query
 // Usage:
-//   TypedRequest<{ user_id: string }>                    - only path params
-//   TypedRequest<{}, SomeBodyType>                       - only body
-//   TypedRequest<{ user_id: string }, SomeBody>          - params and body
-//   TypedRequest<{}, any, SomeQueryType>                 - only query params
-//   TypedRequest<{ user_id: string }, any, SomeQuery>    - params and query
+//   TypedRequest<{ userId: string }>                    - only path params
+//   TypedRequest<{}, SomeBodyType>                      - only body
+//   TypedRequest<{ userId: string }, SomeBody>          - params and body
+//   TypedRequest<{}, any, SomeQueryType>                - only query params
+//   TypedRequest<{ userId: string }, any, SomeQuery>    - params and query
 export type TypedRequest<P = {}, B = any, Q = any> = Request<P, any, B, Q>;
 
 // Chat ID schema (UUID v4 format OR "local:<socket_id>" for temporary chats)
@@ -51,11 +51,11 @@ export type FileId = z.infer<typeof FileIdSchema>;
 
 // Path parameter types
 export type ChatIdParams = { id: ChatId };
-export type UserIdParams = { user_id: UserId };
-export type FolderIdParams = { folder_id: FolderId };
-export type FileIdParams = { file_id: FileId };
-export type ShareIdParams = { share_id: ShareId };
-export type MessageIdParams = { id: ChatId; message_id: MessageId };
+export type UserIdParams = { userId: UserId };
+export type FolderIdParams = { folderId: FolderId };
+export type FileIdParams = { fileId: FileId };
+export type ShareIdParams = { shareId: ShareId };
+export type MessageIdParams = { id: ChatId; messageId: MessageId };
 
 /* -------------------- COMMON SCHEMAS -------------------- */
 
@@ -95,7 +95,7 @@ export type SignupForm = z.infer<typeof SignupFormSchema>;
 // Signout
 export const SignoutResponseSchema = z.object({
     status: z.boolean(),
-    redirect_url: z.string().nullable().optional(),
+    redirectUrl: z.string().nullable().optional(),
 });
 export type SignoutResponse = z.infer<typeof SignoutResponseSchema>;
 
@@ -105,8 +105,8 @@ export const SessionUserResponseSchema = z.object({
     username: z.string(),
     role: UserRoleSchema,
     token: z.string(),
-    token_type: z.string(),
-    expires_at: z.number().nullable().optional(),
+    tokenType: z.string(),
+    expiresAt: z.number().nullable().optional(),
 });
 export type SessionUserResponse = z.infer<typeof SessionUserResponseSchema>;
 
@@ -126,7 +126,7 @@ export type UpdateProfileResponse = z.infer<typeof UpdateProfileResponseSchema>;
 // Password update
 export const UpdatePasswordFormSchema = z.object({
     password: z.string(),
-    new_password: z.string(),
+    newPassword: z.string(),
 });
 export type UpdatePasswordForm = z.infer<typeof UpdatePasswordFormSchema>;
 
@@ -192,9 +192,9 @@ export const UserModelSchema = z.object({
     timezone: z.string().optional(),
     info: z.record(z.string(), z.any()).optional(),
     settings: UserSettingsSchema.optional(),
-    last_active_at: z.number(),
-    updated_at: z.number(),
-    created_at: z.number(),
+    lastActiveAt: z.number(),
+    updatedAt: z.number(),
+    createdAt: z.number(),
 });
 export type UserModel = z.infer<typeof UserModelSchema>;
 
@@ -223,7 +223,7 @@ export type UserModelListResponse = z.infer<typeof UserModelListResponseSchema>;
 // User active response
 export const UserActiveResponseSchema = z.object({
     username: z.string(),
-    is_active: z.boolean(),
+    isActive: z.boolean(),
 });
 export type UserActiveResponse = z.infer<typeof UserActiveResponseSchema>;
 
@@ -238,7 +238,7 @@ export type UserUpdateForm = z.infer<typeof UserUpdateFormSchema>;
 // User list/search query parameters
 export const UserListQuerySchema = z.object({
     query: z.string().optional(),
-    order_by: z.enum(['role', 'username', 'last_active_at', 'created_at']).optional(),
+    orderBy: z.enum(['role', 'username', 'lastActiveAt', 'createdAt']).optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
 });
@@ -301,16 +301,16 @@ export type UserResponse = z.infer<typeof UserResponseSchema>;
 // Model response (standard database representation)
 export const ModelResponseSchema = z.object({
     id: z.string().max(256),
-    user_id: UserIdSchema,
-    base_model_id: z.string(),
+    userId: UserIdSchema,
+    baseModelId: z.string(),
     name: z.string(),
     params: ModelParamsSchema,
     meta: ModelMetaSchema,
     isPublic: z.boolean(),
-    is_active: z.boolean(),
-    updated_at: z.number(),
-    created_at: z.number(),
-    context_length: z.number().optional(),
+    isActive: z.boolean(),
+    updatedAt: z.number(),
+    createdAt: z.number(),
+    contextLength: z.number().optional(),
 });
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
@@ -323,7 +323,7 @@ export type ModelStatusResponse = z.infer<typeof ModelStatusResponseSchema>;
 // Model access response (includes user info and write access flag)
 export const ModelAccessResponseSchema = ModelResponseSchema.extend({
     user: UserResponseSchema.nullable(),
-    write_access: z.boolean(),
+    writeAccess: z.boolean(),
 });
 export type ModelAccessResponse = z.infer<typeof ModelAccessResponseSchema>;
 
@@ -337,12 +337,12 @@ export type ModelAccessListResponse = z.infer<typeof ModelAccessListResponseSche
 // Model form (for create/update)
 export const ModelFormSchema = z.object({
     id: z.string().max(256),
-    base_model_id: z.string().max(256),
+    baseModelId: z.string().max(256),
     name: z.string().max(256),
     meta: ModelMetaSchema,
     params: ModelParamsSchema,
     isPublic: z.boolean().default(true),
-    is_active: z.boolean().default(true),
+    isActive: z.boolean().default(true),
 });
 export type ModelForm = z.infer<typeof ModelFormSchema>;
 
@@ -361,8 +361,8 @@ export type ModelsQuery = z.infer<typeof ModelsQuerySchema>;
 // Query parameters for GET /api/v1/models/list
 export const ModelListQuerySchema = z.object({
     query: z.string().optional(),
-    view_option: z.enum(['created', 'shared']).optional(),
-    order_by: z.enum(['name', 'created_at', 'updated_at']).optional(),
+    viewOption: z.enum(['created', 'shared']).optional(),
+    orderBy: z.enum(['name', 'createdAt', 'updatedAt']).optional(),
     direction: z.enum(['asc', 'desc']).optional(),
     page: z.coerce.number().int().min(1).default(1),
 }).passthrough();
@@ -380,8 +380,8 @@ export type ModelIdQuery = z.infer<typeof ModelIdQuerySchema>;
 export const ChatTitleIdResponseSchema = z.object({
     id: ChatIdSchema,
     title: z.string(),
-    updated_at: z.number(),
-    created_at: z.number(),
+    updatedAt: z.number(),
+    createdAt: z.number(),
 });
 export type ChatTitleIdResponse = z.infer<typeof ChatTitleIdResponseSchema>;
 
@@ -389,7 +389,7 @@ export type ChatTitleIdResponse = z.infer<typeof ChatTitleIdResponseSchema>;
 export const FolderChatListItemResponseSchema = z.object({
     id: ChatIdSchema,
     title: z.string(),
-    updated_at: z.number(),
+    updatedAt: z.number(),
 });
 export type FolderChatListItemResponse = z.infer<typeof FolderChatListItemResponseSchema>;
 
@@ -534,38 +534,38 @@ export const ChatObjectUpdateSchema = z.object({
 // Chat form (for updating chats)
 export const ChatFormSchema = z.object({
     chat: ChatObjectUpdateSchema,
-    folder_id: FolderIdSchema.nullable().optional(),
+    folderId: FolderIdSchema.nullable().optional(),
 });
 export type ChatForm = z.infer<typeof ChatFormSchema>;
 
 // New Chat Form (for creating chats)
 export const NewChatFormSchema = z.object({
     chat: ChatObjectSchema,
-    folder_id: FolderIdSchema.nullable(),
+    folderId: FolderIdSchema.nullable(),
 });
 export type NewChatForm = z.infer<typeof NewChatFormSchema>;
 
 // Chat response (complete chat object with all fields)
 export const ChatResponseSchema = z.object({
     id: ChatIdSchema,
-    user_id: UserIdSchema,
+    userId: UserIdSchema,
     title: z.string(),
     chat: ChatObjectSchema,
-    updated_at: z.number(),
-    created_at: z.number(),
-    share_id: z.string().nullable().optional(),
+    updatedAt: z.number(),
+    createdAt: z.number(),
+    shareId: z.string().nullable().optional(),
     meta: z.record(z.string(), z.any()).optional().default({}),
-    folder_id: FolderIdSchema.nullable().optional(),
+    folderId: FolderIdSchema.nullable().optional(),
 });
 export type ChatResponse = z.infer<typeof ChatResponseSchema>;
 
 // Chat import form (for bulk importing chats with preserved timestamps)
 export const ChatImportFormSchema = z.object({
     chat: ChatObjectSchema,
-    folder_id: FolderIdSchema.nullable().optional(),
+    folderId: FolderIdSchema.nullable().optional(),
     meta: z.record(z.string(), z.any()).optional().default({}),
-    created_at: z.number().optional(),
-    updated_at: z.number().optional(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
 });
 export type ChatImportForm = z.infer<typeof ChatImportFormSchema>;
 
@@ -577,7 +577,7 @@ export type CloneForm = z.infer<typeof CloneFormSchema>;
 
 // Chat folder ID form (for moving chats to folders)
 export const ChatFolderIdFormSchema = z.object({
-    folder_id: FolderIdSchema.nullable().optional(),
+    folderId: FolderIdSchema.nullable().optional(),
 });
 export type ChatFolderIdForm = z.infer<typeof ChatFolderIdFormSchema>;
 
@@ -597,7 +597,7 @@ export type EventForm = z.infer<typeof EventFormSchema>;
 // Query parameters for GET /api/v1/chats/ and /api/v1/chats/list
 export const ChatListQuerySchema = z.object({
     page: z.coerce.number().int().min(1).optional(),
-    include_folders: z.stringbool().optional().default(false),
+    includeFolders: z.stringbool().optional().default(false),
 });
 export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;
 
@@ -605,7 +605,7 @@ export type ChatListQuery = z.infer<typeof ChatListQuerySchema>;
 export const UserChatListQuerySchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
     query: z.string().optional(),
-    order_by: z.string().optional(),
+    orderBy: z.string().optional(),
     direction: z.enum(['asc', 'desc']).optional(),
 });
 export type UserChatListQuery = z.infer<typeof UserChatListQuerySchema>;
@@ -618,7 +618,7 @@ export type FolderChatListQuery = z.infer<typeof FolderChatListQuerySchema>;
 
 // Query parameters for GET /api/v1/chats/stats/usage
 export const ChatUsageStatsQuerySchema = z.object({
-    items_per_page: z.coerce.number().int().min(1).default(50),
+    itemsPerPage: z.coerce.number().int().min(1).default(50),
     page: z.coerce.number().int().min(1).default(1),
 });
 export type ChatUsageStatsQuery = z.infer<typeof ChatUsageStatsQuerySchema>;
@@ -720,7 +720,7 @@ export interface FolderFileItem {
     /** Display name */
     name: string;
     /** Collection identifier (for files that belong to collections) */
-    collection_name?: string;
+    collectionName?: string;
     /** Resource URL */
     url?: string;
     /** Upload status (present during upload operations) */
@@ -739,7 +739,7 @@ export const FolderFileItemSchema: z.ZodType<FolderFileItem> = z.object({
     type: z.enum(['file', 'collection']),
     id: z.string(),
     name: z.string(),
-    collection_name: z.string().optional(),
+    collectionName: z.string().optional(),
     url: z.string().optional(),
     status: z.enum(['uploading', 'uploaded']).optional(),
     size: z.number().optional(),
@@ -755,13 +755,13 @@ export interface FolderData {
     /** Files and knowledge collections attached to this folder */
     files?: FolderFileItem[];
     /** Selected model ID for this folder */
-    model_id?: string;
+    modelId?: string;
 }
 
 export const FolderDataSchema: z.ZodType<FolderData> = z.object({
     systemPrompt: z.string().optional(),
     files: z.array(FolderFileItemSchema).optional(),
-    model_id: z.string().optional(),
+    modelId: z.string().optional(),
 });
 
 /** Folder metadata for UI presentation */
@@ -785,24 +785,24 @@ export const FolderNameIdResponseSchema = z.object({
     id: FolderIdSchema,
     name: z.string(),
     meta: FolderMetadataResponseSchema.nullable().optional(),
-    parent_id: FolderIdSchema.nullable().optional(),
-    is_expanded: z.boolean().default(false),
-    created_at: z.number(),
-    updated_at: z.number(),
+    parentId: FolderIdSchema.nullable().optional(),
+    isExpanded: z.boolean().default(false),
+    createdAt: z.number(),
+    updatedAt: z.number(),
 });
 export type FolderNameIdResponse = z.infer<typeof FolderNameIdResponseSchema>;
 
 // Full folder model (complete folder representation)
 export const FolderModelSchema = z.object({
     id: FolderIdSchema,
-    parent_id: FolderIdSchema.nullable().optional(),
-    user_id: UserIdSchema,
+    parentId: FolderIdSchema.nullable().optional(),
+    userId: UserIdSchema,
     name: z.string(),
     meta: FolderMetaSchema.nullable().optional(),
     data: FolderDataSchema.nullable().optional(),
-    is_expanded: z.boolean().default(false),
-    created_at: z.number(),
-    updated_at: z.number(),
+    isExpanded: z.boolean().default(false),
+    createdAt: z.number(),
+    updatedAt: z.number(),
 });
 export type FolderModel = z.infer<typeof FolderModelSchema>;
 
@@ -824,19 +824,19 @@ export type FolderUpdateForm = z.infer<typeof FolderUpdateFormSchema>;
 
 // Folder parent ID form (for moving folders)
 export const FolderParentIdFormSchema = z.object({
-    parent_id: FolderIdSchema.nullable().optional(),
+    parentId: FolderIdSchema.nullable().optional(),
 });
 export type FolderParentIdForm = z.infer<typeof FolderParentIdFormSchema>;
 
 // Folder is_expanded form (for updating UI expansion state)
 export const FolderIsExpandedFormSchema = z.object({
-    is_expanded: z.boolean(),
+    isExpanded: z.boolean(),
 });
 export type FolderIsExpandedForm = z.infer<typeof FolderIsExpandedFormSchema>;
 
 // Query parameters for DELETE /api/v1/folders/:id
 export const FolderDeleteQuerySchema = z.object({
-    delete_contents: z.stringbool().default(true),
+    deleteContents: z.stringbool().default(true),
 });
 export type FolderDeleteQuery = z.infer<typeof FolderDeleteQuerySchema>;
 
@@ -859,12 +859,12 @@ export type FileData = z.infer<typeof FileDataSchema>;
 // File model response (excludes internal path, hash, and access_control fields)
 export const FileModelResponseSchema = z.object({
     id: FileIdSchema,
-    user_id: UserIdSchema,
+    userId: UserIdSchema,
     filename: z.string(),
     data: FileDataSchema.nullable(),
     meta: FileMetaSchema,
-    created_at: z.number(),
-    updated_at: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
 });
 export type FileModelResponse = z.infer<typeof FileModelResponseSchema>;
 
@@ -886,7 +886,7 @@ export type FileExtractResponse = z.infer<typeof FileExtractResponseSchema>;
 // Version information response
 export const VersionInfoSchema = z.object({
     version: z.string(),
-    deployment_id: z.string(),
+    deploymentId: z.string(),
 });
 export type VersionInfo = z.infer<typeof VersionInfoSchema>;
 

@@ -35,7 +35,7 @@ export type Config = {
     name: string;
     features: {
         auth: boolean;
-        enable_signup: boolean;
+        enableSignup: boolean;
     };
 };
 
@@ -43,7 +43,7 @@ const DEFAULT_CONFIG: Config = {
     name: 'kitsu',
     features: {
         auth: true,
-        enable_signup: true
+        enableSignup: true
     }
 };
 

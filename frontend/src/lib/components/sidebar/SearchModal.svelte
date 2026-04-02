@@ -312,14 +312,14 @@
                     {/if}
 
                     {#each chatList as chat, idx (chat.id)}
-                        {#if idx === 0 || (idx > 0 && chat.time_range !== chatList[idx - 1].time_range)}
+                        {#if idx === 0 || (idx > 0 && chat.timeRange !== chatList[idx - 1].timeRange)}
                             <div
                                 class="w-full text-xs text-gray-500 dark:text-gray-500 font-medium {idx ===
                                 0
                                     ? ''
                                     : 'pt-5'} pb-2 px-2"
                             >
-                                {chat.time_range}
+                                {chat.timeRange}
                             </div>
                         {/if}
 
@@ -349,7 +349,7 @@
                             </div>
 
                             <div class=" pl-3 shrink-0 text-gray-500 dark:text-gray-400 text-xs">
-                                {dayjs(chat?.updated_at * 1000).calendar(null, {
+                                {dayjs(chat?.updatedAt * 1000).calendar(null, {
                                     sameDay: '[Today]',
                                     nextDay: '[Tomorrow]',
                                     nextWeek: 'dddd',

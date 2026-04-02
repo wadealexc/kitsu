@@ -96,6 +96,6 @@ export type SseEventPayload =
     | SseToolCallProgressPayload;
 
 export type SseEvent = {
-    chat_id: string;
+    chatId: string;
     data: SseEventPayload;
 };

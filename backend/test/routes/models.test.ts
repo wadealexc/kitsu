@@ -98,7 +98,7 @@ describe('GET /api/v1/models/', () => {
         assert.ok(response.body);
         assert.ok(Array.isArray(response.body));
         assert.strictEqual(response.body.length, 1);
-        assert.strictEqual(response.body[0].base_model_id, 'qwen3-vl-30b');
+        assert.strictEqual(response.body[0].baseModelId, 'qwen3-vl-30b');
     });
 
     test('should accessible custom models for admin', async () => {
@@ -113,12 +113,12 @@ describe('GET /api/v1/models/', () => {
         assert.ok(response.body);
         assert.ok(Array.isArray(response.body));
         assert.strictEqual(response.body.length, 1); // 2 base + 1 custom
-        assert.strictEqual(response.body[0].base_model_id, 'qwen3-vl-30b');
+        assert.strictEqual(response.body[0].baseModelId, 'qwen3-vl-30b');
 
         // Verify custom models
-        const customModels = response.body.filter((m: any) => m.base_model_id !== null);
+        const customModels = response.body.filter((m: any) => m.baseModelId !== null);
         assert.strictEqual(customModels.length, 1);
-        assert.strictEqual(customModels[0].base_model_id, 'qwen3-vl-30b');
+        assert.strictEqual(customModels[0].baseModelId, 'qwen3-vl-30b');
     });
 
     test('should filter custom models by access control', async () => {
@@ -225,13 +225,13 @@ describe('POST /api/v1/models/create', () => {
         const modelData: ModelForm = {
             id: 'test-custom-model',
             name: 'Test Custom Model',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             params: { temperature: 0.8 },
             isPublic: true,
             meta: {
                 description: 'Test description',
             },
-            is_active: true,
+            isActive: true,
         };
 
         const response = await request(app)
@@ -242,9 +242,9 @@ describe('POST /api/v1/models/create', () => {
 
         assert.strictEqual(response.body.id, 'test-custom-model');
         assert.strictEqual(response.body.name, 'Test Custom Model');
-        assert.strictEqual(response.body.base_model_id, 'qwen3-vl-30b');
-        assert.strictEqual(response.body.user_id, userId);
-        assert.strictEqual(response.body.is_active, true);
+        assert.strictEqual(response.body.baseModelId, 'qwen3-vl-30b');
+        assert.strictEqual(response.body.userId, userId);
+        assert.strictEqual(response.body.isActive, true);
 
         // Verify in database
         const model = await Models.getModelById('test-custom-model', db);
@@ -258,9 +258,9 @@ describe('POST /api/v1/models/create', () => {
         const modelData: ModelForm = {
             id: 'test-custom-model',
             name: 'Test Custom Model',
-            base_model_id: 'nonexistent-model',
+            baseModelId: 'nonexistent-model',
             isPublic: true,
-            is_active: true,
+            isActive: true,
             params: {},
             meta: { description: null },
         };
@@ -282,9 +282,9 @@ describe('POST /api/v1/models/create', () => {
         const modelData: ModelForm = {
             id: 'duplicate-id',
             name: 'Another Model',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             isPublic: true,
-            is_active: true,
+            isActive: true,
             params: {},
             meta: { description: null },
         };
@@ -306,9 +306,9 @@ describe('POST /api/v1/models/create', () => {
         const modelData: ModelForm = {
             id: longId,
             name: 'Test Model',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             isPublic: true,
-            is_active: true,
+            isActive: true,
             params: {},
             meta: { description: null },
         };
@@ -323,7 +323,7 @@ describe('POST /api/v1/models/create', () => {
     test('should fail without authentication token', async () => {
         await request(app)
             .post('/api/v1/models/create')
-            .send({ id: 'test', name: 'Test', base_model_id: 'qwen3-vl-30b', params: {}, meta: {} })
+            .send({ id: 'test', name: 'Test', baseModelId: 'qwen3-vl-30b', params: {}, meta: {} })
             .expect(401);
     });
 
@@ -333,7 +333,7 @@ describe('POST /api/v1/models/create', () => {
         const invalidData = {
             id: 'test',
             // Missing name
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
         };
 
         const response = await request(app)
@@ -363,8 +363,8 @@ describe('GET /api/v1/models/model', () => {
             .expect(200);
 
         assert.strictEqual(response.body.id, 'my-custom-model');
-        assert.strictEqual(response.body.base_model_id, model.baseModelId);
-        assert.strictEqual(response.body.write_access, true); // Owner has write access
+        assert.strictEqual(response.body.baseModelId, model.baseModelId);
+        assert.strictEqual(response.body.writeAccess, true); // Owner has write access
         assert.ok(response.body.user);
     });
 
@@ -384,7 +384,7 @@ describe('GET /api/v1/models/model', () => {
             .expect(200);
 
         assert.strictEqual(response.body.id, 'shared-model');
-        assert.strictEqual(response.body.write_access, false); // No write access
+        assert.strictEqual(response.body.writeAccess, false); // No write access
     });
 
     test('should fail when custom model is not accessible', async () => {
@@ -453,7 +453,7 @@ describe('POST /api/v1/models/model/toggle', () => {
             .expect(200);
 
         assert.strictEqual(response.body.id, 'toggle-model');
-        assert.strictEqual(response.body.is_active, false);
+        assert.strictEqual(response.body.isActive, false);
 
         // Verify in database
         const updated = await Models.getModelById('toggle-model', db);
@@ -470,7 +470,7 @@ describe('POST /api/v1/models/model/toggle', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
-        assert.strictEqual(response.body.is_active, true);
+        assert.strictEqual(response.body.isActive, true);
     });
 
     test('should fail when trying to toggle base model', async () => {
@@ -532,12 +532,12 @@ describe('POST /api/v1/models/model/update', () => {
         const updateData: ModelForm = {
             id: 'update-model',
             name: 'Updated Model Name',
-            base_model_id: 'llama3-70b',
+            baseModelId: 'llama3-70b',
             params: { temperature: 0.9 },
             meta: {
                 description: 'Updated description',
             },
-            is_active: false,
+            isActive: false,
             isPublic: false,
         };
 
@@ -549,8 +549,8 @@ describe('POST /api/v1/models/model/update', () => {
 
         assert.strictEqual(response.body.id, 'update-model');
         assert.strictEqual(response.body.name, 'Updated Model Name');
-        assert.strictEqual(response.body.base_model_id, 'llama3-70b');
-        assert.strictEqual(response.body.is_active, false);
+        assert.strictEqual(response.body.baseModelId, 'llama3-70b');
+        assert.strictEqual(response.body.isActive, false);
 
         // Verify in database
         const updated = await Models.getModelById('update-model', db);
@@ -563,11 +563,11 @@ describe('POST /api/v1/models/model/update', () => {
         const updateData: ModelForm = {
             id: 'qwen3-vl-30b',
             name: 'Hacked Base Model',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             params: {},
             meta: { description: null },
             isPublic: true,
-            is_active: true,
+            isActive: true,
         };
 
         const response = await request(app)
@@ -586,11 +586,11 @@ describe('POST /api/v1/models/model/update', () => {
         const updateData: ModelForm = {
             id: 'update-model',
             name: 'Test',
-            base_model_id: 'nonexistent-base-model',
+            baseModelId: 'nonexistent-base-model',
             params: {},
             meta: { description: null },
             isPublic: true,
-            is_active: true,
+            isActive: true,
         };
 
         const response = await request(app)
@@ -612,11 +612,11 @@ describe('POST /api/v1/models/model/update', () => {
         const updateData: ModelForm = {
             id: 'readonly-model',
             name: 'Hacked Name',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             params: {},
             meta: { description: null },
             isPublic: true,
-            is_active: true,
+            isActive: true,
         };
 
         const response = await request(app)
@@ -634,11 +634,11 @@ describe('POST /api/v1/models/model/update', () => {
         const updateData: ModelForm = {
             id: 'nonexistent-model',
             name: 'Test',
-            base_model_id: 'qwen3-vl-30b',
+            baseModelId: 'qwen3-vl-30b',
             params: {},
             meta: { description: null },
             isPublic: true,
-            is_active: true,
+            isActive: true,
         };
 
         const response = await request(app)
@@ -653,7 +653,7 @@ describe('POST /api/v1/models/model/update', () => {
     test('should fail without authentication token', async () => {
         await request(app)
             .post('/api/v1/models/model/update')
-            .send({ id: 'test', name: 'Test', base_model_id: 'qwen3-vl-30b', params: {}, meta: {} })
+            .send({ id: 'test', name: 'Test', baseModelId: 'qwen3-vl-30b', params: {}, meta: {} })
             .expect(401);
     });
 

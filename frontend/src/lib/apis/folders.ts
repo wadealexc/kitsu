@@ -104,7 +104,7 @@ export const updateFolderIsExpandedById = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ is_expanded: isExpanded })
+        body: JSON.stringify({ isExpanded })
     });
 
     if (!res.ok) {
@@ -128,7 +128,7 @@ export const updateFolderParentIdById = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ parent_id: parentId })
+        body: JSON.stringify({ parentId })
     });
 
     if (!res.ok) {
@@ -145,7 +145,7 @@ export const deleteFolderById = async (
     deleteContents: boolean
 ): Promise<boolean> => {
     const searchParams = new URLSearchParams();
-    searchParams.append('delete_contents', deleteContents ? 'true' : 'false');
+    searchParams.append('deleteContents', deleteContents ? 'true' : 'false');
 
     const route = `/folders/${id}`;
     const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {

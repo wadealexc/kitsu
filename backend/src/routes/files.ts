@@ -151,12 +151,12 @@ router.post('/', requireAuth, upload.single('file'), async (
 
         const response: Types.FileModelResponse = {
             id: file.id,
-            user_id: file.userId,
+            userId: file.userId,
             filename: file.filename,
             data: file.data,
             meta: file.meta,
-            created_at: file.createdAt,
-            updated_at: file.updatedAt,
+            createdAt: file.createdAt,
+            updatedAt: file.updatedAt,
         };
 
         return res.json(response);
@@ -209,11 +209,11 @@ router.post('/extract', requireAuth, upload.single('file'), async (
  * @param {Types.FileIdParams} - path parameters with file ID
  * @returns {Types.FileModelResponse} - file metadata
  */
-router.get('/:file_id', validateFileId, requireAuth, async (
+router.get('/:fileId', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams>,
     res: Response<Types.FileModelResponse | Types.ErrorResponse>
 ) => {
-    const { file_id: fileId } = req.params;
+    const { fileId } = req.params;
     const userId = req.user!.id;
 
     try {
@@ -225,12 +225,12 @@ router.get('/:file_id', validateFileId, requireAuth, async (
 
         return res.json({
             id: file.id,
-            user_id: file.userId,
+            userId: file.userId,
             filename: file.filename,
             data: file.data,
             meta: file.meta,
-            created_at: file.createdAt,
-            updated_at: file.updatedAt,
+            createdAt: file.createdAt,
+            updatedAt: file.updatedAt,
         });
     } catch (error) {
         if (error instanceof HttpError) {
@@ -258,7 +258,7 @@ router.get('/:file_id', validateFileId, requireAuth, async (
  * @query {Types.FileContentQuery} - attachment query parameter
  * @returns File content with appropriate headers
  */
-router.get('/:file_id/content', validateFileId, requireAuth, async (
+router.get('/:fileId/content', validateFileId, requireAuth, async (
     req: Types.TypedRequest<Types.FileIdParams, any, Types.FileContentQuery>,
     res: Response
 ) => {
@@ -270,7 +270,7 @@ router.get('/:file_id/content', validateFileId, requireAuth, async (
         });
     }
 
-    const { file_id: fileId } = req.params;
+    const { fileId } = req.params;
     const userId = req.user!.id;
     const { attachment } = query.data;
 

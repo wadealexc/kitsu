@@ -33,7 +33,7 @@ router.get(['/', '/list'], requireAuth, async (
     }
 
     const userId = req.user!.id;
-    const { page, include_folders: includeFolders } = query.data;
+    const { page, includeFolders } = query.data;
 
     try {
         const options: Chats.ListOptions = {
@@ -52,8 +52,8 @@ router.get(['/', '/list'], requireAuth, async (
         // Map to response format
         const response: Types.ChatTitleIdResponse[] = chats.map(chat => ({
             ...chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
         }));
 
         return res.json(response);
@@ -91,14 +91,14 @@ router.get('/all', requireAuth, async (
         // Map to response format
         const response: Types.ChatResponse[] = chats.map(chat => ({
             id: chat.id,
-            user_id: chat.userId,
+            userId: chat.userId,
             title: chat.title,
             chat: chat.chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
-            share_id: chat.shareId || undefined,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
+            shareId: chat.shareId || undefined,
             meta: chat.meta || {},
-            folder_id: chat.folderId || undefined,
+            folderId: chat.folderId || undefined,
         }));
 
         return res.json(response);
@@ -138,14 +138,14 @@ router.get('/:id', validateChatId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: chat.id,
-            user_id: chat.userId,
+            userId: chat.userId,
             title: chat.title,
             chat: chat.chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
-            share_id: chat.shareId || undefined,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
+            shareId: chat.shareId || undefined,
             meta: chat.meta || {},
-            folder_id: chat.folderId || undefined,
+            folderId: chat.folderId || undefined,
         };
 
         return res.json(response);
@@ -192,20 +192,20 @@ router.post('/new', requireAuth, async (
         const newChat = await Chats.createChat(userId, {
             title: body.data.chat.title,
             chat: body.data.chat,
-            folderId: body.data.folder_id,
+            folderId: body.data.folderId,
         }, db);
         // console.log(`POST chats/new:\n${JSON.stringify(newChat, null, 2)}`);
 
         const response: Types.ChatResponse = {
             id: newChat.id,
-            user_id: newChat.userId,
+            userId: newChat.userId,
             title: newChat.title,
             chat: newChat.chat,
-            updated_at: newChat.updatedAt,
-            created_at: newChat.createdAt,
-            share_id: newChat.shareId || undefined,
+            updatedAt: newChat.updatedAt,
+            createdAt: newChat.createdAt,
+            shareId: newChat.shareId || undefined,
             meta: newChat.meta || {},
-            folder_id: newChat.folderId || undefined,
+            folderId: newChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -259,14 +259,14 @@ router.post('/:id', validateChatId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: updatedChat.id,
-            user_id: updatedChat.userId,
+            userId: updatedChat.userId,
             title: updatedChat.title,
             chat: updatedChat.chat,
-            updated_at: updatedChat.updatedAt,
-            created_at: updatedChat.createdAt,
-            share_id: updatedChat.shareId || undefined,
+            updatedAt: updatedChat.updatedAt,
+            createdAt: updatedChat.createdAt,
+            shareId: updatedChat.shareId || undefined,
             meta: updatedChat.meta || {},
-            folder_id: updatedChat.folderId || undefined,
+            folderId: updatedChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -387,14 +387,14 @@ router.post('/import', requireAuth, async (
 
         const response: Types.ChatResponse[] = imported.map(chat => ({
             id: chat.id,
-            user_id: chat.userId,
+            userId: chat.userId,
             title: chat.title,
             chat: chat.chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
-            share_id: chat.shareId || undefined,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
+            shareId: chat.shareId || undefined,
             meta: chat.meta || {},
-            folder_id: chat.folderId || undefined,
+            folderId: chat.folderId || undefined,
         }));
 
         return res.json(response);
@@ -441,14 +441,14 @@ router.post('/:id/share', validateChatId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: updatedChat.id,
-            user_id: updatedChat.userId,
+            userId: updatedChat.userId,
             title: updatedChat.title,
             chat: updatedChat.chat,
-            updated_at: updatedChat.updatedAt,
-            created_at: updatedChat.createdAt,
-            share_id: updatedChat.shareId || undefined,
+            updatedAt: updatedChat.updatedAt,
+            createdAt: updatedChat.createdAt,
+            shareId: updatedChat.shareId || undefined,
             meta: updatedChat.meta || {},
-            folder_id: updatedChat.folderId || undefined,
+            folderId: updatedChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -475,11 +475,11 @@ router.post('/:id/share', validateChatId, requireAuth, async (
  * @param {Types.ShareIdParams} - path parameters with share ID
  * @returns {Types.ChatResponse} - full chat data
  */
-router.get('/share/:share_id', validateShareId, requireAuth, async (
+router.get('/share/:shareId', validateShareId, requireAuth, async (
     req: Types.TypedRequest<Types.ShareIdParams>,
     res: Response<Types.ChatResponse | Types.ErrorResponse>
 ) => {
-    const shareId = req.params.share_id;
+    const shareId = req.params.shareId;
 
     try {
         const chat = await Chats.getChatByShareId(shareId, db);
@@ -487,14 +487,14 @@ router.get('/share/:share_id', validateShareId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: chat.id,
-            user_id: chat.userId,
+            userId: chat.userId,
             title: chat.title,
             chat: chat.chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
-            share_id: chat.shareId || undefined,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
+            shareId: chat.shareId || undefined,
             meta: chat.meta || {},
-            folder_id: chat.folderId || undefined,
+            folderId: chat.folderId || undefined,
         };
 
         return res.json(response);
@@ -561,11 +561,11 @@ router.delete('/:id/share', validateChatId, requireAuth, async (
  * @param {Types.ShareIdParams} - path parameters with share id
  * @returns {Types.ChatResponse} - cloned chat owned by current user
  */
-router.post('/:share_id/clone/shared', validateShareId, requireAuth, async (
+router.post('/:shareId/clone/shared', validateShareId, requireAuth, async (
     req: Types.TypedRequest<Types.ShareIdParams>,
     res: Response<Types.ChatResponse | Types.ErrorResponse>
 ) => {
-    const shareId = req.params.share_id;
+    const shareId = req.params.shareId;
     const userId = req.user!.id;
 
     try {
@@ -581,14 +581,14 @@ router.post('/:share_id/clone/shared', validateShareId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: clonedChat.id,
-            user_id: clonedChat.userId,
+            userId: clonedChat.userId,
             title: clonedChat.title,
             chat: clonedChat.chat,
-            updated_at: clonedChat.updatedAt,
-            created_at: clonedChat.createdAt,
-            share_id: undefined,  // Clone is not shared
+            updatedAt: clonedChat.updatedAt,
+            createdAt: clonedChat.createdAt,
+            shareId: undefined,  // Clone is not shared
             meta: clonedChat.meta || {},
-            folder_id: undefined,  // Clone is not in folder
+            folderId: undefined,  // Clone is not in folder
         };
 
         return res.json(response);
@@ -650,14 +650,14 @@ router.post('/:id/clone', validateChatId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: clonedChat.id,
-            user_id: clonedChat.userId,
+            userId: clonedChat.userId,
             title: clonedChat.title,
             chat: clonedChat.chat,
-            updated_at: clonedChat.updatedAt,
-            created_at: clonedChat.createdAt,
-            share_id: undefined,
+            updatedAt: clonedChat.updatedAt,
+            createdAt: clonedChat.createdAt,
+            shareId: undefined,
             meta: clonedChat.meta || {},
-            folder_id: undefined,
+            folderId: undefined,
         };
 
         return res.json(response);
@@ -700,7 +700,7 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
     }
 
     const chatId = req.params.id;
-    const folderId = body.data.folder_id;
+    const folderId = body.data.folderId;
     const userId = req.user!.id;
 
     try {
@@ -719,14 +719,14 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
 
         const response: Types.ChatResponse = {
             id: updatedChat.id,
-            user_id: updatedChat.userId,
+            userId: updatedChat.userId,
             title: updatedChat.title,
             chat: updatedChat.chat,
-            updated_at: updatedChat.updatedAt,
-            created_at: updatedChat.createdAt,
-            share_id: updatedChat.shareId || undefined,
+            updatedAt: updatedChat.updatedAt,
+            createdAt: updatedChat.createdAt,
+            shareId: updatedChat.shareId || undefined,
             meta: updatedChat.meta || {},
-            folder_id: updatedChat.folderId || undefined,
+            folderId: updatedChat.folderId || undefined,
         };
 
         return res.json(response);
@@ -753,11 +753,11 @@ router.post('/:id/folder', validateChatId, requireAuth, async (
  * @param {Types.FolderIdParams} - path parameters with folder ID
  * @returns {Types.ChatResponse[]} - full chat objects in folder
  */
-router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
+router.get('/folder/:folderId', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams>,
     res: Response<Types.ChatResponse[] | Types.ErrorResponse>
 ) => {
-    const folderId = req.params.folder_id;
+    const folderId = req.params.folderId;
     const userId = req.user!.id;
 
     try {
@@ -768,14 +768,14 @@ router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
 
         const response: Types.ChatResponse[] = chats.map(chat => ({
             id: chat.id,
-            user_id: chat.userId,
+            userId: chat.userId,
             title: chat.title,
             chat: chat.chat,
-            updated_at: chat.updatedAt,
-            created_at: chat.createdAt,
-            share_id: chat.shareId || undefined,
+            updatedAt: chat.updatedAt,
+            createdAt: chat.createdAt,
+            shareId: chat.shareId || undefined,
             meta: chat.meta || {},
-            folder_id: chat.folderId || undefined,
+            folderId: chat.folderId || undefined,
         }));
 
         return res.json(response);
@@ -804,7 +804,7 @@ router.get('/folder/:folder_id', validateFolderId, requireAuth, async (
  * @query {Types.FolderChatListQuery} - pagination parameters (10 items per page)
  * @returns {Types.FolderChatListItemResponse[]} - minimal chat info
  */
-router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
+router.get('/folder/:folderId/list', validateFolderId, requireAuth, async (
     req: Types.TypedRequest<Types.FolderIdParams, any, Types.FolderChatListQuery>,
     res: Response<Types.FolderChatListItemResponse[] | Types.ErrorResponse>
 ) => {
@@ -817,7 +817,7 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
     }
 
     const { page } = query.data;
-    const folderId = req.params.folder_id;
+    const folderId = req.params.folderId;
     const userId = req.user!.id;
 
     try {
@@ -831,11 +831,11 @@ router.get('/folder/:folder_id/list', validateFolderId, requireAuth, async (
             db
         );
 
-        // Return minimal info (title, id, updated_at only)
+        // Return minimal info (title, id, updatedAt only)
         const response: Types.FolderChatListItemResponse[] = chats.map(chat => ({
             id: chat.id,
             title: chat.title,
-            updated_at: chat.updatedAt,
+            updatedAt: chat.updatedAt,
         }));
 
         return res.json(response);

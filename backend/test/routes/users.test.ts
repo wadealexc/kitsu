@@ -71,7 +71,7 @@ describe('GET /api/v1/users/:user_id', () => {
             .expect(200);
 
         assert.strictEqual(response.body.username, users[0]!.username);
-        assert.strictEqual(response.body.is_active, true);
+        assert.strictEqual(response.body.isActive, true);
     });
 
     test('should return 400 when user not found', async () => {
@@ -107,7 +107,7 @@ describe('GET /api/v1/users/:user_id', () => {
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 
-        assert.strictEqual(response.body.is_active, true);
+        assert.strictEqual(response.body.isActive, true);
     });
 
     test('should fail without authentication token', async () => {
@@ -528,7 +528,7 @@ describe('GET /api/v1/users/', () => {
 
         const response = await request(app)
             .get('/api/v1/users/')
-            .query({ order_by: 'username', direction: 'asc' })
+            .query({ orderBy: 'username', direction: 'asc' })
             .set('Authorization', `Bearer ${token}`)
             .expect(200);
 

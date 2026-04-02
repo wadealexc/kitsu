@@ -166,9 +166,9 @@
                                         {
                                             chat: item.chat,
                                             meta: item?.meta ?? {},
-                                            folder_id: null,
-                                            created_at: item?.created_at ?? null,
-                                            updated_at: item?.updated_at ?? null
+                                            folderId: null,
+                                            createdAt: item?.createdAt ?? null,
+                                            updatedAt: item?.updatedAt ?? null
                                         }
                                     ]).catch((error) => {
                                         toast.error(`${error}`);
@@ -190,7 +190,7 @@
                                 });
 
                                 onItemMove({
-                                    originFolderId: chat.folder_id,
+                                    originFolderId: chat.folderId,
                                     targetFolderId: folderId,
                                     e
                                 });
@@ -259,7 +259,7 @@
     };
 
     onMount(async () => {
-        open = folders[folderId].is_expanded;
+        open = folders[folderId].isExpanded;
         folderRegistry[folderId] = {
             setFolderItems: () => {
                 setFolderItems();

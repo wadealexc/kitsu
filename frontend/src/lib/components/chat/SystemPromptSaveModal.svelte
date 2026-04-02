@@ -57,7 +57,7 @@
                 </button>
             {/if}
 
-            {#if model !== null && model.user_id === user?.id}
+            {#if model !== null && model.userId === user?.id}
                 <button
                     class="w-full text-left px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                     on:click={() => save('model')}

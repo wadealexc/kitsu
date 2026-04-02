@@ -29,7 +29,7 @@
     let total: number | null = null;
 
     let query = '';
-    let orderBy: 'role' | 'username' | 'last_active_at' | 'created_at' = 'created_at';
+    let orderBy: 'role' | 'username' | 'lastActiveAt' | 'createdAt' = 'createdAt';
     let direction: 'asc' | 'desc' = 'asc';
 
     let selectedUser: UserModel | null = null;
@@ -197,12 +197,12 @@
                     <th
                         scope="col"
                         class="px-2.5 py-2 cursor-pointer select-none"
-                        on:click={() => setSortKey('last_active_at')}
+                        on:click={() => setSortKey('lastActiveAt')}
                     >
                         <div class="flex gap-1.5 items-center">
                             {'Last Active'}
 
-                            {#if orderBy === 'last_active_at'}
+                            {#if orderBy === 'lastActiveAt'}
                                 <span class="font-normal"
                                     >{#if direction === 'asc'}
                                         <ChevronUp className="size-2" />
@@ -220,11 +220,11 @@
                     <th
                         scope="col"
                         class="px-2.5 py-2 cursor-pointer select-none"
-                        on:click={() => setSortKey('created_at')}
+                        on:click={() => setSortKey('createdAt')}
                     >
                         <div class="flex gap-1.5 items-center">
                             {'Created at'}
-                            {#if orderBy === 'created_at'}
+                            {#if orderBy === 'createdAt'}
                                 <span class="font-normal"
                                     >{#if direction === 'asc'}
                                         <ChevronUp className="size-2" />
@@ -268,7 +268,7 @@
                             <div class="flex items-center gap-2">
                                 <div class="font-medium truncate">{user.username}</div>
 
-                                {#if user?.last_active_at && Date.now() / 1000 - user.last_active_at < 180}
+                                {#if user?.lastActiveAt && Date.now() / 1000 - user.lastActiveAt < 180}
                                     <div>
                                         <span class="relative flex size-1.5">
                                             <span
@@ -284,11 +284,11 @@
                         </td>
 
                         <td class=" px-3 py-1">
-                            {dayjs(user.last_active_at * 1000).fromNow()}
+                            {dayjs(user.lastActiveAt * 1000).fromNow()}
                         </td>
 
                         <td class=" px-3 py-1">
-                            {dayjs(user.created_at * 1000).format('LL')}
+                            {dayjs(user.createdAt * 1000).format('LL')}
                         </td>
 
                         <td class="px-3 py-1 text-right">

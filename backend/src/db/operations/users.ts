@@ -284,7 +284,7 @@ export async function getUserByUsername(
 export type GetUsersOptions = {
     query?: string;                                                // Search by username
     role?: UserRole;                                               // Filter by role
-    orderBy?: 'role' | 'username' | 'last_active_at' | 'created_at';  // Sort field (default: 'created_at')
+    orderBy?: 'role' | 'username' | 'lastActiveAt' | 'createdAt';  // Sort field (default: 'createdAt')
     direction?: 'asc' | 'desc';                                    // Sort direction (default: 'desc')
     skip?: number;                                                 // Offset for pagination
     limit?: number;                                                // Page size (optional, no default)
@@ -307,7 +307,7 @@ export async function getUsers(
     const {
         query,
         role,
-        orderBy = 'created_at',
+        orderBy = 'createdAt',
         direction = 'desc',
         skip,
         limit,
@@ -318,7 +318,7 @@ export async function getUsers(
     const sortColumn =
         orderBy === 'role' ? users.role :
         orderBy === 'username' ? users.username :
-        orderBy === 'last_active_at' ? users.lastActiveAt :
+        orderBy === 'lastActiveAt' ? users.lastActiveAt :
         users.createdAt;
 
     // Build where conditions

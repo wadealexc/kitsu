@@ -46,7 +46,7 @@
 
     const TOKEN_EXPIRY_BUFFER = 60; // seconds
     const checkTokenExpiry = async () => {
-        const exp = $user?.expires_at; // token expiry time in unix timestamp
+        const exp = $user?.expiresAt; // token expiry time in unix timestamp
         const now = Math.floor(Date.now() / 1000); // current time in unix timestamp
 
         if (!exp) {
@@ -59,7 +59,7 @@
             user.set(undefined);
             localStorage.removeItem('token');
 
-            location.href = res.redirect_url ?? '/auth';
+            location.href = res.redirectUrl ?? '/auth';
         }
     };
 

@@ -15,7 +15,7 @@
     let folderList: string[] = [];
     // Get the list of folders that have no parent, sorted by name alphabetically
     $: folderList = Object.keys(folders)
-        .filter((key) => folders[key].parent_id === null)
+        .filter((key) => folders[key].parentId === null)
         .sort((a, b) =>
             folders[a].name.localeCompare(folders[b].name, undefined, {
                 numeric: true,

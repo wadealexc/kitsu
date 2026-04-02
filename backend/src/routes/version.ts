@@ -25,7 +25,7 @@ router.get('/', (
 ) => {
     res.json({
         version: '0.3.9',
-        deployment_id: 'dev-local',
+        deploymentId: 'dev-local',
     });
 });
 

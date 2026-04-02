@@ -646,8 +646,8 @@ export async function importChats(
             meta: data.meta ?? {},
             shareId: null,
             folderId: null,
-            createdAt: data.created_at ?? now,
-            updatedAt: data.updated_at ?? now,
+            createdAt: data.createdAt ?? now,
+            updatedAt: data.updatedAt ?? now,
         };
     });
 
