@@ -1,24 +1,29 @@
 **/node_modules/
 **/dist/
 *.tsbuildinfo
-package-lock.json
 
+# Config
 config.json
 docker-compose.yml
 
+# Backend runtime dirs
 /models/*
 !/models/.gitkeep
 
-/logs/*
-!/logs/.gitkeep
+/backend/logs/*
+!/backend/logs/.gitkeep
+
+/backend/data/*
+!/backend/data/.gitkeep
+
+/backend/src/scratch.ts
+
+# Frontend build
+/frontend/build/
+/frontend/.svelte-kit/
 
 /screenshots/*
 !/screenshots/.gitkeep
-
-/data/*
-!/data/.gitkeep
-
-/src/scratch.ts
 
 .claude/
 .coutput/

@@ -1,0 +1,316 @@
+<script lang="ts">
+    import dayjs from 'dayjs';
+    import { toast } from 'svelte-sonner';
+    import { tick } from 'svelte';
+    import { user as _user } from '$lib/stores';
+    import { copyToClipboard as _copyToClipboard, formatDate } from '$lib/utils';
+    import { API_BASE_URL } from '$lib/constants';
+    import type { ChatHistory, ChatMessage, ChatMessageFile } from '@backend/routes/types';
+
+    import Tooltip from '$lib/components/common/Tooltip.svelte';
+    import FileItem from './FileItem.svelte';
+    import Markdown from './Markdown.svelte';
+    import Image from '$lib/components/common/Image.svelte';
+    import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
+    import BranchNavigator from './BranchNavigator.svelte';
+    import MessageEditor from './MessageEditor.svelte';
+
+    import localizedFormat from 'dayjs/plugin/localizedFormat';
+
+    dayjs.extend(localizedFormat);
+
+    export let chatId: string;
+    export let history: ChatHistory;
+    export let messageId: string;
+
+    export let siblings: string[];
+
+    export let goToSibling: (message: ChatMessage, idx: number) => void;
+
+    export let editMessage: (
+        messageId: string,
+        update: { content: string; files: ChatMessageFile[] },
+        submit?: boolean
+    ) => void | Promise<void>;
+    export let deleteMessage: (messageId: string) => void | Promise<void>;
+
+    export let isFirstMessage: boolean;
+    export let readOnly: boolean;
+
+    let showDeleteConfirm = false;
+
+    let edit = false;
+    let editedFiles: ChatMessageFile[] = [];
+
+    let editorRef: MessageEditor;
+
+    let message: ChatMessage = structuredClone(history.messages[messageId]);
+    $: if (history.messages) {
+        const current = history.messages[messageId];
+        if (current) {
+            if (
+                message.content !== current.content ||
+                message.files?.length !== current.files?.length
+            ) {
+                message = structuredClone(current);
+            } else if (JSON.stringify(message) !== JSON.stringify(current)) {
+                message = structuredClone(current);
+            }
+        }
+    }
+
+    const copyToClipboard = async (text: string) => {
+        const res = await _copyToClipboard(text);
+        if (res) {
+            toast.success('Copying to clipboard was successful!');
+        }
+    };
+
+    const editMessageHandler = async () => {
+        edit = true;
+        editedFiles = [...message.files];
+        await tick();
+        editorRef.activate(message.content);
+    };
+
+    const editMessageConfirmHandler = async (submit = true, content?: string) => {
+        const finalContent = content ?? '';
+        if (!finalContent && editedFiles.length === 0) {
+            toast.error('Please enter a message or attach a file.');
+            return;
+        }
+
+        editMessage(message.id, { content: finalContent, files: editedFiles }, submit);
+
+        edit = false;
+        editedFiles = [];
+    };
+
+    const cancelEditMessage = () => {
+        edit = false;
+        editedFiles = [];
+    };
+
+    const deleteMessageHandler = async () => {
+        deleteMessage(message.id);
+    };
+</script>
+
+<DeleteConfirmDialog
+    bind:show={showDeleteConfirm}
+    title="Delete message?"
+    on:confirm={() => {
+        deleteMessageHandler();
+    }}
+/>
+
+<div class=" flex w-full user-message group" id="message-{message.id}">
+    <div class="flex-auto w-0 max-w-full pl-1">
+        {#if message.timestamp}
+            <div class="flex justify-end pr-2 text-xs">
+                <div
+                    class="text-[0.65rem] font-medium first-letter:capitalize mb-0.5 invisible group-hover:visible transition text-gray-400"
+                >
+                    <span class="line-clamp-1">
+                        {formatDate(message.timestamp * 1000)}
+                    </span>
+                </div>
+            </div>
+        {/if}
+
+        <div class="chat-{message.role} w-full min-w-full markdown-prose">
+            {#if edit !== true}
+                {#if message.files}
+                    <div
+                        class="mb-1 w-full flex flex-col justify-end overflow-x-auto gap-1 flex-wrap"
+                    >
+                        {#each message.files as file}
+                            {@const fileUrl =
+                                file.url.startsWith('data') || file.url.startsWith('http')
+                                    ? file.url
+                                    : `${API_BASE_URL}/files/${file.url}${file.contentType ? '/content' : ''}`}
+                            <div class="self-end">
+                                {#if file.type === 'image' || (file?.contentType ?? '').startsWith('image/')}
+                                    <Image src={fileUrl} imageClassName=" max-h-96 rounded-lg" />
+                                {:else}
+                                    <FileItem item={file} small={true} />
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            {/if}
+
+            {#if edit === true}
+                <MessageEditor
+                    bind:this={editorRef}
+                    content={message.content}
+                    primaryLabel="Send"
+                    secondaryLabel="Save"
+                    containerClass="w-full bg-gray-100 dark:bg-gray-950 rounded-lg px-5 py-3 mb-2"
+                    scrollContainer={true}
+                    on:confirm={({ detail }) => editMessageConfirmHandler(true, detail.content)}
+                    on:secondary={({ detail }) => editMessageConfirmHandler(false, detail.content)}
+                    on:cancel={cancelEditMessage}
+                >
+                    <svelte:fragment slot="files">
+                        {#if editedFiles.length > 0}
+                            <div class="flex items-center flex-wrap gap-2 -mx-2 mb-1">
+                                {#each editedFiles as file, fileIdx}
+                                    {#if file.type === 'image' || (file?.contentType ?? '').startsWith('image/')}
+                                        {@const fileUrl =
+                                            file.url?.startsWith('data') ||
+                                            file.url?.startsWith('http')
+                                                ? file.url
+                                                : `${API_BASE_URL}/files/${file.url}${file?.contentType ? '/content' : ''}`}
+                                        <div class=" relative group">
+                                            <div class="relative flex items-center">
+                                                <Image
+                                                    src={fileUrl}
+                                                    alt="input"
+                                                    imageClassName=" size-14 rounded-xl object-cover"
+                                                />
+                                            </div>
+                                            <div class=" absolute -top-1 -right-1">
+                                                <button
+                                                    class=" bg-white text-black border border-white rounded-full group-hover:visible invisible transition"
+                                                    type="button"
+                                                    aria-label="Remove image"
+                                                    on:click={() => {
+                                                        editedFiles = editedFiles.filter(
+                                                            (_, i) => i !== fileIdx
+                                                        );
+                                                    }}
+                                                >
+                                                    <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        viewBox="0 0 20 20"
+                                                        fill="currentColor"
+                                                        class="size-4"
+                                                    >
+                                                        <path
+                                                            d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
+                                                        />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {:else}
+                                        <FileItem
+                                            item={file}
+                                            loading={file.status === 'uploading'}
+                                            dismissible={true}
+                                            edit={true}
+                                            on:dismiss={() => {
+                                                editedFiles = editedFiles.filter(
+                                                    (_, i) => i !== fileIdx
+                                                );
+                                            }}
+                                            on:click={() => {}}
+                                        />
+                                    {/if}
+                                {/each}
+                            </div>
+                        {/if}
+                    </svelte:fragment>
+                </MessageEditor>
+            {:else if message.content !== ''}
+                <div class="w-full">
+                    <div class="flex justify-end pb-1">
+                        <div
+                            class="rounded-lg max-w-[90%] px-4 py-1.5 bg-gray-100 dark:bg-gray-950 font-medium"
+                        >
+                            {#if message.content}
+                                <Markdown
+                                    id={`${chatId}-${message.id}`}
+                                    content={message.content}
+                                />
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if edit !== true}
+                <div class=" flex justify-end text-gray-600 dark:text-gray-500">
+                    {#if !readOnly}
+                        <button
+                            class="invisible group-hover:visible p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition edit-user-message-button"
+                            aria-label="Edit message"
+                            on:click={() => {
+                                editMessageHandler();
+                            }}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="2.3"
+                                stroke="currentColor"
+                                class="w-4 h-4"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"
+                                />
+                            </svg>
+                        </button>
+                    {/if}
+
+                    {#if message.content}
+                        <button
+                            class="invisible group-hover:visible p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition"
+                            aria-label="Copy message"
+                            on:click={() => {
+                                copyToClipboard(message.content);
+                            }}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="2.3"
+                                stroke="currentColor"
+                                class="w-4 h-4"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"
+                                />
+                            </svg>
+                        </button>
+                    {/if}
+
+                    {#if !readOnly && (!isFirstMessage || siblings.length > 1)}
+                        <button
+                            class="invisible group-hover:visible p-1 rounded-sm dark:hover:text-white hover:text-black transition"
+                            aria-label="Delete message"
+                            on:click={() => {
+                                showDeleteConfirm = true;
+                            }}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="2"
+                                stroke="currentColor"
+                                class="w-4 h-4"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                />
+                            </svg>
+                        </button>
+                    {/if}
+
+                    <BranchNavigator {message} {siblings} {goToSibling} />
+                </div>
+            {/if}
+        </div>
+    </div>
+</div>

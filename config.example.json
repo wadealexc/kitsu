@@ -5,8 +5,7 @@
     "web": {
         "enable": false,
         "braveAPIKey": "",
-        "runDangerouslyWithoutSandbox": false,
-        "screenshotWebpages": false
+        "runDangerouslyWithoutSandbox": false
     },
     "ports": {
         "llamaCpp": {
