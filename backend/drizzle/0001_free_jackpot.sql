@@ -1,0 +1,1 @@
+ALTER TABLE `user` DROP COLUMN `profile_banner_image_url`;

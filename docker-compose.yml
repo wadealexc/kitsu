@@ -1,45 +1,16 @@
-# Docker-compose for Open WebUI (llama-shim runs outside of this)
 services:
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.7.2
-    container_name: open-webui
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:8080"
-    volumes:
-      - open-webui:/app/backend/data
-
+      - "5050:5050"
     environment:
-      # Connect OWU -> llama-shim
-      # (env vars from: github/owu:/backend/open-webui/config.py)
-      #
-      # Enable connection to llama-shim, which runs on port 8081 by default
-      # NOTE: Change this to your local IP address
-      # TODO - change to a localhost variant
-      # TODO - this doesn't seem to overwrite values you set in the UI
-      #        ... which is probably what you want, but it does make this hard to test
-      #ENABLE_OPENAI_API: true
-      #OPENAI_API_BASE_URL: 'http://192.168.87.30:8081/v1'
-
-      # Prevent admin from being able to read user chats at will
-      #
-      # Of course, this setting can be modified by the admin - but this is
-      # a nice default to have as it means I can do normal admin stuff on
-      # the UI without accidentally looking at user messages.
-      ENABLE_ADMIN_EXPORT: false
-      ENABLE_ADMIN_CHAT_ACCESS: false
-
-      # Forward chat id to backend
-      ENABLE_FORWARD_USER_INFO_HEADERS: true
-
-      # From: github/owu:/backend/open-webui/config.py
-      # - ENABLE_RAG_WEB_SEARCH: true
-      # - RAG_WEB_SEARCH_ENGINE: "external"
-      # - RAG_WEB_SEARCH_RESULT_COUNT: 3
-      # - RAG_WEB_SEARCH_CONCURRENT_REQUESTS: 10
-
-      # Uncomment this to use only the environment variables explicitly set in this file
-      # ENABLE_PERSISTENT_CONFIG: false
-    
-volumes:
-  open-webui:
+      - BACKEND_URL=http://192.168.87.30:8071
+      - BACKEND_SRC=/backend-src
+      - ENV=dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - ./backend/src:/backend-src:ro

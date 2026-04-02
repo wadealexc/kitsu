@@ -1,0 +1,70 @@
+@import 'tailwindcss';
+
+@config '../tailwind.config.js';
+
+@layer base {
+
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+}
+
+@layer base {
+
+    html {
+        font-family:
+            -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui,
+            'Segoe UI', Roboto, Ubuntu, Cantarell, sans-serif,
+            'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
+    }
+
+    pre {
+        white-space: pre-wrap;
+    }
+
+    button {
+        @apply cursor-pointer;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+        color: theme(--color-gray-400);
+    }
+
+    input[type='checkbox'] {
+        @apply appearance-none size-3.5 align-middle bg-white border border-gray-300 rounded transition cursor-pointer focus:ring-2 focus:ring-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 self-center;
+        display: inline-block;
+        position: relative;
+    }
+
+    input[type='checkbox']:checked {
+        @apply bg-blue-600 border-blue-600;
+    }
+
+    input[type='checkbox']:after {
+        content: '';
+        display: block;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        transition: opacity 0.2s;
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        background: url('data:image/svg+xml;utf8,<svg viewBox="0 0 16 16" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M4 8l3 3l5-5"/></svg>') center/80% no-repeat;
+    }
+
+    input[type='checkbox']:checked:after {
+        opacity: 1;
+    }
+}
+
+/* Override Tailwind v4's default hover variant (which uses @media (hover: hover) and
+   excludes touch devices) with a plain :hover selector so that tap-triggered hover
+   states work correctly on iOS PWA. */
+@custom-variant hover (&:hover);

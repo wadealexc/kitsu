@@ -1,0 +1,38 @@
+[Unit]
+# start after network is up
+Description=kitsu
+After=network.target
+
+[Service]
+# Runs the `run.sh` script in the backend directory, which
+# ensures our environment is correct when run by systemd
+#
+# TODO: Change these options to use your username, and to
+#       reference the directory in which you placed kitsu
+User=YOUR_USER_HERE
+WorkingDirectory=%h/kitsu/backend
+ExecStart=%h/kitsu/backend/run.sh
+
+# Shutdown behavior - kill parent process only
+# (kitsu will take care of child processes)
+TimeoutStopSec=20
+KillSignal=SIGINT
+KillMode=process
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Send output to journal
+#
+# check status:
+# systemctl status kitsu
+#
+# view logs:
+# journalctl -u kitsu -f
+StandardInput=null
+#StandardOutput=append:/var/log/kitsu.log
+#StandardError=append:/var/log/kitsu.err.log
+
+[Install]
+WantedBy=multi-user.target

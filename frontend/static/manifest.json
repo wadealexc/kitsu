@@ -1,0 +1,28 @@
+{
+  "name": "Kitsu",
+  "short_name": "Kitsu",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#343541",
+  "theme_color": "#171717",
+  "icons": [
+    {
+      "src": "/static/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/logo.png",
+      "sizes": "500x500",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

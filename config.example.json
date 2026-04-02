@@ -5,8 +5,7 @@
     "web": {
         "enable": false,
         "braveAPIKey": "",
-        "runDangerouslyWithoutSandbox": false,
-        "screenshotWebpages": false
+        "runDangerouslyWithoutSandbox": false
     },
     "ports": {
         "llamaCpp": {
@@ -30,7 +29,7 @@
                 "gguf": "qwen3-vl-30b/Qwen3-VL-30B-A3B-Thinking-Q6_K",
                 "mmproj": "qwen3-vl-30b/mmproj-BF16",
                 "alias": "qwen3-vl-30b",
-                "params": [
+                "args": [
                     "--ctx-size",
                     50000
                 ]
@@ -38,7 +37,7 @@
             {
                 "gguf": "gpt-oss-20b/gpt-oss-20b-mxfp4",
                 "alias": "gpt-oss-20b",
-                "params": [
+                "args": [
                     "--ctx-size",
                     0
                 ]
