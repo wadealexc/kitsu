@@ -1,159 +1,106 @@
 import { API_BASE_URL } from '$lib/constants';
 import type { ModelResponse, ModelAccessResponse, ModelForm } from '@backend/routes/types.js';
 
-export const getModels = async (token: string = ''): Promise<ModelResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/models`, {
+export const getModels = async (token: string): Promise<ModelResponse[]> => {
+    const route = '/models';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
-export const getBaseModels = async (token: string = ''): Promise<ModelResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/models/base`, {
+export const getBaseModels = async (token: string): Promise<ModelResponse[]> => {
+    const route = '/models/base';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const createNewModel = async (token: string, model: ModelForm): Promise<ModelResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/models/create`, {
+    const route = '/models/create';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(model)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getModelById = async (token: string, id: string): Promise<ModelAccessResponse> => {
-    let error = null;
-
     const searchParams = new URLSearchParams();
     searchParams.append('id', id);
 
-    const res = await fetch(`${API_BASE_URL}/models/model?${searchParams.toString()}`, {
+    const route = '/models/model';
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const toggleModelById = async (token: string, id: string): Promise<ModelResponse | null> => {
-    let error = null;
-
     const searchParams = new URLSearchParams();
     searchParams.append('id', id);
 
-    const res = await fetch(`${API_BASE_URL}/models/model/toggle?${searchParams.toString()}`, {
+    const route = '/models/model/toggle';
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateModelById = async (
@@ -161,81 +108,60 @@ export const updateModelById = async (
     id: string,
     model: ModelForm
 ): Promise<ModelResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/models/model/update`, {
+    const route = '/models/model/update';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ ...model, id })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const deleteModelById = async (token: string, id: string): Promise<boolean> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/models/model/delete`, {
+    const route = '/models/model/delete';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ id })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const wakeModel = async (
     token: string,
     modelId: string
 ): Promise<'idle' | 'queued' | 'active'> => {
-    const res = await fetch(`${API_BASE_URL}/models/${encodeURIComponent(modelId)}/wake`, {
+    const route = `/models/${encodeURIComponent(modelId)}/wake`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
     });
 
-    if (!res.ok) throw new Error('Wake request failed');
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
+    }
+
     const data = await res.json();
     return data.status;
 };

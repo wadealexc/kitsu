@@ -15,72 +15,50 @@ export const createNewChat = async (
     chat: ChatObject,
     folderId?: string
 ): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/new`, {
+    const route = '/chats/new';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            chat: chat,
-            folder_id: folderId ?? null
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+        body: JSON.stringify({ chat, folder_id: folderId ?? null })
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const importChats = async (token: string, chats: object[]): Promise<ChatResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/import`, {
+    const route = '/chats/import';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(chats)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getChatList = async (
-    token: string = '',
+    token: string,
     page: number | null = null,
     include_folders: boolean = false
 ): Promise<ChatListItem[]> => {
-    let error = null;
     const searchParams = new URLSearchParams();
 
     if (page !== null) {
@@ -91,70 +69,45 @@ export const getChatList = async (
         searchParams.append('include_folders', 'true');
     }
 
-    const res = await fetch(`${API_BASE_URL}/chats/?${searchParams.toString()}`, {
+    const route = '/chats/';
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    if (!res) {
-        return [];
-    }
-
-    return res.map((chat: ChatTitleIdResponse) => ({
+    const json: ChatTitleIdResponse[] = await res.json();
+    return json.map((chat) => ({
         ...chat,
         time_range: getTimeRange(chat.updated_at)
     }));
 };
 
 export const getAllChats = async (token: string): Promise<ChatResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/all`, {
+    const route = '/chats/all';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 // `GET ${API_BASE_URL}/chats/search`
@@ -206,34 +159,22 @@ export const getChatsByFolderId = async (
     token: string,
     folderId: string
 ): Promise<ChatResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/folder/${folderId}`, {
+    const route = `/chats/folder/${folderId}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getChatListByFolderId = async (
@@ -241,106 +182,65 @@ export const getChatListByFolderId = async (
     folderId: string,
     page: number = 1
 ): Promise<FolderChatListItemResponse[]> => {
-    let error = null;
-
     const searchParams = new URLSearchParams();
     if (page !== null) {
         searchParams.append('page', `${page}`);
     }
 
-    const res = await fetch(
-        `${API_BASE_URL}/chats/folder/${folderId}/list?${searchParams.toString()}`,
-        {
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                ...(token && { authorization: `Bearer ${token}` })
-            }
+    const route = `/chats/folder/${folderId}/list`;
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
+        method: 'GET',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
         }
-    )
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getChatById = async (token: string, id: string): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}`, {
+    const route = `/chats/${id}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getChatByShareId = async (token: string, share_id: string): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/share/${share_id}`, {
+    const route = `/chats/share/${share_id}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const cloneChatById = async (
@@ -348,114 +248,61 @@ export const cloneChatById = async (
     id: string,
     title?: string
 ): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}/clone`, {
+    const route = `/chats/${id}/clone`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            ...(title && { title: title })
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+        body: JSON.stringify({ ...(title && { title }) })
+    });
 
-            if ('detail' in err) {
-                error = err.detail;
-            } else {
-                error = err;
-            }
-
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const cloneSharedChatById = async (token: string, id: string): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}/clone/shared`, {
+    const route = `/chats/${id}/clone/shared`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            if ('detail' in err) {
-                error = err.detail;
-            } else {
-                error = err;
-            }
-
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const shareChatById = async (token: string, id: string): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}/share`, {
+    const route = `/chats/${id}/share`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateChatFolderIdById = async (
@@ -463,70 +310,42 @@ export const updateChatFolderIdById = async (
     id: string,
     folderId: string | null
 ): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}/folder`, {
+    const route = `/chats/${id}/folder`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            folder_id: folderId
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+        body: JSON.stringify({ folder_id: folderId })
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const deleteSharedChatById = async (token: string, id: string): Promise<boolean> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}/share`, {
+    const route = `/chats/${id}/share`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'DELETE',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateChatById = async (
@@ -534,100 +353,59 @@ export const updateChatById = async (
     id: string,
     chat: Partial<ChatObject>
 ): Promise<ChatResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}`, {
+    const route = `/chats/${id}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            chat: chat
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err;
+        body: JSON.stringify({ chat })
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const deleteChatById = async (token: string, id: string): Promise<boolean> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/${id}`, {
+    const route = `/chats/${id}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'DELETE',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const deleteAllChats = async (token: string): Promise<boolean> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/chats/`, {
+    const route = '/chats/';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'DELETE',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            ...(token && { authorization: `Bearer ${token}` })
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
+    });
 
-            console.error(err);
-            return null;
-        });
-
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };

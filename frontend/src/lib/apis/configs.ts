@@ -2,28 +2,19 @@ import { API_BASE_URL } from '$lib/constants';
 import type { Config } from '$lib/stores';
 
 export const getBackendConfig = async (): Promise<Config> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/configs/`, {
+    const route = '/configs/';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };

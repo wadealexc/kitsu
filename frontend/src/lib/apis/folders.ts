@@ -10,93 +10,61 @@ export const createNewFolder = async (
     token: string,
     folderForm: FolderForm
 ): Promise<FolderModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/`, {
+    const route = '/folders/';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(folderForm)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
-export const getFolders = async (token: string = ''): Promise<FolderNameIdResponse[]> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/`, {
+export const getFolders = async (token: string): Promise<FolderNameIdResponse[]> => {
+    const route = '/folders/';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getFolderById = async (token: string, id: string): Promise<FolderModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/${id}`, {
+    const route = `/folders/${id}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateFolderById = async (
@@ -104,35 +72,23 @@ export const updateFolderById = async (
     id: string,
     folderForm: FolderUpdateForm
 ): Promise<FolderModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/${id}/update`, {
+    const route = `/folders/${id}/update`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(folderForm)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateFolderIsExpandedById = async (
@@ -140,37 +96,23 @@ export const updateFolderIsExpandedById = async (
     id: string,
     isExpanded: boolean
 ): Promise<FolderModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/${id}/update/expanded`, {
+    const route = `/folders/${id}/update/expanded`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            is_expanded: isExpanded
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+        body: JSON.stringify({ is_expanded: isExpanded })
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateFolderParentIdById = async (
@@ -178,37 +120,23 @@ export const updateFolderParentIdById = async (
     id: string,
     parentId: string | null
 ): Promise<FolderModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/folders/${id}/update/parent`, {
+    const route = `/folders/${id}/update/parent`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            parent_id: parentId
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+        body: JSON.stringify({ parent_id: parentId })
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const deleteFolderById = async (
@@ -216,35 +144,23 @@ export const deleteFolderById = async (
     id: string,
     deleteContents: boolean
 ): Promise<boolean> => {
-    let error = null;
-
     const searchParams = new URLSearchParams();
     searchParams.append('delete_contents', deleteContents ? 'true' : 'false');
 
-    const res = await fetch(`${API_BASE_URL}/folders/${id}?${searchParams.toString()}`, {
+    const route = `/folders/${id}`;
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
         method: 'DELETE',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .then((json) => {
-            return json;
-        })
-        .catch((err) => {
-            error = err.detail;
-            console.error(err);
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };

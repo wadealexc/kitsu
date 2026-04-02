@@ -15,9 +15,6 @@ export const getUsers = async (
     direction?: 'asc' | 'desc',
     page = 1
 ): Promise<UserModelListResponse> => {
-    let error = null;
-    let res = null;
-
     const searchParams = new URLSearchParams();
 
     searchParams.set('page', `${page}`);
@@ -34,147 +31,101 @@ export const getUsers = async (
         searchParams.set('direction', direction);
     }
 
-    res = await fetch(`${API_BASE_URL}/users/?${searchParams.toString()}`, {
+    const route = '/users/';
+    const res = await fetch(`${API_BASE_URL}${route}?${searchParams.toString()}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getUserSettings = async (token: string): Promise<UserSettings | null> => {
-    let error = null;
-    const res = await fetch(`${API_BASE_URL}/users/user/settings`, {
+    const route = '/users/user/settings';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateUserSettings = async (
     token: string,
     settings: UserSettings
 ): Promise<UserSettings> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/users/user/settings/update`, {
+    const route = '/users/user/settings/update';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            ...settings
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+        body: JSON.stringify({ ...settings })
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getUserById = async (token: string, userId: string): Promise<UserActiveResponse> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    const route = `/users/${userId}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateUserInfo = async (
     token: string,
     info: object
 ): Promise<Record<string, any> | null> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/users/user/info/update`, {
+    const route = '/users/user/info/update';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-            ...info
-        })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+        body: JSON.stringify({ ...info })
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const getAndUpdateUserLocation = async (token: string) => {
@@ -193,30 +144,21 @@ export const getAndUpdateUserLocation = async (token: string) => {
 };
 
 export const deleteUserById = async (token: string, userId: string): Promise<boolean> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    const route = `/users/${userId}`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         }
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
 
 export const updateUserById = async (
@@ -224,33 +166,24 @@ export const updateUserById = async (
     userId: string,
     user: UserUpdateForm
 ): Promise<UserModel> => {
-    let error = null;
-
-    const res = await fetch(`${API_BASE_URL}/users/${userId}/update`, {
+    const route = `/users/${userId}/update`;
+    const res = await fetch(`${API_BASE_URL}${route}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
             role: user.role,
             username: user.username,
             password: user.password !== '' ? user.password : undefined
         })
-    })
-        .then(async (res) => {
-            if (!res.ok) throw await res.json();
-            return res.json();
-        })
-        .catch((err) => {
-            console.error(err);
-            error = err.detail;
-            return null;
-        });
+    });
 
-    if (error) {
-        throw error;
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
     }
 
-    return res;
+    return await res.json();
 };
