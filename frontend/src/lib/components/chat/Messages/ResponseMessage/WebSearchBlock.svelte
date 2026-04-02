@@ -3,7 +3,7 @@
     import { quintOut } from 'svelte/easing';
     import { mobile, streamContext } from '$lib/stores';
     import type { ToolCallBlock } from '@backend/routes/types';
-    import type { WebSearchProgress } from '$lib/apis/streaming';
+    import type { WebSearchProgress } from '$lib/apis/completions';
     import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
     import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
     import Spinner from '$lib/components/common/Spinner.svelte';

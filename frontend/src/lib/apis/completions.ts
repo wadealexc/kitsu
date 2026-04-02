@@ -1,8 +1,10 @@
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import type { ParsedEvent } from 'eventsource-parser';
 
+import { API_BASE_URL } from '$lib/constants';
+import type { ChatCompletionForm } from '@backend/routes/types.js';
 import type { SseEvent } from '@backend/routes/sseEvents.js';
-import type { ChatMessageUsage, ChatMessageSource } from '@backend/routes/types.js';
+import type { ChatMessageUsage } from '@backend/routes/types.js';
 
 export type StreamTimings = {
     predicted_n: number;
@@ -41,20 +43,54 @@ type TextStreamUpdate = {
     promptProgress?: PromptProgress;
 };
 
-// createOpenAITextStream takes a responseBody with a SSE response,
-// and returns an async generator that emits delta updates with large deltas chunked into random sized chunks
-export async function createOpenAITextStream(
+/* -------------------- API -------------------- */
+
+export const chatCompletion = async (
+    token: string,
+    body: ChatCompletionForm
+): Promise<[AsyncGenerator<TextStreamUpdate>, AbortController]> => {
+    const controller = new AbortController();
+    const route = '/chat/custom-completions';
+
+    const res = await fetch(`${API_BASE_URL}${route}`, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        const err = await res.json();
+        throw err.detail ?? `Request failed: ${route}`;
+    }
+
+    if (!res.body) {
+        throw `No response body: ${route}`;
+    }
+
+    const stream = createSSEStream(res.body);
+    return [stream, controller];
+};
+
+/* -------------------- STREAMING -------------------- */
+
+// createSSEStream takes a responseBody with a SSE response,
+// and returns an async generator that emits delta updates
+export function createSSEStream(
     responseBody: ReadableStream<Uint8Array>
-): Promise<AsyncGenerator<TextStreamUpdate>> {
+): AsyncGenerator<TextStreamUpdate> {
     const eventStream = responseBody
         .pipeThrough(new TextDecoderStream() as any)
         .pipeThrough(new EventSourceParserStream())
         .getReader();
 
-    return openAIStreamToIterator(eventStream);
+    return streamToIterator(eventStream);
 }
 
-async function* openAIStreamToIterator(
+async function* streamToIterator(
     reader: ReadableStreamDefaultReader<ParsedEvent>
 ): AsyncGenerator<TextStreamUpdate> {
     while (true) {

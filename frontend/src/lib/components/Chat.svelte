@@ -56,14 +56,13 @@
         updateChatById,
         updateChatFolderIdById
     } from '$lib/apis/chats';
-    import { chatCompletion } from '$lib/apis/chat';
     import { getAndUpdateUserLocation } from '$lib/apis/users';
     import {
-        createOpenAITextStream,
+        chatCompletion,
         type StreamTimings,
         type PromptProgress,
         type WebSearchProgress
-    } from '$lib/apis/streaming';
+    } from '$lib/apis/completions';
     import { getFolderById, updateFolderById } from '$lib/apis/folders';
 
     import MessageInput from '$lib/components/chat/MessageInput.svelte';
@@ -825,7 +824,7 @@
 
         try {
             // 2. API call
-            const [res, controller] = await chatCompletion(localStorage.token, {
+            const [textStream, controller] = await chatCompletion(localStorage.token, {
                 stream: stream,
                 model: model.id,
                 messages: messages,
@@ -845,10 +844,6 @@
                 systemPrompt: systemPrompt
             });
 
-            if (!res?.ok || !res.body) {
-                throw new Error('Failed to get streaming response');
-            }
-
             // 3. Stream state setup
             generationController = controller;
             generating = true;
@@ -857,8 +852,6 @@
             streamContext.set(null);
             toolProgress = new Map<string, WebSearchProgress>();
             modelStatus = undefined;
-
-            const textStream = await createOpenAITextStream(res.body);
 
             let reasoningStartTime = 0;
             let activeReasoningIdx: number | null = null;

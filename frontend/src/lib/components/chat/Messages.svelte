@@ -18,7 +18,7 @@
     import Spinner from '../common/Spinner.svelte';
 
     import type { ChatHistory, ChatMessage, ChatMessageFile } from '@backend/routes/types';
-    import type { WebSearchProgress } from '$lib/apis/streaming';
+    import type { WebSearchProgress } from '$lib/apis/completions';
 
     export let className = 'h-full flex pt-8';
 

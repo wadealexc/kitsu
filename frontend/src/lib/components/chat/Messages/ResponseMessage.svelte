@@ -13,7 +13,7 @@
     } from '@backend/routes/types';
 
     import { copyToClipboard as _copyToClipboard, sanitizeResponseContent } from '$lib/utils';
-    import type { WebSearchProgress } from '$lib/apis/streaming';
+    import type { WebSearchProgress } from '$lib/apis/completions';
 
     import Name from './ResponseMessage/Name.svelte';
     import WebSearchBlock from './ResponseMessage/WebSearchBlock.svelte';
