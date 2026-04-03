@@ -10,6 +10,7 @@ dayjs.extend(isYesterday);
 dayjs.extend(localizedFormat);
 
 import type { Mermaid } from 'mermaid';
+import { getAndUpdateUserLocation } from '$lib/apis/users';
 
 export const sanitizeResponseContent = (content: string): string => {
     return content
@@ -244,10 +245,17 @@ export const applyPromptVariables = (
     return result;
 };
 
-export const getPromptVariables = (
-    username?: string,
-    userLocation?: string | { latitude: any; longitude: any }
-): Record<string, string | undefined | { latitude: any; longitude: any }> => {
+type LocationResult = string | { latitude: number, longitude: number };
+
+export const getPromptVariables = async (
+    username: string,
+    getLocation: boolean,
+): Promise<Record<string, LocationResult | undefined>> => {
+    // Get user location if needed
+    let userLocation: LocationResult | undefined = getLocation 
+        ? await getAndUpdateUserLocation(localStorage.token) 
+        : undefined;
+
     return {
         '{{USER_NAME}}': username,
         '{{USER_LOCATION}}': userLocation || 'Unknown',

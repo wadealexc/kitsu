@@ -136,7 +136,6 @@ function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm
         },
         webSearchEnabled: false,
         generateTitle: false,
-        systemPrompt: 'Test',
         ...overrides,
     };
 }

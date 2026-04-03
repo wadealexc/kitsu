@@ -306,6 +306,5 @@ export const ChatCompletionFormSchema = z.object({
     params: ModelParamsSchema,
     webSearchEnabled: z.boolean(),
     generateTitle: z.boolean(),
-    systemPrompt: z.string(),
 });
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;

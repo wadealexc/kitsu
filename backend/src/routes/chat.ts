@@ -40,17 +40,7 @@ router.post('/custom-completions', requireAuth, async (
     res: Response<any | Types.ErrorResponse>,
     next: NextFunction,
 ) => {
-    // console.log(`[custom-completions] body: \n\n${JSON.stringify(req.body, null, 2)}\n\n`);
-
     const llama = req.app.locals.llama as LlamaManager;
-    const ctx = await preprocessChatRequest(req, llama);
-    if (!ctx.ok) {
-        return res
-            .status(ctx.value.status)
-            .json({ detail: ctx.value.detail, errors: ctx.value.errors });
-    }
-
-    const { chatId, generateTitle, webSearchEnabled } = ctx.value;
     const toolRegistry = req.app.locals.tools as ToolRegistry;
 
     // AbortController will cancel request if the client aborts
@@ -69,6 +59,15 @@ router.post('/custom-completions', requireAuth, async (
         ctrl.abort();
     });
 
+    const ctx = await prepareRequest(req, llama);
+    if (!ctx.ok) {
+        return res
+            .status(ctx.value.status)
+            .json({ detail: ctx.value.detail, errors: ctx.value.errors });
+    }
+
+    const { chatId, generateTitle, webSearchEnabled } = ctx.value;
+    
     // Inject tools and run beforeRequest hooks
     let body: proto.CompletionRequest = {
         ...ctx.value.completionBody,
@@ -365,7 +364,7 @@ type PreprocessError = {
  * verifies chat ownership, associates uploaded files, and builds a clean OAI
  * completion body. Returns a typed context or error.
  */
-async function preprocessChatRequest(
+async function prepareRequest(
     req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
     llama: LlamaManager,
 ): Promise<proto.Result<ChatRequestContext, PreprocessError>> {
@@ -380,6 +379,7 @@ async function preprocessChatRequest(
 
     const userId = req.user!.id;
     const {
+        messages,
         chatId,
         chat,
         folderId,
@@ -387,7 +387,6 @@ async function preprocessChatRequest(
         params,
         webSearchEnabled,
         generateTitle,
-        systemPrompt
     } = parsed.data;
 
     const isLocalChat = chatId.startsWith('local:');
@@ -416,20 +415,10 @@ async function preprocessChatRequest(
         };
     }
 
-    let messages = parsed.data.messages as proto.Message[];
     // Inject system prompt from frontend, if needed
     if (messages[0]?.role !== 'system') {
-        if (systemPrompt) {
-            console.warn('[chat] Appending system prompt to messages.');
-            messages.unshift({ role: 'system', content: systemPrompt });
-        } else {
-            console.warn('[chat] No system prompt provided by frontend');
-            messages.unshift({ role: 'system', content: '' });
-        }
-
-        if (messages[0]?.content === '') {
-            console.warn('[chat] System prompt is empty!');
-        }
+        console.warn('[chat] No system prompt provided by frontend');
+        messages.unshift({ role: 'system', content: '' });
     }
 
     // At this point, we should have a user message at [1] no matter what
@@ -459,9 +448,9 @@ async function preprocessChatRequest(
         }
 
         if (userMessage.files.length > 0) {
-            const fileIds = userMessage.files
-                .filter((f: any) => f.type === 'file')
-                .map((f: any) => f.id)
+            const fileIds: string[] = userMessage.files
+                .filter((f: Types.ChatMessageFile) => f.type === 'file')
+                .map((f: Types.ChatMessageFile) => f.id)
                 .filter(Boolean);
 
             if (fileIds.length > 0) {

@@ -131,7 +131,7 @@ export const updateUserInfo = async (
 export const getAndUpdateUserLocation = async (token: string) => {
     const location = await getUserPosition().catch((err) => {
         console.error(err);
-        return null;
+        return undefined;
     });
 
     if (location) {
@@ -139,7 +139,7 @@ export const getAndUpdateUserLocation = async (token: string) => {
         return location;
     } else {
         console.info('Failed to get user location');
-        return null;
+        return undefined;
     }
 };
 

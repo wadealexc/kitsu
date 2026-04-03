@@ -411,9 +411,7 @@
 
         // Load folder data so the folder system prompt is available for resolution
         if (chat.folderId) {
-            const folder = await getFolderById(localStorage.token, chat.folderId).catch(
-                () => null
-            );
+            const folder = await getFolderById(localStorage.token, chat.folderId).catch(() => null);
             if (folder) selectedFolder.set(folder);
         } else {
             selectedFolder.set(null);
@@ -745,35 +743,33 @@
      * syncs chatFiles, collects per-request files, fetches user location,
      * determines stream setting, and formats the OpenAI message array.
      */
-    const buildChatRequest = async (responseMessage: ChatMessage, model: Model) => {
+    const buildChatRequest = async (
+        responseMessage: ChatMessage,
+        model: Model
+    ): Promise<Message[]> => {
+        // Prepare OAI-format message array
         const _messages = createMessagesList(history, responseMessage.id);
+        const messages: Message[] = [];
 
-        // Get user location if enabled
-        let userLocation;
-        if ($settings.userLocation) {
-            userLocation = await getAndUpdateUserLocation(localStorage.token).catch((err) => {
-                console.error(err);
-                return undefined;
-            });
-        }
-
-        // Stream setting: prefer model-level, default true
-        const stream = model.params.stream_response ?? true;
-
-        // Build OpenAI-format message array, excluding the empty response message slot
-        const systemPrompt = applyPromptVariables(
-            resolvedSystemPrompt,
-            getPromptVariables($user?.username, userLocation ?? undefined)
-        );
         const priorMessages = _messages.filter((m) => m.id !== responseMessage.id);
         const hasSystemPrompt = priorMessages.some((m) => m.role === 'system');
 
-        const messages: Message[] = [
-            ...(hasSystemPrompt ? [] : [{ role: 'system' as const, content: systemPrompt }]),
+        // Add system prompt if needed, applying variables to prompt template
+        // Note: fetches location if enabled
+        if (!hasSystemPrompt) {
+            const promptVars = await getPromptVariables($user!.username, $settings.userLocation);
+            const systemPrompt = applyPromptVariables(resolvedSystemPrompt, promptVars);
+            messages.push({ role: 'system' as const, content: systemPrompt });
+        }
+
+        // Add rest of messages to array
+        messages.push(
             ...priorMessages.flatMap((message): Message[] => {
-                if (message.role === 'assistant') {
+                if (message.role === 'system') {
+                    return [{ role: 'system', content: message.content }];
+                } else if (message.role === 'assistant') {
                     return expandMessageBlocks(message);
-                } else if (message.role === 'user') {
+                } else {
                     const imageFiles = message.files.filter(
                         (file) => file.type === 'image' || file.contentType.startsWith('image/')
                     );
@@ -803,11 +799,10 @@
                     }
                     return [{ role: 'user', content: message.content }];
                 }
-                return [{ role: 'system', content: message.content }];
             })
-        ];
+        );
 
-        return { messages, stream, systemPrompt };
+        return messages;
     };
 
     const sendMessageSSE = async (
@@ -820,7 +815,8 @@
         console.log(`sendMessageSSE | model: ${model.name}`);
 
         // 1. Build request
-        const { messages, stream, systemPrompt } = await buildChatRequest(responseMessage, model);
+        const stream = model.params.stream_response ?? true;
+        const messages = await buildChatRequest(responseMessage, model);
 
         try {
             // 2. API call
@@ -841,7 +837,6 @@
                 params: model.params,
                 webSearchEnabled: webSearchEnabled,
                 generateTitle: generateTitle,
-                systemPrompt: systemPrompt
             });
 
             // 3. Stream state setup
