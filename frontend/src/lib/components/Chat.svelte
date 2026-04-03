@@ -19,7 +19,11 @@
         ReasoningBlock,
         Folder
     } from '@backend/routes/types';
-    import type { SseEvent } from '@backend/protocol/sse.js';
+    import type {
+        SseEvent,
+        SseToolCallResultPayload,
+        SseToolCallStartPayload
+    } from '@backend/protocol/sse.js';
     import type { Message } from '@backend/protocol';
 
     import {
@@ -213,29 +217,6 @@
         }
         sessionStorage.selectedModel = _selectedModel.id;
         console.log('saveSessionSelectedModel', _selectedModel.id);
-    };
-
-    // sseEventHandler handles named backend events embedded in the SSE stream.
-    const sseEventHandler = async (event: SseEvent, responseMessage: ChatMessage) => {
-        console.log(`sseEventHandler: ${JSON.stringify(event)}`);
-
-        const { type, data } = event.data;
-
-        if (type === 'chat:completion') {
-            responseMessage.usage = data.usage;
-        } else if (type === 'chat:message:error') {
-            responseMessage.error = data.error;
-        } else if (type === 'chat:title') {
-            console.log(`got chat title: ${data}`);
-            chatTitle.set(data);
-
-            // Optimistic sidebar title update
-            chats.update((list) =>
-                (list ?? []).map((c) => (c.id === $chatId ? { ...c, title: data } : c))
-            );
-        }
-
-        history.messages[responseMessage.id] = responseMessage;
     };
 
     // Set selectedModel to current folder model, if set
@@ -468,13 +449,13 @@
 
     $: {
         if (systemPromptVisible && !prevSystemPromptVisible) {
-            // toggle ON — save current scroll state, scroll to top
+            // toggle ON - save current scroll state, scroll to top
             if (messagesContainerElement) {
                 savedScrollState = { scrollTop: messagesContainerElement.scrollTop, autoScroll };
             }
             scrollToTop();
         } else if (!systemPromptVisible && prevSystemPromptVisible) {
-            // toggle OFF — restore saved scroll state
+            // toggle OFF - restore saved scroll state
             if (savedScrollState) {
                 autoScroll = savedScrollState.autoScroll;
                 if (autoScroll) {
@@ -658,25 +639,53 @@
         }
 
         saveSessionSelectedModel($selectedModel);
-        await sendMessage(userMessage, { newChat: true });
+        await sendMessage(userMessage);
     };
 
-    const sendMessage = async (
-        userMessage: ChatMessage,
-        { newChat = false }: { newChat?: boolean } = {}
-    ) => {
-        if (autoScroll) {
-            scrollToBottom();
-        }
+    const sendMessage = async (userMessage: ChatMessage) => {
+        if (autoScroll) scrollToBottom();
 
-        // Determine the model to use
         const model = $selectedModel;
         if (!model) {
             toast.error(`Model not found`);
             return;
         }
 
-        // Create response message and append to live history
+        // First message in a new conversation - allocate a chat ID
+        if (!$chatId) {
+            if ($temporaryChatEnabled) {
+                chatId.set(`local:${crypto.randomUUID()}`);
+            } else {
+                const newId = crypto.randomUUID();
+                chatId.set(newId);
+                window.history.replaceState(null, '', `/c/${newId}`);
+
+                // Optimistic sidebar insert so the entry appears immediately
+                chats.update((list) => [
+                    {
+                        id: newId,
+                        title: 'New Chat',
+                        updatedAt: Date.now() / 1000,
+                        createdAt: Date.now() / 1000,
+                        timeRange: ''
+                    },
+                    ...(list ?? [])
+                ]);
+            }
+        }
+
+        await sendMessageSSE(model, userMessage);
+    };
+
+    /**
+     * Creates the response message, appends it to history, and builds the OAI
+     * message array for the completion request. Returns both so the caller can
+     * trigger reactivity and scroll after history is mutated.
+     */
+    const buildMessages = async (
+        model: Model,
+        userMessage: ChatMessage
+    ): Promise<[ChatMessage, Message[]]> => {
         const responseMessage = appendMessage(history, {
             parentId: userMessage.id,
             role: 'assistant',
@@ -688,83 +697,22 @@
             modelName: model.name
         });
 
-        history = history;
-        let _chatId: string = $chatId;
+        const messageList = createMessagesList(history, userMessage.id);
+        const oaiMessages: Message[] = [];
 
-        // Generate a chat ID for the first message in the conversation
-        if (newChat && !userMessage.parentId) {
-            _chatId = await initChatHandler();
-        }
-
-        await tick();
-        scrollToBottom();
-
-        await sendMessageSSE(
-            model,
-            userMessage,
-            responseMessage,
-            _chatId,
-            newChat && !userMessage.parentId
-        );
-    };
-
-    /**
-     * Generates a chat ID locally. For non-temporary chats the backend will
-     * create the DB record on the first completion request.
-     */
-    const initChatHandler = async (): Promise<string> => {
-        if ($temporaryChatEnabled) {
-            const _chatId = `local:${crypto.randomUUID()}`;
-            chatId.set(_chatId);
-            return _chatId;
-        }
-
-        const _chatId = crypto.randomUUID();
-        chatId.set(_chatId);
-        window.history.replaceState(null, '', `/c/${_chatId}`);
-
-        // Optimistic sidebar insert so the entry appears immediately
-        chats.update((list) => [
-            {
-                id: _chatId,
-                title: 'New Chat',
-                updatedAt: Date.now() / 1000,
-                createdAt: Date.now() / 1000,
-                timeRange: ''
-            },
-            ...(list ?? [])
-        ]);
-
-        return _chatId;
-    };
-
-    /**
-     * Builds the data needed to make a chat completion API call:
-     * syncs chatFiles, collects per-request files, fetches user location,
-     * determines stream setting, and formats the OpenAI message array.
-     */
-    const buildChatRequest = async (
-        responseMessage: ChatMessage,
-        model: Model
-    ): Promise<Message[]> => {
-        // Prepare OAI-format message array
-        const _messages = createMessagesList(history, responseMessage.id);
-        const messages: Message[] = [];
-
-        const priorMessages = _messages.filter((m) => m.id !== responseMessage.id);
-        const hasSystemPrompt = priorMessages.some((m) => m.role === 'system');
+        const hasSystemPrompt = messageList.some((m) => m.role === 'system');
 
         // Add system prompt if needed, applying variables to prompt template
         // Note: fetches location if enabled
         if (!hasSystemPrompt) {
             const promptVars = await getPromptVariables($user!.username, $settings.userLocation);
             const systemPrompt = applyPromptVariables(resolvedSystemPrompt, promptVars);
-            messages.push({ role: 'system' as const, content: systemPrompt });
+            oaiMessages.push({ role: 'system' as const, content: systemPrompt });
         }
 
         // Add rest of messages to array
-        messages.push(
-            ...priorMessages.flatMap((message): Message[] => {
+        oaiMessages.push(
+            ...messageList.flatMap((message): Message[] => {
                 if (message.role === 'system') {
                     return [{ role: 'system', content: message.content }];
                 } else if (message.role === 'assistant') {
@@ -802,21 +750,20 @@
             })
         );
 
-        return messages;
+        return [responseMessage, oaiMessages];
     };
 
-    const sendMessageSSE = async (
-        model: Model,
-        userMessage: ChatMessage,
-        responseMessage: ChatMessage,
-        _chatId: string,
-        generateTitle: boolean = false
-    ) => {
+    const sendMessageSSE = async (model: Model, userMessage: ChatMessage) => {
         console.log(`sendMessageSSE | model: ${model.name}`);
 
-        // 1. Build request
+        // 1. Build request - add empty assistant message to history and build OAI messages
+        const [responseMessage, messages] = await buildMessages(model, userMessage);
         const stream = model.params.stream_response ?? true;
-        const messages = await buildChatRequest(responseMessage, model);
+
+        // Trigger reactivity and scroll before starting chat stream
+        history = history;
+        await tick();
+        scrollToBottom();
 
         try {
             // 2. API call
@@ -831,12 +778,15 @@
                     model: model.id,
                     history: history,
                     timestamp: Date.now(),
-                    webSearchEnabled: webSearchEnabled
+                    webSearchEnabled: webSearchEnabled,
+                    ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
+                        ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
+                        : {}),
                 },
-                ...(generateTitle && $selectedFolder?.id ? { folderId: $selectedFolder.id } : {}),
+                ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {}),
                 params: model.params,
                 webSearchEnabled: webSearchEnabled,
-                generateTitle: generateTitle,
+                generateTitle: !$chatTitle
             });
 
             // 3. Stream state setup
@@ -909,7 +859,7 @@
                 }
             };
 
-            const handleToolCallStart = (data: { id: string; name: string; arguments: string }) => {
+            const handleToolCallStart = (data: SseToolCallStartPayload['data']) => {
                 finalizeReasoning();
                 // Flush any accumulated content into a ContentBlock before the tool call
                 if (contentTokens.trim() !== '') {
@@ -931,20 +881,18 @@
                 // Track when this round of tool calls started (overwritten for each call;
                 // all calls in a round are emitted back-to-back so timestamps are near-identical)
                 toolCallStartTime = Date.now();
-                syncMessage();
             };
 
-            const handleToolCallResult = (data: { id: string; result: string }) => {
+            const handleToolCallResult = (data: SseToolCallResultPayload['data']) => {
                 const block = responseMessage.blocks!.find(
                     (b): b is ToolCallBlock => b.type === 'tool_call' && b.id === data.id
                 );
 
-                // Leave done=false — finalizeToolCalls() will set it on first token of next round
+                // Leave done=false - finalizeToolCalls() will set it on first token of next round
                 if (block) block.result = data.result;
-
-                syncMessage();
             };
 
+            // TODO - untangle typing
             const handleToolCallProgress = (data: { id: string; name: string; progress: any }) => {
                 if (data.name !== 'webSearch') return;
                 const p = data.progress;
@@ -964,7 +912,6 @@
 
                 // Trigger reactivity
                 toolProgress = toolProgress;
-                syncMessage();
             };
 
             const finalizeToolCalls = () => {
@@ -1007,7 +954,37 @@
                 syncMessage();
             };
 
+            const backendEventHandler = (event: SseEvent) => {
+                const { type, data } = event.data;
+                console.log(`backendEventHandler | type: ${type}`);
+
+                if (type === 'tool_call:start') handleToolCallStart(data);
+                else if (type === 'tool_call:result') handleToolCallResult(data);
+                else if (type === 'tool_call:progress') handleToolCallProgress(data);
+                else if (type === 'model:queued')
+                    modelStatus = { status: 'queued', modelName: model.name };
+                else if (type === 'model:loading')
+                    modelStatus = { status: 'loading', modelName: model.name };
+                else if (type === 'chat:completion') {
+                    finalizeReasoning();
+                    generating = false;
+                    generationController = null;
+                    responseMessage.done = true;
+                    responseMessage.usage = data.usage;
+                    if (data.error) responseMessage.error = data.error;
+                } else if (type === 'chat:title') {
+                    chatTitle.set(data);
+                    chats.update((list) =>
+                        (list ?? []).map((c) => (c.id === $chatId ? { ...c, title: data } : c))
+                    );
+                }
+
+                syncMessage();
+            };
+
             // 5. Hot loop - handle streamed response token-by-token
+            // TODO - is it possible to accidentally skip updates because `update` contains
+            // multitudes?
             for await (const update of textStream) {
                 if (update.error) {
                     generating = false;
@@ -1022,31 +999,13 @@
                 // Physical stream close
                 if (update.done) break;
 
-                // [DONE] sentinel: tokens finished, but keep reading for backend events
-                if (update.tokensDone) {
-                    finalizeReasoning();
-                    generating = false;
-                    generationController = null;
-                    responseMessage.done = true;
-                    syncMessage();
-                    continue;
-                }
-
                 // Update prompt processing speed, TPS, context used/context total
                 if (update.timings || update.promptProgress) {
                     updateStreamContext(update.timings, update.promptProgress);
                 }
 
                 if (update.backendEvent) {
-                    const { type, data } = update.backendEvent.data;
-                    if (type === 'tool_call:start') handleToolCallStart(data);
-                    else if (type === 'tool_call:result') handleToolCallResult(data);
-                    else if (type === 'tool_call:progress') handleToolCallProgress(data);
-                    else if (type === 'model:queued')
-                        modelStatus = { status: 'queued', modelName: model.name };
-                    else if (type === 'model:loading')
-                        modelStatus = { status: 'loading', modelName: model.name };
-                    else await sseEventHandler(update.backendEvent, responseMessage);
+                    backendEventHandler(update.backendEvent);
                     continue;
                 }
 

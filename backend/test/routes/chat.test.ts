@@ -81,7 +81,7 @@ function parseSseBody(body: string): SseFrame[] {
             }
         } else {
             let parsed: any;
-            try { parsed = JSON.parse(dataLine); } catch { /* [DONE] or empty */ }
+            try { parsed = JSON.parse(dataLine); } catch { /* empty */ }
             frames.push({ kind: 'token', raw: dataLine, parsed });
         }
     }
@@ -201,10 +201,7 @@ describe('POST /custom-completions', () => {
 
     afterEach(() => mock.resetQueue());
 
-    test('no tool calls — behaves like /completions with explicit [DONE]', async () => {
-        // Default mock returns text with finish_reason: "stop" via the stop chunk,
-        // but the accumulated finish_reason in handleStreamedResponse ends up null.
-        // hasToolCalls() returns false so the loop exits.
+    test('no tool calls — streams tokens and emits chat:completion', async () => {
         const res = await request(app)
             .post('/api/v1/chat/custom-completions')
             .set('Authorization', `Bearer ${token}`)
@@ -212,12 +209,10 @@ describe('POST /custom-completions', () => {
             .buffer(true)
             .parse(sseParser as any);
 
-        console.log(`res: ${JSON.stringify(res, null, 2)}`);
-
         assert.strictEqual(res.status, 200);
 
         const body = res.body as unknown as string;
-        assert.ok(body.includes('data: [DONE]'), 'Expected explicit [DONE] frame');
+        assert.ok(!body.includes('data: [DONE]'), 'Expected no [DONE] frame');
 
         const frames = parseSseBody(body);
         const completion = findChatEvent(frames, 'chat:completion');
@@ -272,8 +267,7 @@ describe('POST /custom-completions', () => {
         );
         assert.ok(contentToken, 'Expected final content token from round 2');
 
-        // Explicit [DONE] and chat:completion
-        assert.ok(body.includes('data: [DONE]'), 'Expected [DONE] frame');
+        // chat:completion
         const completion = findChatEvent(frames, 'chat:completion');
         assert.ok(completion, 'Expected chat:completion event');
 

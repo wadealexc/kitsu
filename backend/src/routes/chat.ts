@@ -181,8 +181,6 @@ router.post('/custom-completions', requireAuth, async (
             ? doTasks(llama, taskModel, res, ctx.value, taskCtrl.signal)
             : Promise.resolve();
 
-        res.write('data: [DONE]\n\n');
-
         // Emit usage immediately so the frontend can show the usage icon without
         // waiting for title generation (taskPromise) to complete.
         _emitSseEvent(res, chatId, {
@@ -205,15 +203,16 @@ router.post('/custom-completions', requireAuth, async (
         console.error(`[custom-completions] mid-stream error:`, err);
         const errMsg = err?.message ?? String(err);
 
+        const errorUsage = _getFinalUsage(totalUsage);
         _emitSseEvent(res, chatId, {
-            type: 'chat:message:error',
-            data: { error: { content: errMsg } },
+            type: 'chat:completion',
+            data: { done: true, usage: errorUsage, error: { content: errMsg } },
         });
 
         await _persistChat(ctx.value, {
             content: finalContent,
             blocks,
-            usage: totalUsage,
+            usage: errorUsage,
             done: false,
             error: { content: errMsg }
         });

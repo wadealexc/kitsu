@@ -32,11 +32,10 @@ export class MockLlama {
 
     /**
      * Builds a streaming LlamaResponse from an array of chunk objects.
-     * Appends data: [DONE] automatically. Pass req.signal from the factory.
+     * Pass req.signal from the factory.
      */
     static createSSEResponse(chunks: object[], signal: AbortSignal): LlamaResponse {
         const frames = chunks.map(c => `data: ${JSON.stringify(c)}\n\n`);
-        frames.push('data: [DONE]\n\n');
         return {
             status: 200,
             headers: new Headers({ 'content-type': 'text/event-stream' }),

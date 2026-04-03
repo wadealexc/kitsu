@@ -16,20 +16,13 @@ export type SseUsage = {
 
 /* -------------------- EVENT PAYLOAD TYPES -------------------- */
 
-/** Emitted once when generation is complete */
+/** Emitted once when generation is complete. Carries optional error if the stream ended abnormally. */
 export type SseCompletionPayload = {
     type: 'chat:completion';
     data: {
         done: true;
         usage: SseUsage;
-    };
-};
-
-/** Emitted when the backend encounters an error mid-stream */
-export type SseMessageErrorPayload = {
-    type: 'chat:message:error';
-    data: {
-        error: { content: string };
+        error?: { content: string };
     };
 };
 
@@ -87,7 +80,6 @@ export type SseToolCallProgressPayload = {
 
 export type SseEventPayload =
     | SseCompletionPayload
-    | SseMessageErrorPayload
     | SseTitlePayload
     | SseModelQueuedPayload
     | SseModelLoadingPayload

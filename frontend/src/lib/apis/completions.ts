@@ -33,8 +33,6 @@ type TextStreamUpdate = {
     usage?: ChatMessageUsage;
     /** reasoning content from choices[0].delta.reasoning_content */
     reasoning?: string;
-    /** true when the [DONE] sentinel is seen; token streaming is finished */
-    tokensDone?: boolean;
     /** parsed payload from a named 'chat-event' SSE frame */
     backendEvent?: SseEvent;
     /** per-token timings from llama.cpp timings_per_token */
@@ -119,12 +117,6 @@ async function* streamToIterator(
 
         // Standard unnamed SSE message
         const data = value.data;
-        if (data.startsWith('[DONE]')) {
-            // Token streaming is complete, but don't break yet -
-            // the backend may still send a named event frame after [DONE].
-            yield { done: false, value: '', tokensDone: true };
-            continue;
-        }
 
         try {
             const parsedData = JSON.parse(data);
