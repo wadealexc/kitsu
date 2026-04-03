@@ -43,12 +43,27 @@ class WebSearch implements Tool<Input, Output> {
         return (
             `
 
-#### Web Search
+#### webSearch
 
-* Use the web search tool whenever you require up-to-date information, or if you do not have sufficient context to answer a question. 
-* Always keep in mind your training cutoff date vs the current date. Your job is to intelligently select whether a web search is needed.
-* When referencing information sourced from the web search tool, cite your references using markdown syntax; e.g. "[link text/page title](url)"
-* If a web search does not yield sufficient information to answer a query, consider performing a followup search.`
+- Allows the assistant to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Use this tool for accessing information beyond your knowledge cutoff
+
+IMPORTANT - Use the correct year in search queries:
+  - The current date is provided in your system prompt. You MUST use this year when searching for recent information.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+
+REQUIREMENT - You MUST follow this when using the webSearch tool:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+`
         );
     }
 
