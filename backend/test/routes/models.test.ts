@@ -4,11 +4,8 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 
 import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { db, schema, Models, type Model } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
-import * as Models from '../../src/db/operations/models.js';
-import { type Model } from '../../src/db/operations/models.js';
 import { MockLlama } from '../mockLlama.js';
 import modelsRouter from '../../src/routes/models.js';
 import type { ModelForm } from '../../src/routes/types/index.js';

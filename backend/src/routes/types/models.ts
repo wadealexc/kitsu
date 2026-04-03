@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Model } from '../../db/operations/models.js';
+import type { Model } from '../../db/index.js';
 import { UserIdSchema, UserRoleSchema } from './common.js';
 
 // Access control structure (read/write permissions)

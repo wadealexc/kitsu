@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ChatIdSchema, UserIdSchema, FolderIdSchema, MessageIdSchema } from './common.js';
+import { ChatIdSchema, FolderIdSchema } from './common.js';
 import { ModelParamsSchema, type ModelParams } from './models.js';
 
 /* -------------------- CHAT RESPONSE TYPES -------------------- */

@@ -2,9 +2,7 @@ import { Router, type Response, type NextFunction } from 'express';
 
 import * as Types from './types/index.js';
 import { requireAuth, requireAdmin, validateUserId } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Users from '../db/operations/users.js';
-import * as Auths from '../db/operations/auths.js';
+import { db, Users, Auths } from '../db/index.js';
 import { HttpError, NotFoundError, ForbiddenError, BadRequestError } from './errors.js';
 
 const router = Router();

@@ -2,9 +2,7 @@ import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
 
 import { createTestDatabase, newDBWithAdmin, newUserParams, type TestDatabase } from '../../helpers.js';
-import * as Users from '../../../src/db/operations/users.js';
-import type { User } from '../../../src/db/operations/users.js';
-import { currentUnixTimestamp } from '../../../src/db/utils.js';
+import { Users, type User } from '../../../src/db/index.js';
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
 

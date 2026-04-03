@@ -5,10 +5,8 @@ import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { db, schema, Files } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
-import * as Files from '../../src/db/operations/files.js';
 import filesRouter from '../../src/routes/files.js';
 import { StorageProvider } from '../../src/storage/provider.js';
 

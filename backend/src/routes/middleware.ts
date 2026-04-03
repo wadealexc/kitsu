@@ -5,8 +5,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { TypedRequest } from './types/index.js';
 import * as Types from './types/index.js';
 import * as JWT from './jwt.js';
-import * as Users from '../db/operations/users.js';
-import { db } from '../db/client.js';
+import { db, Users } from '../db/index.js';
 
 /* -------------------- AUTHENTICATION MIDDLEWARE -------------------- */
 

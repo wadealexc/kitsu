@@ -2,9 +2,7 @@ import { Router, type Response, type NextFunction } from 'express';
 
 import * as Types from './types/index.js';
 import { requireAuth, validateChatId, validateShareId, validateFolderId } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Chats from '../db/operations/chats.js';
-import * as Folders from '../db/operations/folders.js';
+import { db, Chats, Folders } from '../db/index.js';
 import { HttpError, NotFoundError, BadRequestError } from './errors.js';
 
 const router = Router();

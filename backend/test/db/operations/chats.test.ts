@@ -1,12 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import * as Chats from '../../../src/db/operations/chats.js';
-import * as Users from '../../../src/db/operations/users.js';
-import * as Folders from '../../../src/db/operations/folders.js';
-import * as Files from '../../../src/db/operations/files.js';
+import { Chats, Users, Folders, Files, schema, currentUnixTimestamp } from '../../../src/db/index.js';
 import type { ChatImportForm } from '../../../src/routes/types/index.js';
-import { currentUnixTimestamp } from '../../../src/db/utils.js';
-import { chatFiles } from '../../../src/db/schema.js';
 
 import { 
     createTestDatabase, 
@@ -604,7 +599,7 @@ describe('Chat Operations', () => {
             // Manually insert old file
             const now = currentUnixTimestamp();
             await db
-                .insert(chatFiles)
+                .insert(schema.chatFiles)
                 .values({
                     id: crypto.randomUUID(),
                     userId: userId,

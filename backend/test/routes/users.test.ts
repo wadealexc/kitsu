@@ -5,11 +5,8 @@ import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { assertInMemoryDatabase, createUserWithToken, newUserParams, TEST_PASSWORD } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { db, schema, Users, Auths } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as JWT from '../../src/routes/jwt.js';
 import { type UserRole } from '../../src/routes/types/index.js';
 import usersRouter from '../../src/routes/users.js';

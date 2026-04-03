@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { User } from '../../db/operations/users.js';
+import type { User } from '../../db/index.js';
 import { UserIdSchema, UserRoleSchema } from './common.js';
 
 // User settings (UI preferences)

@@ -2,14 +2,8 @@ import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 
 import { createTestDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
-import * as Users from '../../src/db/operations/users.js';
-import type { User } from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
-import * as Chats from '../../src/db/operations/chats.js';
-import * as Folders from '../../src/db/operations/folders.js';
-import * as Files from '../../src/db/operations/files.js';
-import type { ChatObject, NewChatForm } from '../../src/routes/types/index.js';
-import { currentUnixTimestamp } from '../../src/db/utils.js';
+import { Users, Auths, Chats, Folders, Files, currentUnixTimestamp, type User } from '../../src/db/index.js';
+import type { ChatObject } from '../../src/routes/types/index.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 

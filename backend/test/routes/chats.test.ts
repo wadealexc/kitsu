@@ -5,15 +5,10 @@ import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { assertInMemoryDatabase, createUserWithToken, createTestFolderForm } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { db, schema, Chats, Folders, currentUnixTimestamp, type Chat } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
-import * as Chats from '../../src/db/operations/chats.js';
-import { type Chat } from '../../src/db/operations/chats.js';
-import * as Folders from '../../src/db/operations/folders.js';
 import { type ChatForm, type ChatObject, type NewChatForm, type ChatImportForm } from '../../src/routes/types/index.js';
 import chatsRouter from '../../src/routes/chats.js';
-import { currentUnixTimestamp } from '../../src/db/utils.js';
 
 /* -------------------- TEST SETUP -------------------- */
 

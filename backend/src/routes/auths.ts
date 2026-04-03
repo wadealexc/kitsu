@@ -3,12 +3,8 @@ import type { StringValue } from 'ms';
 
 import * as Types from './types/index.js';
 import { requireAuth, requireAdmin } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Users from '../db/operations/users.js';
-import type { User } from '../db/operations/users.js';
-import * as Auths from '../db/operations/auths.js';
+import { db, Users, Auths, DEFAULT_USER_ROLE, type User } from '../db/index.js';
 import * as JWT from './jwt.js';
-import { DEFAULT_USER_ROLE } from '../db/schema.js';
 import { HttpError, BadRequestError, NotFoundError } from './errors.js';
 
 const router = Router();

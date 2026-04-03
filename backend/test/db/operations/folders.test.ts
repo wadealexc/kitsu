@@ -1,13 +1,8 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { createTestDatabase, newUserParams, type TestDatabase, createTestFolderForm } from '../../helpers.js';
-import * as Folders from '../../../src/db/operations/folders.js';
-import type { Folder, NewFolder } from '../../../src/db/operations/folders.js';
-import * as Users from '../../../src/db/operations/users.js';
-import * as Chats from '../../../src/db/operations/chats.js';
-import { folders } from '../../../src/db/schema.js';
+import { Folders, Users, Chats, schema, currentUnixTimestamp, type Folder } from '../../../src/db/index.js';
 import type { FolderData } from '../../../src/routes/types/index.js';
-import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 
@@ -15,7 +10,7 @@ import { currentUnixTimestamp } from '../../../src/db/utils.js';
  * Create a folder with 'createdAt' and 'updatedAt' set to specific values
  */
 async function _createOldFolder(
-    params: NewFolder,
+    params: Folders.NewFolder,
     txOrDb: TestDatabase,
     createdAt?: number,
     updatedAt?: number,
@@ -24,7 +19,7 @@ async function _createOldFolder(
     const folderId = crypto.randomUUID();
 
     const [folder] = await txOrDb
-        .insert(folders)
+        .insert(schema.folders)
         .values({
             id: folderId,
             parentId: params.parentId || null,

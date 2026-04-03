@@ -2,16 +2,12 @@ import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
 
 import { newDBWithAdmin, newUserParams, type TestDatabase } from '../../helpers.js';
-import * as Models from '../../../src/db/operations/models.js';
-import type { Model, NewModel } from '../../../src/db/operations/models.js';
-import * as Users from '../../../src/db/operations/users.js';
-import { models } from '../../../src/db/schema.js';
+import { Models, Users, schema, currentUnixTimestamp, type Model } from '../../../src/db/index.js';
 import type { ModelForm } from '../../../src/routes/types/index.js';
-import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 
-function createModelForm(overrides: Partial<NewModel> & { userId: string }): NewModel {
+function createModelForm(overrides: Partial<Models.NewModel> & { userId: string }): Models.NewModel {
     const id = crypto.randomUUID();
     return {
         name: overrides?.name || `Test Model`,
@@ -28,7 +24,7 @@ function createModelForm(overrides: Partial<NewModel> & { userId: string }): New
 async function createTestModel(
     db: TestDatabase,
     userId: string,
-    overrides?: Partial<NewModel>
+    overrides?: Partial<Models.NewModel>
 ): Promise<Model> {
     const modelForm = createModelForm({ ...overrides, userId });
     const model = await Models.insertNewModel(modelForm, db);
@@ -47,7 +43,7 @@ async function createOldModel(
     const now = currentUnixTimestamp();
 
     const [model] = await db
-        .insert(models)
+        .insert(schema.models)
         .values({
             id: modelForm.id,
             userId: modelForm.userId,
@@ -69,7 +65,7 @@ async function createOldModel(
 async function getAllModels(db: TestDatabase): Promise<Model[]> {
     return await db
         .select()
-        .from(models);
+        .from(schema.models);
 }
 
 /* -------------------- CORE CRUD OPERATIONS -------------------- */

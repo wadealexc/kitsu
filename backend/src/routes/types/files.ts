@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import type { File } from '../../db/operations/files.js';
-import { FileIdSchema, UserIdSchema } from './common.js';
+import type { File } from '../../db/index.js';
 
 // File metadata structure
 export const FileMetaSchema = z.object({

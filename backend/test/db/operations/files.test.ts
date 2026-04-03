@@ -1,13 +1,8 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { createTestDatabase, newUserParams, createTestFileForm, type TestDatabase, createTestChatData } from '../../helpers.js';
-import * as Files from '../../../src/db/operations/files.js';
-import { type File } from '../../../src/db/operations/files.js';
-import * as Users from '../../../src/db/operations/users.js';
-import * as Chats from '../../../src/db/operations/chats.js';
-import { files } from '../../../src/db/schema.js';
+import { Files, Users, Chats, schema, currentUnixTimestamp, type File } from '../../../src/db/index.js';
 import type { FileMeta, FileData } from '../../../src/routes/types/index.js';
-import { currentUnixTimestamp } from '../../../src/db/utils.js';
 
 /* -------------------- TEST HELPERS -------------------- */
 
@@ -23,7 +18,7 @@ async function _createOldFile(
     const now = currentUnixTimestamp();
 
     const [file] = await txOrDb
-        .insert(files)
+        .insert(schema.files)
         .values({
             id: crypto.randomUUID(),
             userId: fileData.userId,

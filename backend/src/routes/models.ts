@@ -3,9 +3,7 @@ import { Router, type Response, type NextFunction } from 'express';
 import type { LlamaManager } from '../llama/llamaManager.js';
 import * as Types from './types/index.js';
 import { requireAuth, requireAdmin } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Models from '../db/operations/models.js';
-import * as Users from '../db/operations/users.js';
+import { db, Models, Users } from '../db/index.js';
 import { HttpError, NotFoundError, BadRequestError, UnauthorizedError } from './errors.js';
 
 const router = Router();

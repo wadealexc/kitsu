@@ -1,16 +1,13 @@
-import { describe, test, before, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import request from 'supertest';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 
-import { assertInMemoryDatabase, newUserParams, TEST_PASSWORD, type TestDatabase } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { assertInMemoryDatabase } from '../helpers.js';
+import { db, schema } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
-import * as Users from '../../src/db/operations/users.js';
-import * as Auths from '../../src/db/operations/auths.js';
 import * as JWT from '../../src/routes/jwt.js';
 import authRouter from '../../src/routes/auths.js';
 

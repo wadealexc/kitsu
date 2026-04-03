@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import type { Folder } from '../../db/operations/folders.js';
-import { FolderIdSchema, UserIdSchema } from './common.js';
+import type { Folder } from '../../db/index.js';
+import { FolderIdSchema } from './common.js';
 
 /** File or collection reference in folder data */
 export interface FolderFileItem {

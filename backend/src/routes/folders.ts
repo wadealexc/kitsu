@@ -8,9 +8,7 @@
 import { Router, type Response } from 'express';
 import * as Types from './types/index.js';
 import { requireAuth, validateFolderId } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Folders from '../db/operations/folders.js';
-import * as Chats from '../db/operations/chats.js';
+import { db, Folders, Chats } from '../db/index.js';
 import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 
 const router = Router();

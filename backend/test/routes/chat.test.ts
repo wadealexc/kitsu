@@ -6,9 +6,8 @@ import cookieParser from 'cookie-parser';
 import type { IncomingMessage } from 'node:http';
 
 import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
-import { db } from '../../src/db/client.js';
+import { db, schema } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as schema from '../../src/db/schema.js';
 import chatRouter from '../../src/routes/chat.js';
 import { ToolRegistry } from '../../src/tools/registry.js';
 import { MockLlama } from '../mockLlama.js';

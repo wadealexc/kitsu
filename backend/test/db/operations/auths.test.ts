@@ -2,10 +2,7 @@ import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
 
 import { newDBWithAdmin, newUserParams, TEST_PASSWORD, type TestDatabase } from '../../helpers.js';
-import { validateUsername } from '../../../src/db/schema.js';
-import * as Auths from '../../../src/db/operations/auths.js';
-import { type Auth } from '../../../src/db/operations/auths.js';
-import * as Users from '../../../src/db/operations/users.js';
+import { validateUsername, Auths, Users } from '../../../src/db/index.js';
 
 
 /* -------------------- CRUD OPERATIONS TESTS -------------------- */
@@ -72,7 +69,7 @@ describe('createAuth', () => {
 
 describe('getAuthById', () => {
     let db: TestDatabase;
-    let testAuth: Auth;
+    let testAuth: Auths.Auth;
 
     before(async () => {
         db = await newDBWithAdmin();
@@ -101,7 +98,7 @@ describe('getAuthById', () => {
 
 describe('getAuthByUsername', () => {
     let db: TestDatabase;
-    let testAuth: Auth;
+    let testAuth: Auths.Auth;
 
     before(async () => {
         db = await newDBWithAdmin();

@@ -6,8 +6,7 @@ import multer from 'multer';
 
 import * as Types from './types/index.js';
 import { requireAuth, validateFileId } from './middleware.js';
-import { db } from '../db/client.js';
-import * as Files from '../db/operations/files.js';
+import { db, Files } from '../db/index.js';
 import { HttpError, NotFoundError, UnauthorizedError } from './errors.js';
 import { StorageProvider } from '../storage/provider.js';
 
