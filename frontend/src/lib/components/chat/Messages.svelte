@@ -284,7 +284,6 @@
                                         isLastMessage={message.id === history.currentId}
                                         siblings={getSiblingIds(history, message)}
                                         {goToSibling}
-                                        {updateChat}
                                         {editMessage}
                                         {deleteMessage}
                                         {regenerateResponse}

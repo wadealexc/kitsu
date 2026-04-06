@@ -62,7 +62,6 @@
 
     export let goToSibling: (message: ChatMessage, idx: number) => void = () => {};
 
-    export let updateChat: () => void | Promise<void>;
     export let editMessage: (
         messageId: string,
         update: { content: string; files: ChatMessageFile[] },
@@ -328,17 +327,7 @@
                                     <Markdown
                                         id={`${chatId}-${message.id}`}
                                         content={message.content}
-                                        save={!readOnly}
                                         done={$settings.chatFadeStreamingText ? message.done : true}
-                                        onSave={({ raw, oldContent, newContent }) => {
-                                            history.messages[message.id].content = history.messages[
-                                                message.id
-                                            ].content.replace(
-                                                raw,
-                                                raw.replace(oldContent, newContent)
-                                            );
-                                            updateChat();
-                                        }}
                                     />
                                 {/if}
 

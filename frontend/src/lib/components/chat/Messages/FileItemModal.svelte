@@ -228,10 +228,8 @@
                     {:else if isCode}
                         <div class="max-h-[60vh] overflow-scroll scrollbar-hidden text-sm relative">
                             <CodeBlock
-                                code={item.file?.data?.content}
+                                code={item.file?.data?.content ?? ''}
                                 lang={item.name.split('.').pop() ?? ''}
-                                token={null as any}
-                                save={false}
                             />
                         </div>
                     {:else if isMarkdown}

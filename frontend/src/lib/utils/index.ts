@@ -9,7 +9,6 @@ dayjs.extend(isToday);
 dayjs.extend(isYesterday);
 dayjs.extend(localizedFormat);
 
-import type { Mermaid } from 'mermaid';
 import { getAndUpdateUserLocation } from '$lib/apis/users';
 
 export const sanitizeResponseContent = (content: string): string => {
@@ -367,25 +366,6 @@ export const decodeString = (str: string): string => {
     } catch (e) {
         return str;
     }
-};
-
-export const initMermaid = async (): Promise<Mermaid> => {
-    const { default: mermaid } = await import('mermaid');
-    mermaid.initialize({
-        startOnLoad: false, // Should be false when using render API
-        theme: 'dark',
-        securityLevel: 'loose'
-    });
-    return mermaid;
-};
-
-export const renderMermaidDiagram = async (mermaid: Mermaid, code: string): Promise<string> => {
-    const parseResult = await mermaid.parse(code, { suppressErrors: false });
-    if (parseResult) {
-        const { svg } = await mermaid.render(`mermaid-${crypto.randomUUID()}`, code);
-        return svg;
-    }
-    return '';
 };
 
 export function decodeHtmlEntities(text: string): string {

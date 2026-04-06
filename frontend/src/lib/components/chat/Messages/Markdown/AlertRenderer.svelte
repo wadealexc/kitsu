@@ -1,5 +1,5 @@
 <script lang="ts" context="module">
-    import { marked, type Token } from 'marked';
+    import { marked, type Token, type Tokens } from 'marked';
 
     type AlertType = 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION';
 
@@ -74,17 +74,6 @@
     export let alert: AlertData;
     export let id = '';
     export let tokenIdx = 0;
-    import type { Tokens } from 'marked';
-    export let onTaskClick:
-        | ((e: {
-              id: string;
-              token: Token;
-              tokenIdx: number;
-              item: Tokens.ListItem;
-              itemIdx: number;
-              checked: boolean;
-          }) => void)
-        | undefined = undefined;
 </script>
 
 <!--
@@ -113,6 +102,6 @@ Renders the following Markdown as alerts:
         <span class=" font-medium">{alert.type}</span>
     </div>
     <div class="pb-2">
-        <MarkdownTokens id={`${id}-${tokenIdx}`} tokens={alert.tokens} {onTaskClick} />
+        <MarkdownTokens id={`${id}-${tokenIdx}`} tokens={alert.tokens} />
     </div>
 </div>

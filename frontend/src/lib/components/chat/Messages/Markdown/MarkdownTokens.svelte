@@ -18,29 +18,10 @@
     export let id: string;
     export let tokens: Token[];
     export let top = true;
-    export let attributes = {};
 
     export let done = true;
 
-    export let save = false;
-
     export let paragraphTag = 'p';
-
-    export let onSave: (e: {
-        raw: string;
-        oldContent: string;
-        newContent: string;
-    }) => void = () => {};
-    export let onUpdate: (token: Token | null) => void = () => {};
-
-    export let onTaskClick: (e: {
-        id: string;
-        token: Token;
-        tokenIdx: number;
-        item: Tokens.ListItem;
-        itemIdx: number;
-        checked: boolean;
-    }) => void = () => {};
 
     const headerComponent = (depth: number) => {
         return 'h' + depth;
@@ -92,22 +73,9 @@
     {:else if token.type === 'code'}
         {#if token.raw.includes('```')}
             <CodeBlock
-                id={`${id}-${tokenIdx}`}
-                collapsed={false}
-                {token}
-                lang={token?.lang ?? ''}
-                code={token?.text ?? ''}
-                {attributes}
-                {save}
-                stickyButtonsClassName="top-0"
-                onSave={(value) => {
-                    onSave({
-                        raw: token.raw,
-                        oldContent: token.text,
-                        newContent: value
-                    });
-                }}
-                {onUpdate}
+                lang={token.lang ?? ''}
+                code={token.text ?? ''}
+                {done}
             />
         {:else}
             {token.text}
@@ -205,7 +173,7 @@
             <AlertRenderer {alert} />
         {:else}
             <blockquote dir="auto">
-                <svelte:self id={`${id}-${tokenIdx}`} tokens={token.tokens} {done} {onTaskClick} />
+                <svelte:self id={`${id}-${tokenIdx}`} tokens={token.tokens} {done} />
             </blockquote>
         {/if}
     {:else if token.type === 'list'}
@@ -218,16 +186,6 @@
                                 class=" translate-y-[1px] -translate-x-1"
                                 type="checkbox"
                                 checked={item.checked}
-                                on:change={(e) => {
-                                    onTaskClick({
-                                        id: id,
-                                        token: token,
-                                        tokenIdx: tokenIdx,
-                                        item: item,
-                                        itemIdx: itemIdx,
-                                        checked: (e.target as HTMLInputElement).checked
-                                    });
-                                }}
                             />
                         {/if}
 
@@ -236,7 +194,6 @@
                             tokens={item.tokens}
                             top={token.loose}
                             {done}
-                            {onTaskClick}
                         />
                     </li>
                 {/each}
@@ -250,16 +207,6 @@
                                 class=""
                                 type="checkbox"
                                 checked={item.checked}
-                                on:change={(e) => {
-                                    onTaskClick({
-                                        id: id,
-                                        token: token,
-                                        tokenIdx: tokenIdx,
-                                        item: item,
-                                        itemIdx: itemIdx,
-                                        checked: (e.target as HTMLInputElement).checked
-                                    });
-                                }}
                             />
 
                             <div>
@@ -268,7 +215,6 @@
                                     tokens={item.tokens}
                                     top={token.loose}
                                     {done}
-                                    {onTaskClick}
                                 />
                             </div>
                         {:else}
@@ -277,7 +223,6 @@
                                 tokens={item.tokens}
                                 top={token.loose}
                                 {done}
-                                {onTaskClick}
                             />
                         {/if}
                     </li>
@@ -295,9 +240,7 @@
                 <svelte:self
                     id={`${id}-${tokenIdx}-d`}
                     tokens={marked.lexer(decode(token.text))}
-                    attributes={token?.attributes}
                     {done}
-                    {onTaskClick}
                 />
             </div>
         </Collapsible>

@@ -77,7 +77,7 @@ export const chatCompletion = async (
 
 // createSSEStream takes a responseBody with a SSE response,
 // and returns an async generator that emits delta updates
-export function createSSEStream(
+function createSSEStream(
     responseBody: ReadableStream<Uint8Array>
 ): AsyncGenerator<TextStreamUpdate> {
     const eventStream = responseBody

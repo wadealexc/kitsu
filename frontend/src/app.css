@@ -81,7 +81,7 @@ math {
 }
 
 .hljs {
-    @apply rounded-lg;
+    @apply rounded-none;
 }
 
 input::placeholder {
