@@ -52,6 +52,16 @@ export class ToolRegistry {
         return req;
     }
 
+    /**
+     * Injects tool definitions into the request body and runs all beforeRequest hooks.
+     * 
+     * Returns the new request body
+     */
+    async prepareTools(body: proto.CompletionRequest, opts: BeforeRequestOptions): Promise<proto.CompletionRequest> {
+        const withTools = { ...body, tools: this.getToolDefinitions() };
+        return this.beforeRequest(withTools, opts);
+    }
+
     getToolDefinitions(): proto.ToolDefinition[] {
         return [...this.tools.values()].map(tool => ({
             type: 'function' as const,

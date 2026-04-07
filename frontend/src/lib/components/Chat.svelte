@@ -24,7 +24,6 @@
         SseToolCallResultPayload,
         SseToolCallStartPayload
     } from '@backend/protocol/sse.js';
-    import type { Message } from '@backend/protocol';
 
     import {
         chatId,
@@ -45,13 +44,7 @@
     } from '$lib/stores';
     import { wakeModel } from '$lib/apis/models';
 
-    import {
-        appendMessage,
-        createMessagesList,
-        expandMessageBlocks,
-        getPromptVariables,
-        applyPromptVariables
-    } from '$lib/utils';
+    import { appendMessage, createMessagesList, getPromptVariables } from '$lib/utils';
 
     import {
         createNewChat,
@@ -60,7 +53,6 @@
         updateChatById,
         updateChatFolderIdById
     } from '$lib/apis/chats';
-    import { getAndUpdateUserLocation } from '$lib/apis/users';
     import {
         chatCompletion,
         type StreamTimings,
@@ -677,15 +669,11 @@
         await sendMessageSSE(model, userMessage);
     };
 
-    /**
-     * Creates the response message, appends it to history, and builds the OAI
-     * message array for the completion request. Returns both so the caller can
-     * trigger reactivity and scroll after history is mutated.
-     */
-    const buildMessages = async (
-        model: Model,
-        userMessage: ChatMessage
-    ): Promise<[ChatMessage, Message[]]> => {
+    const sendMessageSSE = async (model: Model, userMessage: ChatMessage) => {
+        console.log(`sendMessageSSE | model: ${model.name}`);
+
+        // 1. Add empty assistant placeholder to history
+        const stream = model.params.stream_response ?? true;
         const responseMessage = appendMessage(history, {
             parentId: userMessage.id,
             role: 'assistant',
@@ -697,96 +685,36 @@
             modelName: model.name
         });
 
-        const messageList = createMessagesList(history, userMessage.id);
-        const oaiMessages: Message[] = [];
-
-        const hasSystemPrompt = messageList.some((m) => m.role === 'system');
-
-        // Add system prompt if needed, applying variables to prompt template
-        // Note: fetches location if enabled
-        if (!hasSystemPrompt) {
-            const promptVars = await getPromptVariables($user!.username, $settings.userLocation);
-            const systemPrompt = applyPromptVariables(resolvedSystemPrompt, promptVars);
-            oaiMessages.push({ role: 'system' as const, content: systemPrompt });
-        }
-
-        // Add rest of messages to array
-        oaiMessages.push(
-            ...messageList.flatMap((message): Message[] => {
-                if (message.role === 'system') {
-                    return [{ role: 'system', content: message.content }];
-                } else if (message.role === 'assistant') {
-                    return expandMessageBlocks(message);
-                } else {
-                    const imageFiles = message.files.filter(
-                        (file) => file.type === 'image' || file.contentType.startsWith('image/')
-                    );
-                    const textFiles = message.files.filter(
-                        (file) =>
-                            file.type !== 'image' &&
-                            !file.contentType.startsWith('image/') &&
-                            file.content
-                    );
-                    if (imageFiles.length > 0 || textFiles.length > 0) {
-                        return [
-                            {
-                                role: 'user',
-                                content: [
-                                    { type: 'text', text: message.content },
-                                    ...imageFiles.map((file) => ({
-                                        type: 'image_url' as const,
-                                        image_url: { url: file.url ?? '' }
-                                    })),
-                                    ...textFiles.map((file) => ({
-                                        type: 'text' as const,
-                                        text: `[File: ${file.name}]\n${file.content}`
-                                    }))
-                                ]
-                            }
-                        ];
-                    }
-                    return [{ role: 'user', content: message.content }];
-                }
-            })
-        );
-
-        return [responseMessage, oaiMessages];
-    };
-
-    const sendMessageSSE = async (model: Model, userMessage: ChatMessage) => {
-        console.log(`sendMessageSSE | model: ${model.name}`);
-
-        // 1. Build request - add empty assistant message to history and build OAI messages
-        const [responseMessage, messages] = await buildMessages(model, userMessage);
-        const stream = model.params.stream_response ?? true;
-
         // Trigger reactivity and scroll before starting chat stream
         history = history;
         await tick();
         scrollToBottom();
 
+        // Compute system prompt variables with client-side info
+        const rawVars = await getPromptVariables($user!.username, $settings.userLocation);
+        const promptVariables: Record<string, string> = Object.fromEntries(
+            Object.entries(rawVars)
+                .filter(([, v]) => v !== undefined && v !== null)
+                .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
+        );
+
         try {
             // 2. API call
             const [textStream, controller] = await chatCompletion(localStorage.token, {
                 stream: stream,
-                model: model.id,
-                messages: messages,
                 chatId: $chatId,
-                userMessage: userMessage,
                 chat: {
-                    title: $chatTitle || 'New Chat',
+                    title: $chatTitle,
                     model: model.id,
                     history: history,
                     timestamp: Date.now(),
                     webSearchEnabled: webSearchEnabled,
                     ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
                         ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
-                        : {}),
+                        : {})
                 },
-                ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {}),
-                params: model.params,
-                webSearchEnabled: webSearchEnabled,
-                generateTitle: !$chatTitle
+                promptVariables,
+                ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {})
             });
 
             // 3. Stream state setup
@@ -1178,7 +1106,6 @@
                         const title = msgs.find((m) => m.role === 'user')?.content ?? 'New Chat';
 
                         const savedChat = await createNewChat(localStorage.token, {
-                            id: crypto.randomUUID(),
                             title: title.length > 50 ? `${title.slice(0, 50)}...` : title,
                             model: $selectedModel?.id ?? '',
                             history: history,

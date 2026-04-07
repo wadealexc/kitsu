@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { ChatIdSchema, FolderIdSchema } from './common.js';
-import { ModelParamsSchema, type ModelParams } from './models.js';
 
 /* -------------------- CHAT RESPONSE TYPES -------------------- */
 
@@ -118,10 +117,8 @@ export type ChatHistory = z.infer<typeof ChatHistorySchema>;
 
 // Complete chat object (the nested "chat" field)
 export interface ChatObject {
-    id?: string;
     title: string;
     model: string;
-    params?: ModelParams;
     webSearchEnabled?: boolean;
     systemPrompt?: string;
     history: ChatHistory;
@@ -129,10 +126,8 @@ export interface ChatObject {
 }
 
 export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
-    id: z.string().optional(),
     title: z.string(),
     model: z.string(),
-    params: ModelParamsSchema.default({}),
     history: ChatHistorySchema,
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
@@ -140,10 +135,8 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
 }).passthrough();
 
 export const ChatObjectUpdateSchema = z.object({
-    id: z.string(),
     title: z.string(),
     model: z.string(),
-    params: ModelParamsSchema,
     history: ChatHistorySchema,
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
@@ -295,16 +288,14 @@ export type OAIMessage = z.infer<typeof OAIMessageSchema>;
 
 /* -------------------- COMPLETION FORM -------------------- */
 
+export const PromptVariablesSchema = z.record(z.string(), z.string());
+export type PromptVariables = z.infer<typeof PromptVariablesSchema>;
+
 export const ChatCompletionFormSchema = z.object({
-    model: z.string(),
-    messages: z.array(OAIMessageSchema),
     stream: z.boolean(),
     chatId: ChatIdSchema,
-    userMessage: ChatMessageSchema,
     chat: ChatObjectSchema,
     folderId: FolderIdSchema.optional(),
-    params: ModelParamsSchema,
-    webSearchEnabled: z.boolean(),
-    generateTitle: z.boolean(),
+    promptVariables: PromptVariablesSchema,
 });
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;

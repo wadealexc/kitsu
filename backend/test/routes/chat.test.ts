@@ -8,7 +8,7 @@ import type { IncomingMessage } from 'node:http';
 import { assertInMemoryDatabase, createUserWithToken } from '../helpers.js';
 import { db, schema } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import chatRouter from '../../src/routes/chat.js';
+import chatRouter from '../../src/routes/completions/index.js';
 import { ToolRegistry } from '../../src/tools/registry.js';
 import { MockLlama } from '../mockLlama.js';
 import type { SseEvent } from '../../src/protocol/sse.js';
@@ -99,43 +99,47 @@ function findChatEvent(frames: SseFrame[], type: string): ChatEventFrame | undef
 
 /**
  * Builds a minimal valid ChatCompletionForm body.
- * chat_id: 'local:test' skips the chat ownership check.
- * A system prompt is required so preprocessImage.beforeRequest doesn't throw.
+ * chatId: 'local:test' skips the chat ownership check.
+ * History contains a user message and an empty assistant placeholder
+ * so prepareRequest can derive the user message correctly.
  */
 function makeChatBody(overrides?: Record<string, any>): Types.ChatCompletionForm {
+    const userMsgId = crypto.randomUUID();
+    const assistantId = crypto.randomUUID();
     return {
         stream: true,
-        model: 'test model',
-        messages: [
-            { role: 'system', content: 'You are a helpful assistant.' },
-            { role: 'user', content: 'Hello' },
-        ],
-        chatId: `local:test`,
+        chatId: 'local:test',
         chat: {
-            id: '',
             title: '',
-            model: '',
+            model: 'test model',
             history: {
-                messages: {},
-                currentId: null,
+                messages: {
+                    [userMsgId]: {
+                        id: userMsgId,
+                        parentId: null,
+                        childrenIds: [assistantId],
+                        role: 'user',
+                        content: 'Hello',
+                        files: [],
+                        timestamp: 0,
+                        done: true,
+                    },
+                    [assistantId]: {
+                        id: assistantId,
+                        parentId: userMsgId,
+                        childrenIds: [],
+                        role: 'assistant',
+                        content: '',
+                        files: [],
+                        timestamp: 0,
+                        done: false,
+                    },
+                },
+                currentId: assistantId,
             },
             timestamp: 0,
         },
-        params: {
-
-        },
-        userMessage: {
-            id: '',
-            parentId: '',
-            childrenIds: [],
-            role: 'user',
-            content: '',
-            files: [],
-            timestamp: 0,
-            done: true,
-        },
-        webSearchEnabled: false,
-        generateTitle: false,
+        promptVariables: {},
         ...overrides,
     };
 }

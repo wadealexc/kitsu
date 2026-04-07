@@ -14,7 +14,7 @@ import authsRouter from './routes/auths.js';
 import configsRouter from './routes/configs.js';
 import usersRouter from './routes/users.js';
 import modelsRouter from './routes/models.js';
-import chatRouter from './routes/chat.js';
+import chatRouter from './routes/completions/index.js';
 import chatsRouter from './routes/chats.js';
 import foldersRouter from './routes/folders.js';
 import filesRouter from './routes/files.js';

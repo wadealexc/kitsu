@@ -230,20 +230,6 @@ export const convertOpenAIChats = (_chats: any[]): any[] => {
     return chats;
 };
 
-export const applyPromptVariables = (
-    prompt: string,
-    variables: Record<string, unknown>
-): string => {
-    let result = prompt;
-    for (const [key, value] of Object.entries(variables)) {
-        if (value !== undefined && value !== null) {
-            const str = typeof value === 'string' ? value : JSON.stringify(value);
-            result = result.replaceAll(key, str);
-        }
-    }
-    return result;
-};
-
 type LocationResult = string | { latitude: number, longitude: number };
 
 export const getPromptVariables = async (
@@ -390,7 +376,6 @@ export function saveAs(data: Blob | string, filename: string): void {
 export {
     appendMessage,
     createMessagesList,
-    expandMessageBlocks,
     navigateToLeaf,
     getRootMessageIds,
     getSiblingIds

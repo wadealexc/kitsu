@@ -87,7 +87,6 @@ async function createTestChat(userId: string, title: string = 'Test Chat'): Prom
     const chatObject: ChatObject = {
         title: title,
         model: model,
-        params: { temperature: 0.7 },
         history: {
             messages: {
                 msgId1: {

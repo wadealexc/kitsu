@@ -1,5 +1,4 @@
-import type { ChatHistory, ChatMessage, ToolCallBlock } from '@backend/routes/types';
-import type { AssistantMessage, ToolMessage } from '@backend/protocol';
+import type { ChatHistory, ChatMessage } from '@backend/routes/types';
 
 /**
  * appendMessage — inserts message into history, links parent/child.
@@ -8,10 +7,10 @@ import type { AssistantMessage, ToolMessage } from '@backend/protocol';
  * links it to its parent's childrenIds, and sets history.currentId.
  * Mutates `history` in place.
  */
-export const appendMessage = (
+export function appendMessage(
     history: ChatHistory,
     message: Omit<ChatMessage, 'id' | 'childrenIds' | 'timestamp'>
-): ChatMessage => {
+): ChatMessage {
     const id = crypto.randomUUID();
     const fullMessage: ChatMessage = {
         ...message,
@@ -33,10 +32,10 @@ export const appendMessage = (
     return fullMessage;
 };
 
-export const createMessagesList = (
+export function createMessagesList(
     history: ChatHistory,
     messageId: string | null | undefined
-): ChatMessage[] => {
+): ChatMessage[] {
     if (messageId === null || messageId === undefined) {
         return [];
     }
@@ -51,77 +50,12 @@ export const createMessagesList = (
 };
 
 /**
- * expandMessageBlocks — expands ChatMessage blocks to OAI messages.
- *
- * Converts a ChatMessage with typed blocks into the OpenAI message
- * format: assistant messages with tool_calls, followed by tool result messages.
- * Consecutive tool_call blocks are batched into one assistant message's tool_calls array.
- */
-export const expandMessageBlocks = (message: ChatMessage): (AssistantMessage | ToolMessage)[] => {
-    if (!message.blocks?.length) {
-        return [{ role: 'assistant' as const, content: message.content }];
-    }
-
-    const result: (AssistantMessage | ToolMessage)[] = [];
-    let currentReasoning = '';
-    let currentContent = '';
-    let pendingToolCalls: ToolCallBlock[] = [];
-
-    for (let i = 0; i < message.blocks.length; i++) {
-        const block = message.blocks[i];
-
-        if (block.type === 'reasoning') {
-            currentReasoning += (currentReasoning ? '\n' : '') + block.content;
-        } else if (block.type === 'content') {
-            currentContent += block.content;
-        } else if (block.type === 'tool_call') {
-            pendingToolCalls.push(block);
-        }
-
-        // Flush tool calls when next block is not a tool_call (or end of blocks)
-        const nextBlock = message.blocks[i + 1];
-        if (pendingToolCalls.length > 0 && nextBlock?.type !== 'tool_call') {
-            const assistantMsg: AssistantMessage = {
-                role: 'assistant',
-                content: currentContent,
-                ...(currentReasoning ? { reasoning_content: currentReasoning } : {}),
-                tool_calls: pendingToolCalls.map((tc) => ({
-                    id: tc.id,
-                    type: 'function' as const,
-                    function: { name: tc.name, arguments: tc.arguments }
-                }))
-            };
-            result.push(assistantMsg);
-            for (const tc of pendingToolCalls) {
-                result.push({
-                    role: 'tool' as const,
-                    tool_call_id: tc.id,
-                    content: tc.result ?? ''
-                });
-            }
-            currentReasoning = '';
-            currentContent = '';
-            pendingToolCalls = [];
-        }
-    }
-
-    // Final assistant message with content + any trailing reasoning
-    result.push({
-        role: 'assistant' as const,
-        content: message.content,
-        ...(currentReasoning ? { reasoning_content: currentReasoning } : {})
-    });
-
-    return result;
-};
-
-/**
  * navigateToLeaf — walks to the deepest last-child of a branch.
  *
  * Given a messageId, follows .childrenIds.at(-1) until a leaf is reached.
  * Returns the leaf messageId.
  */
-export const navigateToLeaf = (history: ChatHistory, messageId: string): string => {
+export function navigateToLeaf(history: ChatHistory, messageId: string): string {
     let id = messageId;
     let childrenIds = history.messages[id].childrenIds;
 
@@ -137,7 +71,7 @@ export const navigateToLeaf = (history: ChatHistory, messageId: string): string 
  * Get the root message ids of a chat history. These are the top-level
  * user messages, identified because they have no parents.
  */
-export const getRootMessageIds = (history: ChatHistory): string[] => {
+export function getRootMessageIds(history: ChatHistory): string[] {
     return Object.values(history.messages)
         .filter((m) => m.parentId === null)
         .map((m) => m.id);
@@ -146,7 +80,7 @@ export const getRootMessageIds = (history: ChatHistory): string[] => {
 /**
  * Given a message, retrieves its siblings from the ChatHistory
  */
-export const getSiblingIds = (history: ChatHistory, message: ChatMessage): string[] => {
+export function getSiblingIds(history: ChatHistory, message: ChatMessage): string[] {
     return message.parentId === null
         ? getRootMessageIds(history)
         : history.messages[message.parentId].childrenIds;

@@ -49,6 +49,7 @@
     let searchDebounceTimeout: ReturnType<typeof setTimeout> | undefined;
 
     let selectedIdx: number = -1;
+    let selectedChatId: string | null = null;
     let selectedChat: ChatObject | null = null;
 
     let history: ChatHistory | null = null;
@@ -60,6 +61,7 @@
 
     const loadChatPreview = async (selectedIdx: number) => {
         if (chatList.length === 0 || selectedIdx < 0) {
+            selectedChatId = null;
             selectedChat = null;
             messages = null;
             history = null;
@@ -68,6 +70,7 @@
 
         const selectedChatIdx = selectedIdx - actions.length;
         if (selectedChatIdx < 0 || selectedChatIdx >= chatList.length) {
+            selectedChatId = null;
             selectedChat = null;
             messages = null;
             history = null;
@@ -75,12 +78,12 @@
         }
 
         const chatId = chatList[selectedChatIdx].id;
-
         const chat = await getChatById(localStorage.token, chatId).catch(async (error) => {
             return null;
         });
 
         if (chat) {
+            selectedChatId = chatId;
             selectedChat = chat.chat;
             history = chat.chat.history;
             messages = createMessagesList(chat.chat.history, chat.chat.history.currentId);
@@ -93,6 +96,7 @@
             }
         } else {
             toast.error('Failed to load chat preview');
+            selectedChatId = null;
             selectedChat = null;
             messages = null;
             history = null;
@@ -397,7 +401,7 @@
                     <div class="w-full h-full flex flex-col">
                         <Messages
                             className="h-full flex pt-4 pb-8 w-full"
-                            chatId={`chat-preview-${selectedChat?.id ?? ''}`}
+                            chatId={`chat-preview-${selectedChatId ?? ''}`}
                             readOnly={true}
                             bind:history
                             sendMessage={async (_userMessageId) => {}}
