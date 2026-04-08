@@ -29,7 +29,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 const mock = new MockLlama();
-const toolServer = new ToolRegistry({ browser: undefined });
+const toolServer = new ToolRegistry({ browser: undefined, llama: mock as any });
 
 app.locals.llama = mock;
 app.locals.tools = toolServer;

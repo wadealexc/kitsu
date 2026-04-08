@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
+import type { Tool, ToolContext, ToolSession, BeforeRequestOptions, ToolEmit } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
 import * as proto from '../../protocol/index.js';
 
@@ -52,7 +52,7 @@ class LoadWebpage implements Tool<Input, Output> {
         return req;
     }
 
-    async call(input: Input, signal: AbortSignal, _emit: ToolEmit): Promise<Output> {
+    async call(input: Input, _session: ToolSession, signal: AbortSignal, _emit: ToolEmit): Promise<Output> {
         const urls: URL[] = input.urls.slice(0, MAX_PAGES_ALLOWED).map(url => new URL(url));
         const results: Output = [];
 

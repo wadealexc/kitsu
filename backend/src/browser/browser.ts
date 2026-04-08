@@ -9,6 +9,7 @@ import * as Task from './taskManager.js';
 export type SearchRequest = {
     query: string,
     count: number,
+    offset?: number,
 };
 
 type BraveSearchResult = {
@@ -129,7 +130,7 @@ export class Browser {
         const urls: URL[] = [];
 
         // Search via Brave Search API
-        const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}`;
+        const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}&offset=${req.offset ?? 0}`;
         const response = await fetch(url, {
             method: 'get',
             signal,
@@ -175,10 +176,12 @@ export class Browser {
 
     /**
      * Run multiple search queries in parallel and return deduplicated results.
+     *
+     * @param offset Brave API result offset (for pagination / follow-up searches)
      */
-    async searchMulti(queries: string[], count: number, loadPages: boolean, signal?: AbortSignal): Promise<SearchResponse[]> {
+    async searchMulti(queries: string[], count: number, loadPages: boolean, signal?: AbortSignal, offset?: number): Promise<SearchResponse[]> {
         const settled = await Promise.allSettled(
-            queries.map(query => this.search({ query, count }, loadPages, signal))
+            queries.map(query => this.search({ query, count, offset }, loadPages, signal))
         );
 
         const responses: SearchResponse[] = [];

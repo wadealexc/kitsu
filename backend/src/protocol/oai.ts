@@ -6,7 +6,7 @@ export interface ModelInfo {
     mmprojPath: string | undefined;      // optional: mmproj-*.gguf
     args: string[];                      // CLI args for llama-server
     params: ModelParams;                 // inference defaults from config
-    contextLength?: number;              // n_ctx from /props, fetched at startup
+    contextLength?: number;              // parsed from --ctx-size in model config args
 }
 
 // https://platform.openai.com/docs/api-reference/chat/create

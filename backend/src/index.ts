@@ -65,11 +65,8 @@ if (cfg.web.enable) {
     );
 }
 
-// Initialize tool registry
-const tools = new ToolRegistry({ browser });
-
 // Note - temp/routed llamas for testing while prod is running
-// const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager; 
+// const llama = new RoutedLlama(cfg.models) as unknown as LlamaManager;
 // const llama = new MockLlama() as unknown as LlamaManager;
 
 // Start llama-server
@@ -81,6 +78,9 @@ const llama = new LlamaManager({
     models: cfg.models,
 });
 llama.startDefault();
+
+// Initialize tool registry
+const tools = new ToolRegistry({ browser, llama });
 
 /* -------------------- APP STATE -------------------- */
 

@@ -69,12 +69,23 @@ type VRAM = {
     total: number,
 };
 
-type Job = {
+type CompletionJob = {
+    type: 'completion',
     request: LlamaRequest,
     promise: Promise<LlamaResponse>,
     resolve: (value: LlamaResponse) => void,
     reject: (err: unknown) => void,
 };
+
+type TokenizeJob = {
+    type: 'tokenize',
+    request: { content: string; signal: AbortSignal },
+    promise: Promise<number>,
+    resolve: (count: number) => void,
+    reject: (err: unknown) => void,
+};
+
+type Job = CompletionJob | TokenizeJob;
 
 type RequestQueueItem = {
     llama: Llama,
@@ -221,8 +232,9 @@ export class LlamaManager {
     }
 
     /**
-     * Dispatch all queued jobs for the current model to llama-server
-     * 
+     * Dispatch all queued jobs for the current model to llama-server.
+     * Completion and tokenize jobs share the same queue and are dispatched by type.
+     *
      * @returns true if any jobs were dispatched
      */
     #dispatchJobs(): boolean {
@@ -233,7 +245,11 @@ export class LlamaManager {
         const jobs = cur.jobs;
         cur.jobs = [];
         for (const job of jobs) {
-            this.#send(cur.llama, job);
+            if (job.type === 'completion') {
+                this.#send(cur.llama, job);
+            } else {
+                this.#sendTokenize(cur.llama, job);
+            }
         }
 
         return jobs.length > 0;
@@ -290,7 +306,7 @@ export class LlamaManager {
         if (!llama) throw new Error(`LlamaManager: model not found: ${req.body.model}`);
 
         // Push job to existing queue entry or create a new one
-        const job: Job = initJob(req);
+        const job: CompletionJob = initCompletionJob(req);
         let found = false;
         for (const item of this.requestQueue) {
             if (item.llama === llama) {
@@ -312,6 +328,34 @@ export class LlamaManager {
             else if (llama.loading)         // currently being loaded
                 req.emit.onLoading();
         }
+
+        return job.promise;
+    }
+
+    /**
+     * Tokenize `content` using the given model's llama-server `/tokenize` endpoint.
+     * Routed through the job queue for model-swap protection — the request waits
+     * until the target model is active before being dispatched.
+     *
+     * @returns the number of tokens in `content`
+     */
+    tokenize(content: string, model: string, signal: AbortSignal): Promise<number> {
+        const llama = this.llamas.get(model);
+        if (!llama) throw new Error(`LlamaManager.tokenize: model not found: ${model}`);
+
+        const job: TokenizeJob = initTokenizeJob({ content, signal });
+
+        let found = false;
+        for (const item of this.requestQueue) {
+            if (item.llama === llama) {
+                found = true;
+                item.jobs.push(job);
+                break;
+            }
+        }
+
+        // Model not in queue: push as new queue entry so dispatch loop picks it up
+        if (!found) this.requestQueue.push({ llama, jobs: [job] });
 
         return job.promise;
     }
@@ -357,13 +401,16 @@ export class LlamaManager {
      * Given a running llama-server process, sends an HTTP request to the server and
      * resolves/rejects the job with the result.
      */
-    async #send(llama: Llama, job: Job): Promise<void> {
-        if (!llama.active) return;
+    async #send(llama: Llama, job: CompletionJob): Promise<void> {
+        if (!llama.active) {
+            job.reject(new Error('LlamaManager.#send: llama is not active'));
+            return;
+        }
 
         // Bail early if the request was already cancelled — node-fetch throws an
         // uncaught exception from its internal abort listener when handed a
         // pre-aborted signal, so we must avoid calling fetch() in that case.
-        if (job.request.signal?.aborted) {
+        if (job.request.signal.aborted) {
             job.reject(new Error('Request was aborted'));
             return;
         }
@@ -417,6 +464,7 @@ export class LlamaManager {
             stream = new LlamaStream(response.body, expectSSE, job.request.signal);
 
             stream.once('stop', () => {
+                // TODO - can this trigger in addition to error handler?
                 if (llama.active) {
                     llama.active.requests--;
                     llama.active.proc.removeListener('exit', prematureExit);
@@ -435,6 +483,52 @@ export class LlamaManager {
             }
 
             job.reject(new Error(err));
+        }
+    }
+
+    /**
+     * POST to llama-server's `/tokenize` endpoint and resolve the job with the token count.
+     */
+    async #sendTokenize(llama: Llama, job: TokenizeJob): Promise<void> {
+        if (!llama.active) {
+            job.reject(new Error('LlamaManager.#sendTokenize: llama is not active'));
+            return;
+        }
+
+        if (job.request.signal.aborted) {
+            job.reject(new Error('Request was aborted'));
+            return;
+        }
+
+        const tokenizeURL = `http://${llama.serverHost}:${llama.serverPort}/tokenize`;
+
+        // Increment active requests, preventing model swaps until this request is processed
+        llama.active.requests++;
+
+        try {
+            const response = await fetch(tokenizeURL, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ content: job.request.content }),
+                signal: job.request.signal,
+                agent: LLAMA_HTTP_AGENT,
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`llama-server /tokenize error: ${errText}`);
+            }
+
+            const data: unknown = await response.json();
+            if (typeof data !== 'object' || data === null || !Array.isArray((data as Record<string, unknown>).tokens)) {
+                throw new Error(`llama-server /tokenize: unexpected response shape`);
+            }
+
+            job.resolve((data as { tokens: unknown[] }).tokens.length);
+        } catch (err: any) {
+            job.reject(new Error(err));
+        } finally {
+            if (llama.active) llama.active.requests--;
         }
     }
 
@@ -503,7 +597,9 @@ export class LlamaManager {
         if (llama.active) throw new Error(`LlamaManager.#start: llama ${llama.model.name} already running`);
 
         llama.loading = true;
-        for (const job of req.jobs) job.request.emit?.onLoading();
+        for (const job of req.jobs) {
+            if (job.type === 'completion') job.request.emit?.onLoading();
+        }
 
         const model: proto.ModelInfo = llama.model;
 
@@ -794,12 +890,27 @@ export class LlamaManager {
     }
 }
 
-function initJob(request: LlamaRequest): Job {
+function initCompletionJob(request: LlamaRequest): CompletionJob {
     let resolve!: (value: LlamaResponse) => void;
     let reject!: (err: unknown) => void;
     const promise = new Promise<LlamaResponse>((res, rej) => { resolve = res; reject = rej });
 
     return {
+        type: 'completion',
+        request,
+        promise,
+        resolve,
+        reject,
+    };
+}
+
+function initTokenizeJob(request: { content: string; signal: AbortSignal }): TokenizeJob {
+    let resolve!: (count: number) => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<number>((res, rej) => { resolve = res; reject = rej });
+
+    return {
+        type: 'tokenize',
         request,
         promise,
         resolve,

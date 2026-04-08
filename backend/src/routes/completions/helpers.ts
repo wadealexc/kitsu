@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import type * as proto from '../../protocol/index.js';
 import type { SseEvent, SseEventPayload, SseUsage } from '../../protocol/sse.js';
 import { ToolRegistry, type ToolRoundResult } from '../../tools/registry.js';
-import type { ToolProgress } from '../../tools/types.js';
+import type { ToolProgress, ToolSession } from '../../tools/types.js';
 import type * as Types from '../types/index.js';
 
 /* -------------------- SSE EVENTS -------------------- */
@@ -47,6 +47,7 @@ export async function emitEventsAndExecuteTools(
     toolRegistry: ToolRegistry,
     toolCalls: proto.AssistantToolCall[],
     signal: AbortSignal,
+    session: ToolSession,
 ): Promise<ToolExecResult | undefined> {
     if (toolCalls.length === 0) return;
 
@@ -71,7 +72,7 @@ export async function emitEventsAndExecuteTools(
             },
         });
     };
-    const roundResults = await toolRegistry.executeToolRound(toolCalls, signal, onProgress);
+    const roundResults = await toolRegistry.executeToolRound(toolCalls, session, signal, onProgress);
     const elapsedMs = performance.now() - toolRoundStartMs;
 
     // Emit SSE events for each result

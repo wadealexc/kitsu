@@ -17,6 +17,7 @@ export type ChatRequestContext = {
     resolvedModel: string;
     completionBody: proto.CompletionRequest;
     isLocalChat: boolean;
+    webSearchEnabled: boolean;
 };
 
 /* -------------------- PREPARE REQUEST -------------------- */
@@ -127,5 +128,6 @@ export async function prepareRequest(
         resolvedModel,
         completionBody,
         isLocalChat,
+        webSearchEnabled: chat.webSearchEnabled ?? false,
     };
 }

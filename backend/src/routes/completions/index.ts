@@ -22,6 +22,7 @@ import {
     type ToolExecResult,
     type UsageInfo,
 } from './helpers.js';
+import { createToolSession } from '../../tools/types.js';
 import { doTasks } from './tasks.js';
 import { Chats, db } from '../../db/index.js';
 
@@ -30,6 +31,9 @@ const router = Router();
 /* -------------------- CUSTOM COMPLETION -------------------- */
 
 const MAX_TOOL_ROUNDS = 10;
+
+// Context budget threshold: stop offering tools when conversation reaches this fraction of context
+const CONTEXT_THRESHOLD_PCT = 0.9;
 
 /**
  * POST /api/v1/chat/custom-completions
@@ -93,14 +97,21 @@ router.post('/custom-completions', requireAuth, async (
     const blocks: Types.MessageBlock[] = [];
     const roundLogs: RoundLog[] = [];
 
+    // Create a per-request session for context budget tracking and webSearch state
+    const modelInfo = llama.getModelInfo(ctx.resolvedModel);
+    const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, body.messages);
+
     try {
         let prevToolExec: ToolExecResult | undefined;
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
+            // Filter tools based on session state (budget exhausted, moreResults availability, etc.)
+            const roundBody = toolRegistry.filterToolsForRound(body, session);
+
             const stream = (await llama.completions({
-                body,
+                body: roundBody,
                 signal: ctrl.signal,
                 emit: {
                     onQueue: emitCallback(res, ctx.chatId, { type: 'model:queued' }),
@@ -133,9 +144,17 @@ router.post('/custom-completions', requireAuth, async (
 
             totalUsage = accumulateUsage(totalUsage, result.value);
 
+            // Update context budget from llama-server timings so the next round
+            // can decide whether to strip tools
+            const timings = result.value.timings;
+            if (timings && session.contextLimit !== undefined) {
+                const conversationTokens = timings.cache_n + timings.prompt_n + timings.predicted_n;
+                session.contextBudget = Math.floor(session.contextLimit * CONTEXT_THRESHOLD_PCT) - conversationTokens;
+            }
+
             // If model responds with tool calls, emit events and execute tools
             const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
-            const toolExec = await emitEventsAndExecuteTools(res, ctx.chatId, toolRegistry, toolCalls, ctrl.signal);
+            const toolExec = await emitEventsAndExecuteTools(res, ctx.chatId, toolRegistry, toolCalls, ctrl.signal, session);
 
             finalContent = accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs());
 

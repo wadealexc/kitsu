@@ -1,7 +1,7 @@
 import { toJSONSchema } from 'zod';
 
 import loadTools from './loader.js';
-import type { Tool, ToolContext, BeforeRequestOptions, ToolProgress, ToolEmit } from './types.js';
+import type { Tool, ToolContext, ToolSession, BeforeRequestOptions, ToolProgress, ToolEmit } from './types.js';
 import * as proto from '../protocol/index.js';
 
 export type ToolCallResult =
@@ -73,9 +73,27 @@ export class ToolRegistry {
         }));
     }
 
+    /**
+     * Returns a per-round view of `body` with tools filtered based on session state.
+     * Strips all tools if context budget is exhausted.
+     */
+    filterToolsForRound(body: proto.CompletionRequest, session: ToolSession): proto.CompletionRequest {
+        // Context exhausted — strip tools entirely to force a final text response
+        if (
+            session.contextLimit !== undefined &&
+            session.contextBudget !== undefined &&
+            session.contextBudget <= 0
+        ) {
+            return { ...body, tools: undefined };
+        }
+
+        return body;
+    }
+
     async call(
         name: string,
         args: string,
+        session: ToolSession,
         signal: AbortSignal,
         onProgress?: (toolCallId: string, event: ToolProgress) => void,
         toolCallId?: string,
@@ -97,7 +115,7 @@ export class ToolRegistry {
         };
 
         try {
-            const result = await tool.call(validated.data, signal, emit);
+            const result = await tool.call(validated.data, session, signal, emit);
             return { ok: true, output: JSON.stringify(result) };
         } catch (err: any) {
             return { ok: false, error: err?.message ?? String(err) };
@@ -110,11 +128,12 @@ export class ToolRegistry {
      */
     async executeToolRound(
         toolCalls: proto.AssistantToolCall[],
+        session: ToolSession,
         signal: AbortSignal,
         onProgress?: (toolCallId: string, event: ToolProgress) => void,
     ): Promise<ToolRoundResult[]> {
         const promiseResults = await Promise.allSettled(
-            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, signal, onProgress, tc.id))
+            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, session, signal, onProgress, tc.id))
         );
 
         return toolCalls.map((tc, i) => {

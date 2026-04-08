@@ -1,10 +1,19 @@
 import { z } from 'zod';
 
-import type { Tool, ToolContext, BeforeRequestOptions, ToolEmit } from '../types.js';
+import type { Tool, ToolContext, ToolSession, BeforeRequestOptions, ToolEmit } from '../types.js';
 import type { Browser } from '../../browser/browser.js';
+import type { LlamaManager } from '../../llama/llamaManager.js';
 import * as proto from '../../protocol/index.js';
+import { fetchPagesRace, type FetchUrlEntry } from './webSearchUtils.js';
 
 const MAX_SEARCH_TERMS = 3;
+
+// Over-fetch by this multiplier relative to RETURN_COUNT, so we have
+// pages to buffer for moreResults follow-ups.
+const FETCH_MULTIPLIER = 2;
+
+// Number of pages per query to return to the model
+const RETURN_COUNT = 3;
 
 const InputSchema = z.object({
     queries: z.array(z.string())
@@ -21,11 +30,11 @@ type Output = z.infer<typeof OutputSchema>;
 class WebSearch implements Tool<Input, Output> {
 
     browser: Browser;
+    llama: LlamaManager;
 
-    defaultResultCount: number = 3;
-
-    constructor(browser: Browser) {
+    constructor(browser: Browser, llama: LlamaManager) {
         this.browser = browser;
+        this.llama = llama;
     }
 
     name(): string {
@@ -48,6 +57,8 @@ class WebSearch implements Tool<Input, Output> {
 - Allows the assistant to search the web and use the results to inform responses
 - Provides up-to-date information for current events and recent data
 - Use this tool for accessing information beyond your knowledge cutoff
+- If the results retrieved are insufficient, the assistant can use the webSearch tool again. 
+- If provided, the moreResults tool can be used to fetch additional pages from the prior queries.
 
 IMPORTANT - Use the correct year in search queries:
   - The current date is provided in your system prompt. You MUST use this year when searching for recent information.
@@ -95,51 +106,86 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
         return newReq;
     }
 
-    async call(input: Input, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
+    async call(input: Input, session: ToolSession, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
         const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
+        const FETCH_COUNT = FETCH_MULTIPLIER * RETURN_COUNT;
 
-        // 1. Search
-        const responses = await this.browser.searchMulti(queries, this.defaultResultCount, true, signal);
+        // Mark webSearch as called so moreResults becomes available this round
+        session.webSearchCalled = true;
 
-        // 2. Build URL list
-        const urls: URL[] = [];
-        responses.forEach(response => {
-            try { urls.push(new URL(response.link)) } catch (err: any) {
+        // Get the current Brave API offset for these queries (for multi-call pagination)
+        const currentOffset = session.searchState.get(queries[0] ?? '') ?? 0;
+
+        // Search with FETCH_COUNT results so we have extras to buffer
+        let responses = await this.browser.searchMulti(queries, FETCH_COUNT, false, signal, currentOffset);
+
+        // Filter URLs already seen in this conversation
+        let filtered = responses.filter(r => !session.seenUrls.has(r.link));
+
+        // If filtering left us short, do a one-shot backfill from the next offset page
+        if (filtered.length < FETCH_COUNT) {
+            try {
+                const backfillOffset = currentOffset + FETCH_COUNT;
+                const backfillResponses = await this.browser.searchMulti(queries, FETCH_COUNT, false, signal, backfillOffset);
+                const existingLinks = new Set(filtered.map(r => r.link));
+                for (const r of backfillResponses) {
+                    if (!session.seenUrls.has(r.link) && !existingLinks.has(r.link)) {
+                        filtered.push(r);
+                        existingLinks.add(r.link);
+                        if (filtered.length >= FETCH_COUNT) break;
+                    }
+                }
+            } catch (err) {
+                console.log(`/tools/webSearch: backfill search failed: ${err}`);
+            }
+        }
+
+        // Build URL entry list, skipping any malformed links
+        const urlEntries: FetchUrlEntry[] = [];
+        for (const response of filtered) {
+            try {
+                urlEntries.push({ urlObj: new URL(response.link), query: queries[0] ?? '' });
+            } catch {
                 console.log(`/tools/webSearch: malformed url ${response.link}; skipping`);
             }
-        });
+        }
 
-        // 3. Emit search results
+        // Emit search results so the frontend can display the query and target URLs
         emit({
             type: 'search_results',
             data: {
                 queries,
-                urls: urls.map(u => ({ url: u.toString(), hostname: u.hostname })),
+                urls: urlEntries.map(e => ({ url: e.urlObj.toString(), hostname: e.urlObj.hostname })),
             },
         });
 
-        // 4. Track individual page loads with per-page progress
-        const pages: Output = [];
-        const tracked = this.browser.fetchContent(true, signal, ...urls).map((p, i) => {
-            const url = urls[i]!;
-            return p
-                .then(doc => {
-                    emit({ type: 'page_loaded', data: { url: url.toString(), hostname: url.hostname } });
-                    pages.push({ content: doc.content, url: doc.metadata.source.toString() });
-                })
-                .catch(reason => {
-                    console.log(`/tools/webSearch: rejected promise: ${reason}`);
-                    emit({ type: 'page_failed', data: { url: url.toString(), hostname: url.hostname } });
-                });
+        // Race-style fetch: return pages as they load, buffer excess for moreResults
+        const results = await fetchPagesRace({
+            urlEntries,
+            returnCount: RETURN_COUNT,
+            session,
+            browser: this.browser,
+            llama: this.llama,
+            signal,
+            emit,
         });
 
-        await Promise.all(tracked);
-        return pages;
+        // Update per-query offsets so moreResults knows where to continue
+        const nextOffset = currentOffset + FETCH_COUNT;
+        for (const query of queries) {
+            session.searchState.set(query, nextOffset);
+        }
+
+        if (results.length === 0) {
+            throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
+        }
+
+        return results;
     }
 }
 
 export default function webSearch(ctx: ToolContext): Tool<Input, Output> {
     if (!ctx.browser) throw new Error(`webSearch: no browser available`);
 
-    return new WebSearch(ctx.browser);
+    return new WebSearch(ctx.browser, ctx.llama);
 }

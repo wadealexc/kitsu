@@ -1,4 +1,4 @@
-import type { Tool, ToolFactory } from './types.js';
+import type { ToolFactory } from './types.js';
 
 import webSearch from './tools/webSearch.js';
 import systemInfo from './tools/systemInfo.js';
