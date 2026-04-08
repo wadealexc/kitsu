@@ -60,6 +60,7 @@ export type SseToolCallResultPayload = {
         name: string;
         arguments: string;
         result: string;
+        failed: boolean;
     };
 };
 

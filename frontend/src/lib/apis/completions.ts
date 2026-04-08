@@ -24,6 +24,7 @@ export type PromptProgress = {
 
 export type UrlStatus = { url: string; hostname: string; status: 'loading' | 'loaded' | 'failed' };
 export type WebSearchProgress = { queries: string[]; urls: UrlStatus[] };
+export type LoadWebpageProgress = { urls: UrlStatus[] };
 
 type TextStreamUpdate = {
     done: boolean;

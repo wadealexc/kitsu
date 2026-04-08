@@ -37,7 +37,7 @@ export async function prepareRequest(
 ): Promise<ChatRequestContext> {
     const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
     if (!parsed.success)
-        throw new Error(`Invalid request body: ${parsed.error.issues}`);
+        throw new Error(`Invalid request body: ${parsed.error.issues.toString()}`);
 
     const userId = req.user!.id;
     const { stream, chatId, chat, folderId, promptVariables } = parsed.data;

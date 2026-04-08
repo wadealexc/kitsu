@@ -57,7 +57,8 @@
         chatCompletion,
         type StreamTimings,
         type PromptProgress,
-        type WebSearchProgress
+        type WebSearchProgress,
+        type LoadWebpageProgress
     } from '$lib/apis/completions';
     import { getFolderById, updateFolderById } from '$lib/apis/folders';
 
@@ -103,7 +104,7 @@
     let generating: boolean = false;
     let generationController: AbortController | null = null;
 
-    let toolProgress: Map<string, WebSearchProgress> | undefined = undefined;
+    let toolProgress: Map<string, WebSearchProgress | LoadWebpageProgress> | undefined = undefined;
     let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined = undefined;
 
     let chat: Chat | null = null;
@@ -723,7 +724,7 @@
             autoScroll = true;
             const contextTotal = model.contextLength ?? 0;
             streamContext.set(null);
-            toolProgress = new Map<string, WebSearchProgress>();
+            toolProgress = new Map<string, WebSearchProgress | LoadWebpageProgress>();
             modelStatus = undefined;
 
             let reasoningStartTime = 0;
@@ -804,6 +805,7 @@
                     id: data.id,
                     name: data.name,
                     arguments: data.arguments,
+                    failed: false,
                     done: false
                 });
                 // Track when this round of tool calls started (overwritten for each call;
@@ -817,24 +819,40 @@
                 );
 
                 // Leave done=false - finalizeToolCalls() will set it on first token of next round
-                if (block) block.result = data.result;
+                if (block) {
+                    block.result = data.result;
+                    block.failed = data.failed;
+                }
             };
 
             // TODO - untangle typing
             const handleToolCallProgress = (data: { id: string; name: string; progress: any }) => {
-                if (data.name !== 'webSearch') return;
                 const p = data.progress;
 
-                if (p.type === 'search_results') {
-                    toolProgress!.set(data.id, {
-                        queries: p.data.queries,
-                        urls: p.data.urls.map((u: any) => ({ ...u, status: 'loading' as const }))
-                    });
-                } else if (p.type === 'page_loaded' || p.type === 'page_failed') {
-                    const state = toolProgress!.get(data.id);
-                    if (state) {
-                        const entry = state.urls.find((u) => u.url === p.data.url);
-                        if (entry) entry.status = p.type === 'page_loaded' ? 'loaded' : 'failed';
+                if (data.name === 'webSearch') {
+                    if (p.type === 'search_results') {
+                        toolProgress!.set(data.id, {
+                            queries: p.data.queries,
+                            urls: p.data.urls.map((u: any) => ({ ...u, status: 'loading' as const }))
+                        });
+                    } else if (p.type === 'page_loaded' || p.type === 'page_failed') {
+                        const state = toolProgress!.get(data.id);
+                        if (state) {
+                            const entry = state.urls.find((u) => u.url === p.data.url);
+                            if (entry) entry.status = p.type === 'page_loaded' ? 'loaded' : 'failed';
+                        }
+                    }
+                } else if (data.name === 'loadWebpage') {
+                    if (p.type === 'pages') {
+                        toolProgress!.set(data.id, {
+                            urls: p.data.urls.map((u: any) => ({ ...u, status: 'loading' as const }))
+                        });
+                    } else if (p.type === 'page_loaded' || p.type === 'page_failed') {
+                        const state = toolProgress!.get(data.id);
+                        if (state) {
+                            const entry = state.urls.find((u) => u.url === p.data.url);
+                            if (entry) entry.status = p.type === 'page_loaded' ? 'loaded' : 'failed';
+                        }
                     }
                 }
 
@@ -852,10 +870,13 @@
                         }
                     }
                 }
-                // Remove failed URL pills from toolProgress
+                // Remove failed URL pills from webSearch progress only.
+                // loadWebpage keeps failed pills (red) since URLs are user input.
                 if (toolProgress) {
                     for (const [, state] of toolProgress) {
-                        state.urls = state.urls.filter((u) => u.status !== 'failed');
+                        if ('queries' in state) {
+                            state.urls = state.urls.filter((u) => u.status !== 'failed');
+                        }
                     }
                 }
             };

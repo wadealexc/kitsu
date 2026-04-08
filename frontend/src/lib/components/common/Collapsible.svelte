@@ -13,6 +13,7 @@
         id?: string;
         name?: string;
         done?: string;
+        failed?: string;
         duration?: number;
         arguments?: string;
         result?: string;
@@ -105,10 +106,15 @@
                 {/if}
 
                 <div class="">
-                    {#if attributes?.done === 'true'}
+                    {#if attributes?.done === 'true' && attributes?.failed === 'true'}
                         <Markdown
                             id={`${collapsibleId}-tool-calls-${attributes?.id}`}
-                            content={`View Result from **${attributes.name}**`}
+                            content={`**${attributes.name}** failed`}
+                        />
+                    {:else if attributes?.done === 'true'}
+                        <Markdown
+                            id={`${collapsibleId}-tool-calls-${attributes?.id}`}
+                            content={`View result from **${attributes.name}**`}
                         />
                     {:else}
                         <Markdown
@@ -132,21 +138,31 @@
             {#if open && !hide}
                 <div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
                     {#if attributes?.type === 'tool_calls'}
-                        {#if attributes?.done === 'true'}
-                            <Markdown
-                                id={`${collapsibleId}-tool-calls-${attributes?.id}-result`}
-                                content={`> \`\`\`json
-> ${formatJSONString(args)}
-> ${formatJSONString(result)}
-> \`\`\``}
-                            />
+                        {#if attributes?.done === 'true' && attributes?.failed === 'true'}
+                            <div class="border-s-2 border-dotted border-s-red-200 dark:border-red-800 ps-3 mt-1.5 flex flex-col gap-1 text-sm">
+                                <div class="flex flex-wrap gap-1 items-center">
+                                    <span class="text-xs text-red-500 dark:text-red-400">Error:</span>
+                                    <span class="text-xs text-red-600 dark:text-red-300">{result || 'Unknown error'}</span>
+                                </div>
+                                <Markdown
+                                    id={`${collapsibleId}-tool-calls-${attributes?.id}-result`}
+                                    content={`\`\`\`json\n${formatJSONString(args)}\n\`\`\``}
+                                />
+                            </div>
+                        {:else if attributes?.done === 'true'}
+                            <div class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3">
+                                <Markdown
+                                    id={`${collapsibleId}-tool-calls-${attributes?.id}-result`}
+                                    content={`\`\`\`json\n${formatJSONString(args)}\n${formatJSONString(result)}\n\`\`\``}
+                                />
+                            </div>
                         {:else}
-                            <Markdown
-                                id={`${collapsibleId}-tool-calls-${attributes?.id}-result`}
-                                content={`> \`\`\`json
-> ${formatJSONString(args)}
-> \`\`\``}
-                            />
+                            <div class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3">
+                                <Markdown
+                                    id={`${collapsibleId}-tool-calls-${attributes?.id}-result`}
+                                    content={`\`\`\`json\n${formatJSONString(args)}\n\`\`\``}
+                                />
+                            </div>
                         {/if}
                     {:else}
                         <slot name="content" />

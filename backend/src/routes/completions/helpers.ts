@@ -87,7 +87,8 @@ export async function emitEventsAndExecuteTools(
                 id: r.id,
                 name: r.name,
                 arguments: r.arguments,
-                result: r.result.ok ? r.result.output : `Error: ${r.result.error}`
+                result: r.result.ok ? r.result.output : r.result.error,
+                failed: !r.result.ok,
             },
         });
     }
@@ -130,7 +131,8 @@ export function accumulateBlocks(
             name: r.name,
             arguments: r.arguments,
             done: true,
-            result: r.result.ok ? r.result.output : `Error: ${r.result.error}`,
+            result: r.result.ok ? r.result.output : r.result.error,
+            failed: !r.result.ok,
         });
     }
 

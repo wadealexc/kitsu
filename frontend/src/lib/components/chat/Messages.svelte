@@ -18,7 +18,7 @@
     import Spinner from '../common/Spinner.svelte';
 
     import type { ChatHistory, ChatMessage, ChatMessageFile } from '@backend/routes/types';
-    import type { WebSearchProgress } from '$lib/apis/completions';
+    import type { WebSearchProgress, LoadWebpageProgress } from '$lib/apis/completions';
 
     export let className = 'h-full flex pt-8';
 
@@ -30,7 +30,7 @@
     export let sendMessage: (userMessageId: ChatMessage) => Promise<void>;
     export let regenerateResponse: (message: ChatMessage) => void | Promise<void>;
 
-    export let toolProgress: Map<string, WebSearchProgress> | undefined = undefined;
+    export let toolProgress: Map<string, WebSearchProgress | LoadWebpageProgress> | undefined = undefined;
     export let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined =
         undefined;
 

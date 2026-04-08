@@ -3,77 +3,52 @@
     import { quintOut } from 'svelte/easing';
     import { mobile, streamContext } from '$lib/stores';
     import type { ToolCallBlock } from '@backend/routes/types';
-    import type { WebSearchProgress } from '$lib/apis/completions';
+    import type { LoadWebpageProgress } from '$lib/apis/completions';
     import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
     import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
     import Spinner from '$lib/components/common/Spinner.svelte';
     import Modal from '$lib/components/common/Modal.svelte';
 
     export let block: ToolCallBlock;
-    export let progress: WebSearchProgress | undefined = undefined;
+    export let progress: LoadWebpageProgress | undefined = undefined;
 
     // Start open during streaming (block.done=false), closed on page reload (block.done=true).
-    // No reactive auto-close — the block stays open after done until the user closes it.
     let open: boolean = !block.done;
 
     $: isLive = !block.done;
     $: isFailed = block.failed;
 
-    // --- Queries ---
-    let queries: string[] = [];
-    $: {
-        if (isLive && progress) {
-            queries = progress.queries;
-        } else {
-            try {
-                const args = JSON.parse(block.arguments);
-                queries = Array.isArray(args.queries) ? args.queries : [];
-            } catch {
-                queries = [];
-            }
-        }
-    }
-
     // --- URL pills ---
-    // During streaming: loaded pills appear before still-loading ones (visual cue for load order).
-    // Failed pills are removed (filtered out in finalizeToolCalls before block.done is set).
-    // On finalization: preserve the last live order so pills don't jump when isLive flips to false.
-    // (block.result order is completion-time order, which differs from progress.urls order.)
-    type Pill = { url: string; hostname: string; status: 'loading' | 'loaded' };
+    // Pills always derive from block.arguments
+    // Live progress overlays status; after done, result tells us which loaded.
+    type Pill = { url: string; hostname: string; status: 'loading' | 'loaded' | 'failed' };
+
+    // Parse input URLs once from arguments — these never change.
+    const parseHostname = (u: string) => { try { return new URL(u).hostname; } catch { return u; } };
+
+    let inputUrls: { url: string; hostname: string }[] = [];
+    try {
+        const args = JSON.parse(block.arguments);
+        inputUrls = (Array.isArray(args.urls) ? args.urls : [])
+            .map((u: string) => ({ url: u, hostname: parseHostname(u) }));
+    } catch {}
 
     let pills: Pill[] = [];
-    let pillOrder: string[] = [];
     $: {
         if (isLive && progress) {
-            const loaded = progress.urls
-                .filter((u) => u.status === 'loaded')
-                .map((u): Pill => ({ url: u.url, hostname: u.hostname, status: 'loaded' }));
-            const loading = progress.urls
-                .filter((u) => u.status === 'loading')
-                .map((u): Pill => ({ url: u.url, hostname: u.hostname, status: 'loading' }));
-            pills = [...loaded, ...loading];
-            pillOrder = pills.map((p) => p.url);
-        } else {
+            // Overlay live status from progress events
+            const statusMap = new Map(progress.urls.map((u) => [u.url, u.status]));
+            pills = inputUrls.map((u) => ({ ...u, status: statusMap.get(u.url) ?? 'loading' }));
+        } else if (!isLive) {
+            // After done: URLs in result are loaded, the rest failed
+            const loadedUrls = new Set<string>();
             try {
                 const result: { url: string }[] = JSON.parse(block.result ?? '[]');
-                const mapped = result.map((r) => {
-                    let hostname = r.url;
-                    try {
-                        hostname = new URL(r.url).hostname;
-                    } catch {}
-                    return { url: r.url, hostname, status: 'loaded' as const };
-                });
-                if (pillOrder.length > 0) {
-                    const orderMap = new Map(pillOrder.map((url, i) => [url, i]));
-                    mapped.sort(
-                        (a, b) =>
-                            (orderMap.get(a.url) ?? Infinity) - (orderMap.get(b.url) ?? Infinity)
-                    );
-                }
-                pills = mapped;
-            } catch {
-                pills = [];
-            }
+                result.forEach((r) => loadedUrls.add(r.url));
+            } catch {}
+            pills = inputUrls.map((u) => ({ ...u, status: loadedUrls.has(u.url) ? 'loaded' : 'failed' }));
+        } else {
+            pills = inputUrls.map((u) => ({ ...u, status: 'loading' }));
         }
     }
 
@@ -87,7 +62,6 @@
           )
         : 0;
 
-    // Strip the generic `www.` prefix from a hostname; preserve other subdomains.
     const displayHostname = (hostname: string) =>
         hostname.startsWith('www.') ? hostname.slice(4) : hostname;
 
@@ -107,11 +81,12 @@
     };
 
     // --- Header text ---
+    $: loadedCount = pills.filter((p) => p.status === 'loaded').length;
     $: headerText = isLive
-        ? 'Searching the web...'
+        ? 'Loading pages...'
         : isFailed
-          ? `webSearch failed${block.duration === undefined ? '' : $mobile ? ` (${block.duration}s)` : ` in ${block.duration} seconds`}`
-          : `Fetched ${pills.length} page${pills.length !== 1 ? 's' : ''} via webSearch${
+          ? `loadWebpage failed${block.duration === undefined ? '' : $mobile ? ` (${block.duration}s)` : ` in ${block.duration} seconds`}`
+          : `Loaded ${loadedCount} page${loadedCount !== 1 ? 's' : ''} via loadWebpage${
                 block.duration === undefined
                     ? ''
                     : $mobile
@@ -154,28 +129,18 @@
         class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3 flex flex-col gap-1.5 text-sm"
         transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}
     >
-        {#if queries.length > 0}
-            <div class="flex flex-wrap gap-1 items-center">
-                <span class="text-xs text-gray-400 dark:text-gray-500">Queries:</span>
-                {#each queries as q}
-                    <span
-                        class="text-xs bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-gray-600 dark:text-gray-300"
-                        >"{q}"</span
-                    >
-                {/each}
-            </div>
-        {/if}
-
         {#if isFailed}
             <div class="flex flex-wrap gap-1 items-center">
                 <span class="text-xs text-red-500 dark:text-red-400">Error:</span>
-                <span class="text-xs text-red-600 dark:text-red-300">{block.result ?? 'Unknown error'}</span>
+                <span class="text-xs text-red-600 dark:text-red-300"
+                    >{block.result ?? 'Unknown error'}</span
+                >
             </div>
-        {:else if pills.length > 0}
+        {/if}
+
+        {#if pills.length > 0}
             <div class="flex flex-wrap gap-1 items-center">
-                <span class="text-xs text-gray-400 dark:text-gray-500">
-                    {isLive ? 'Fetching:' : 'Fetched:'}
-                </span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">Pages:</span>
                 {#each pills as pill (pill.url)}
                     {#if pill.status === 'loaded'}
                         <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -183,6 +148,12 @@
                         <span
                             class="text-xs rounded px-1.5 py-0.5 font-medium transition-colors duration-300 cursor-pointer bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/70"
                             on:click={() => handlePillClick(pill.url)}
+                        >
+                            {displayHostname(pill.hostname)}
+                        </span>
+                    {:else if pill.status === 'failed'}
+                        <span
+                            class="text-xs rounded px-1.5 py-0.5 font-medium transition-colors duration-300 bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400"
                         >
                             {displayHostname(pill.hostname)}
                         </span>

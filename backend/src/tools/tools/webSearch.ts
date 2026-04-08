@@ -5,14 +5,12 @@ import type { Browser } from '../../browser/browser.js';
 import type { LlamaManager } from '../../llama/llamaManager.js';
 import * as proto from '../../protocol/index.js';
 
-const MAX_SEARCH_TERMS = 3;
-
 // Number of pages per query to return to the model
 const RETURN_COUNT_PER_QUERY = 3;
 
 const InputSchema = z.object({
     queries: z.array(z.string())
-}).describe(`a list of up to ${MAX_SEARCH_TERMS} search terms to query`);
+}).describe(`a list of search terms to query`);
 
 const OutputSchema = z.array(z.object({
     url: z.string(),
@@ -99,7 +97,7 @@ IMPORTANT - Use the correct year in search queries:
      * @returns extracted webpages for ingestion by llm
      */
     async call(input: Input, session: ToolSession, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
-        const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
+        const { queries } = input;
 
         const results = await this.browser.searchMulti({
             queries,

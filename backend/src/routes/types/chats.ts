@@ -69,6 +69,7 @@ export const ToolCallBlockSchema = z.object({
     name: z.string(),
     arguments: z.string(),
     result: z.string().optional(),
+    failed: z.boolean().default(false),
     done: z.boolean(),
     duration: z.number().optional(),
 });
