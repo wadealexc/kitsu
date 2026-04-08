@@ -270,12 +270,13 @@ export class Browser {
     }
 
     /**
-     * Load pages and yield each result as it finishes, in completion order.
+     * Load pages and yield exactly one result per input URL, in completion order.
      * Both successes and failures are yielded so the caller can handle each
      * (e.g. emit progress events for both). The caller can `break` at any time.
      *
      * Races the signal's abort event alongside pending fetches so the generator
-     * exits promptly when the caller aborts.
+     * exits promptly when the caller aborts. On abort, yields failures for all
+     * remaining pending URLs before returning.
      */
     async *fetchContentRace(signal: AbortSignal, ...urls: URL[]): AsyncGenerator<PageLoadResult> {
         if (urls.length === 0) return;
@@ -301,7 +302,14 @@ export class Browser {
 
         while (pending.size > 0) {
             const result: Settled | null = await Promise.race([...pending.values(), abortSentinel]);
-            if (result === null) return;
+
+            // Aborted — yield failures for all remaining pending URLs
+            if (result === null) {
+                for (const i of pending.keys()) {
+                    yield { ok: false, url: urls[i]! };
+                }
+                return;
+            }
 
             pending.delete(result.i);
             if (result.doc !== null) {
