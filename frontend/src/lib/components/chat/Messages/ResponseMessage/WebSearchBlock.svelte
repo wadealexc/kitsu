@@ -110,7 +110,7 @@
     $: headerText = isLive
         ? 'Searching the web...'
         : isFailed
-          ? `webSearch failed${block.duration === undefined ? '' : $mobile ? ` (${block.duration}s)` : ` in ${block.duration} seconds`}`
+          ? `webSearch failed`
           : `Fetched ${pills.length} page${pills.length !== 1 ? 's' : ''} via webSearch${
                 block.duration === undefined
                     ? ''

@@ -102,6 +102,14 @@ class LoadWebpage implements Tool<Input, Output> {
             _emitPageLoaded(emit, url);
         }
 
+        // Emit page_failed for any URLs not loaded (see webSearch.ts for rationale)
+        const loadedUrls = new Set(pages.map(p => p.url));
+        for (const url of urls) {
+            if (!loadedUrls.has(url.toString())) {
+                _emitPageFailed(emit, url);
+            }
+        }
+
         if (pages.length === 0) {
             const budgetExhausted = session.contextBudget !== undefined && session.contextBudget <= 0;
             if (budgetExhausted) {

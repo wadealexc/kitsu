@@ -85,7 +85,7 @@
     $: headerText = isLive
         ? 'Loading pages...'
         : isFailed
-          ? `loadWebpage failed${block.duration === undefined ? '' : $mobile ? ` (${block.duration}s)` : ` in ${block.duration} seconds`}`
+          ? `loadWebpage failed`
           : `Loaded ${loadedCount} page${loadedCount !== 1 ? 's' : ''} via loadWebpage${
                 block.duration === undefined
                     ? ''

@@ -167,6 +167,17 @@ IMPORTANT - Use the correct year in search queries:
             }
         }
 
+        // Emit page_failed for any URLs that weren't loaded. When the loop
+        // exits via `break` (returnCount reached or budget exhausted), the
+        // generator is torn down before its abort handler can yield remaining
+        // failures, so some URLs may never have received an event.
+        const loadedUrls = new Set(pages.map(p => p.url));
+        for (const url of urls) {
+            if (!loadedUrls.has(url.toString())) {
+                _emitPageFailed(emit, url);
+            }
+        }
+
         if (pages.length === 0) {
             const budgetExhausted = session.contextBudget !== undefined && session.contextBudget <= 0;
             if (budgetExhausted) {
