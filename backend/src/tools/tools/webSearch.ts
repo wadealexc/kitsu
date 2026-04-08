@@ -131,132 +131,89 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
             },
         });
 
-        // Race-style fetch: return pages as they load
-        const pages = await fetchPagesRace({
-            urls,
-            returnCount: queries.length * RETURN_COUNT_PER_QUERY,
-            session,
-            browser: this.browser,
-            llama: this.llama,
-            signal,
-            emit,
-        });
+        // Early bail if context is already exhausted
+        if (session.contextBudget !== undefined && session.contextBudget <= 0) {
+            throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
+        }
+
+        // Derivative signal so we can abort in-flight fetches (and kill the
+        // generator promptly) without affecting the parent request.
+        const fetchCtrl = new AbortController();
+        signal.addEventListener('abort', () => fetchCtrl.abort(), { once: true });
+
+        const returnCount = queries.length * RETURN_COUNT_PER_QUERY;
+        const pages: Output = [];
+
+        for await (const result of this.browser.fetchContentRace(fetchCtrl.signal, ...urls)) {
+            if (!result.ok) {
+                _emitPageFailed(emit, result.url);
+                continue;
+            }
+
+            const doc = result.doc;
+            const url = doc.metadata.source;
+
+            // Budget check: tokenize page and verify it fits
+            if (session.contextBudget !== undefined) {
+                if (session.contextBudget <= 0) {
+                    _emitPageFailed(emit, url);
+                    fetchCtrl.abort();
+                    break;
+                }
+
+                const tokenCount = await this.llama.tokenize(doc.content, session.model, signal);
+                if (tokenCount > session.contextBudget) {
+                    _emitPageFailed(emit, url);
+                    continue;
+                }
+
+                session.contextBudget -= tokenCount;
+            }
+
+            pages.push({ url: url.toString(), content: doc.content });
+            session.seenUrls.add(url.toString());
+            _emitPageLoaded(emit, url);
+
+            if (pages.length >= returnCount) {
+                fetchCtrl.abort();
+                break;
+            }
+        }
 
         if (pages.length === 0) {
-            throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
+            const budgetExhausted = session.contextBudget !== undefined && session.contextBudget <= 0;
+            if (budgetExhausted) {
+                throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
+            }
+            throw new Error('No pages could be loaded from the search results.');
         }
 
         return pages;
     }
 }
 
+function _emitPageLoaded(emit: ToolEmit, url: URL) {
+    emit({
+        type: 'page_loaded',
+        data: {
+            url: url.toString(),
+            hostname: url.hostname,
+        }
+    });
+}
+
+function _emitPageFailed(emit: ToolEmit, url: URL) {
+    emit({
+        type: 'page_failed',
+        data: {
+            url: url.toString(),
+            hostname: url.hostname,
+        }
+    });
+}
+
 export default function webSearch(ctx: ToolContext): Tool<Input, Output> {
     if (!ctx.browser) throw new Error(`webSearch: no browser available`);
 
     return new WebSearch(ctx.browser, ctx.llama);
-}
-
-/* -------------------- FETCH HELPERS -------------------- */
-
-/**
- * Fetch pages from a list of URLs using a race-style settlement queue.
- *
- * As pages load, each is tokenized and checked against the context budget.
- * Pages that fit within budget (and under returnCount) are added to results.
- *
- * When contextBudget is undefined (no context limit configured), pages are
- * returned in arrival order up to returnCount with no budget checking.
- *
- * @returns array of up to returnCount pages that fit within budget
- */
-async function fetchPagesRace(params: {
-    urls: URL[];
-    returnCount: number;
-    session: ToolSession;
-    browser: Browser;
-    llama: LlamaManager;
-    signal: AbortSignal;
-    emit: ToolEmit;
-}): Promise<Array<{ url: string; content: string }>> {
-    const { urls, returnCount, session, browser, llama, signal, emit } = params;
-
-    // Early bail if no urls, or context is already exhausted
-    if (urls.length === 0) return [];
-    if (session.contextBudget !== undefined && session.contextBudget <= 0) return [];
-
-    /* -------------------- SETTLEMENT QUEUE -------------------- */
-
-    type SettledPage = { url: string; content: string };
-
-    const settledQueue: Array<SettledPage | null> = [];
-    let notifyWaiter: (() => void) | undefined;
-    let inFlightCount = urls.length;
-
-    const signalSettled = (item: SettledPage | null): void => {
-        settledQueue.push(item);
-        inFlightCount--;
-        const n = notifyWaiter;
-        notifyWaiter = undefined;
-        n?.();
-    };
-
-    // Launch all fetches
-    const fetchPromises = browser.fetchContent(false, signal, ...urls);
-
-    for (let i = 0; i < urls.length; i++) {
-        const url = urls[i]!;
-        const promise = fetchPromises[i]!;
-        promise
-            .then(doc => signalSettled({ url: url.toString(), content: doc.content }))
-            .catch(() => signalSettled(null));
-    }
-
-    /* -------------------- CONSUMER LOOP -------------------- */
-
-    const results: Array<{ url: string; content: string }> = [];
-
-    while (results.length < returnCount) {
-        // Wait for at least one settled item if the queue is empty
-        if (settledQueue.length === 0) {
-            if (inFlightCount === 0) break;
-            await new Promise<void>(resolve => { notifyWaiter = resolve; });
-        }
-
-        // Drain currently available settled items
-        while (settledQueue.length > 0 && results.length < returnCount) {
-            const item = settledQueue.shift()!;
-
-            if (item === null) continue;  // Page load failed
-
-            // Check whether the page fits within the remaining context budget
-            let fitsInBudget = true;
-            if (session.contextBudget !== undefined) {
-                if (session.contextBudget <= 0) {
-                    fitsInBudget = false;
-                } else {
-                    const tokenCount = await llama.tokenize(item.content, session.model, signal);
-                    if (tokenCount > session.contextBudget) {
-                        fitsInBudget = false;
-                    } else {
-                        session.contextBudget -= tokenCount;
-                    }
-                }
-            }
-
-            const hostname = (() => {
-                try { return new URL(item.url).hostname; } catch { return item.url; }
-            })();
-
-            if (!fitsInBudget) {
-                emit({ type: 'page_loaded', data: { url: item.url, hostname } });
-                continue;
-            }
-
-            results.push({ url: item.url, content: item.content });
-            session.seenUrls.add(item.url);
-            emit({ type: 'page_loaded', data: { url: item.url, hostname } });
-        }
-    }
-
-    return results;
 }

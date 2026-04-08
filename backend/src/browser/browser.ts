@@ -67,6 +67,10 @@ export type Document = {
     }
 };
 
+export type PageLoadResult =
+    | { ok: true; doc: Document }
+    | { ok: false; url: URL };
+
 type BrowserEvents = {
     done: () => void,
 };
@@ -263,6 +267,49 @@ export class Browser {
         }
 
         return results;
+    }
+
+    /**
+     * Load pages and yield each result as it finishes, in completion order.
+     * Both successes and failures are yielded so the caller can handle each
+     * (e.g. emit progress events for both). The caller can `break` at any time.
+     *
+     * Races the signal's abort event alongside pending fetches so the generator
+     * exits promptly when the caller aborts.
+     */
+    async *fetchContentRace(signal: AbortSignal, ...urls: URL[]): AsyncGenerator<PageLoadResult> {
+        if (urls.length === 0) return;
+
+        const promises = this.fetchContent(false, signal, ...urls);
+
+        type Settled = { i: number; doc: Document | null; url: URL };
+        const pending = new Map<number, Promise<Settled>>(
+            promises.map((p, i) => [
+                i,
+                p.then(doc => ({ i, doc, url: urls[i]! }))
+                 .catch(() => ({ i, doc: null, url: urls[i]! })),
+            ])
+        );
+
+        // Sentinel promise that resolves when the signal aborts, allowing
+        // Promise.race to unblock immediately rather than waiting for the
+        // next page load to settle.
+        const abortSentinel: Promise<null> = new Promise(resolve => {
+            if (signal.aborted) resolve(null);
+            else signal.addEventListener('abort', () => resolve(null), { once: true });
+        });
+
+        while (pending.size > 0) {
+            const result: Settled | null = await Promise.race([...pending.values(), abortSentinel]);
+            if (result === null) return;
+
+            pending.delete(result.i);
+            if (result.doc !== null) {
+                yield { ok: true, doc: result.doc };
+            } else {
+                yield { ok: false, url: result.url };
+            }
+        }
     }
 
     /* -------------------- TASK MANAGEMENT -------------------- */
