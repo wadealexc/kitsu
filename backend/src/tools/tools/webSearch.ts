@@ -57,17 +57,6 @@ class WebSearch implements Tool<Input, Output> {
 IMPORTANT - Use the correct year in search queries:
   - The current date is provided in your system prompt. You MUST use this year when searching for recent information.
   - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
-
-REQUIREMENT - You MUST follow this when using the webSearch tool:
-  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
-  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
-  - Example format:
-
-    [Your answer here]
-
-    Sources:
-    - [Source Title 1](https://example.com/1)
-    - [Source Title 2](https://example.com/2)
 `
         );
     }

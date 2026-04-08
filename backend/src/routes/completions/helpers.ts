@@ -77,6 +77,10 @@ export async function emitEventsAndExecuteTools(
 
     // Emit SSE events for each result
     for (const r of roundResults) {
+        if (!r.result.ok) {
+            console.error(`tool call ${r.name} failed with error: ${r.result.error}`);
+        }
+        
         emitSseEvent(res, chatId, {
             type: 'tool_call:result',
             data: {
