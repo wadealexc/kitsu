@@ -8,7 +8,7 @@ import * as proto from '../../protocol/index.js';
 const MAX_SEARCH_TERMS = 3;
 
 // Number of pages per query to return to the model
-const RETURN_COUNT = 3;
+const RETURN_COUNT_PER_QUERY = 3;
 
 const InputSchema = z.object({
     queries: z.array(z.string())
@@ -100,54 +100,41 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
         return newReq;
     }
 
+    /**
+     * Search for input queries via browser search API, then fetch webpages
+     * and extract content.
+     * 
+     * Fetched pages are tokenized to check against context limits, and dropped
+     * if adding them would exceed available context.
+     * 
+     * @returns extracted webpages for ingestion by llm
+     */
     async call(input: Input, session: ToolSession, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
         const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
 
-        let responses = await this.browser.searchMulti(queries, RETURN_COUNT, false, signal, 0);
+        const results = await this.browser.searchMulti({
+            queries,
+            count: RETURN_COUNT_PER_QUERY,
+            filter: session.seenUrls,
+            signal,
+        });
 
-        // Filter URLs already seen in this conversation
-        let filtered = responses.filter(r => !session.seenUrls.has(r.link));
-
-        // If filtering left us short, do a one-shot backfill from the next offset page
-        if (filtered.length < RETURN_COUNT) {
-            try {
-                const backfillResponses = await this.browser.searchMulti(queries, RETURN_COUNT, false, signal, RETURN_COUNT);
-                const existingLinks = new Set(filtered.map(r => r.link));
-                for (const r of backfillResponses) {
-                    if (!session.seenUrls.has(r.link) && !existingLinks.has(r.link)) {
-                        filtered.push(r);
-                        existingLinks.add(r.link);
-                        if (filtered.length >= RETURN_COUNT) break;
-                    }
-                }
-            } catch (err) {
-                console.log(`/tools/webSearch: backfill search failed: ${err}`);
-            }
-        }
-
-        // Build URL entry list, skipping any malformed links
-        const urlEntries: FetchUrlEntry[] = [];
-        for (const response of filtered) {
-            try {
-                urlEntries.push({ urlObj: new URL(response.link) });
-            } catch {
-                console.log(`/tools/webSearch: malformed url ${response.link}; skipping`);
-            }
-        }
+        // Build URL entry list for fetch
+        const urls: URL[] = results.map(r => r.url);
 
         // Emit search results so the frontend can display the query and target URLs
         emit({
             type: 'search_results',
             data: {
                 queries,
-                urls: urlEntries.map(e => ({ url: e.urlObj.toString(), hostname: e.urlObj.hostname })),
+                urls: urls.map(e => ({ url: e.toString(), hostname: e.hostname })),
             },
         });
 
         // Race-style fetch: return pages as they load
-        const results = await fetchPagesRace({
-            urlEntries,
-            returnCount: RETURN_COUNT,
+        const pages = await fetchPagesRace({
+            urls,
+            returnCount: queries.length * RETURN_COUNT_PER_QUERY,
             session,
             browser: this.browser,
             llama: this.llama,
@@ -155,11 +142,11 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
             emit,
         });
 
-        if (results.length === 0) {
+        if (pages.length === 0) {
             throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
         }
 
-        return results;
+        return pages;
     }
 }
 
@@ -170,10 +157,6 @@ export default function webSearch(ctx: ToolContext): Tool<Input, Output> {
 }
 
 /* -------------------- FETCH HELPERS -------------------- */
-
-type FetchUrlEntry = {
-    urlObj: URL;
-};
 
 /**
  * Fetch pages from a list of URLs using a race-style settlement queue.
@@ -187,7 +170,7 @@ type FetchUrlEntry = {
  * @returns array of up to returnCount pages that fit within budget
  */
 async function fetchPagesRace(params: {
-    urlEntries: FetchUrlEntry[];
+    urls: URL[];
     returnCount: number;
     session: ToolSession;
     browser: Browser;
@@ -195,11 +178,10 @@ async function fetchPagesRace(params: {
     signal: AbortSignal;
     emit: ToolEmit;
 }): Promise<Array<{ url: string; content: string }>> {
-    const { urlEntries, returnCount, session, browser, llama, signal, emit } = params;
+    const { urls, returnCount, session, browser, llama, signal, emit } = params;
 
-    if (urlEntries.length === 0) return [];
-
-    // Early bail if context is already exhausted before we even start
+    // Early bail if no urls, or context is already exhausted
+    if (urls.length === 0) return [];
     if (session.contextBudget !== undefined && session.contextBudget <= 0) return [];
 
     /* -------------------- SETTLEMENT QUEUE -------------------- */
@@ -208,7 +190,7 @@ async function fetchPagesRace(params: {
 
     const settledQueue: Array<SettledPage | null> = [];
     let notifyWaiter: (() => void) | undefined;
-    let inFlightCount = urlEntries.length;
+    let inFlightCount = urls.length;
 
     const signalSettled = (item: SettledPage | null): void => {
         settledQueue.push(item);
@@ -219,14 +201,13 @@ async function fetchPagesRace(params: {
     };
 
     // Launch all fetches
-    const urlObjs = urlEntries.map(e => e.urlObj);
-    const fetchPromises = browser.fetchContent(false, signal, ...urlObjs);
+    const fetchPromises = browser.fetchContent(false, signal, ...urls);
 
-    for (let i = 0; i < urlEntries.length; i++) {
-        const entry = urlEntries[i]!;
+    for (let i = 0; i < urls.length; i++) {
+        const url = urls[i]!;
         const promise = fetchPromises[i]!;
         promise
-            .then(doc => signalSettled({ url: entry.urlObj.toString(), content: doc.content }))
+            .then(doc => signalSettled({ url: url.toString(), content: doc.content }))
             .catch(() => signalSettled(null));
     }
 

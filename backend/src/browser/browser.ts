@@ -18,13 +18,19 @@ type BraveSearchResult = {
     description: string,
 }
 
-export type SearchResponse = {
-    link: string,
+export type SearchResult = {
+    url: URL,
     title: string,
     snippet: string,
 };
 
 const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
+
+// Over-request from Brave to absorb filtering losses without needing a backfill round
+const SEARCH_FETCH_MULTIPLIER = 2;
+
+// Maximum number of paginated fetch rounds in searchMulti before giving up
+const MAX_BACKFILL_ATTEMPTS = 5;
 
 // The max number of times we'll try to fetch from a given host each minute.
 // This exists as a 'polite' request rate to ensure we don't clobber any website.
@@ -117,17 +123,12 @@ export class Browser {
     /**
      * Send a query to the Brave Search API and return the top `count` results.
      *
-     * If `loadPages` is true, also starts background jobs to load each returned
-     * webpage and extract text content.
-     *
      * @param req the query and number of requested results
-     * @param loadPages if true, start background jobs to load pages
      * @param signal optional AbortSignal to cancel the request
      * @returns a list of search results from the Brave API
      */
-    async search(req: SearchRequest, loadPages?: boolean, signal?: AbortSignal): Promise<SearchResponse[]> {
-        const searchResponses: SearchResponse[] = [];
-        const urls: URL[] = [];
+    async search(req: SearchRequest, signal?: AbortSignal): Promise<SearchResult[]> {
+        const searchResults: SearchResult[] = [];
 
         // Search via Brave Search API
         const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}&offset=${req.offset ?? 0}`;
@@ -158,49 +159,78 @@ export class Browser {
             // Skip results that we won't be able to load
             if (this.hostBlacklist.has(itemUrl.hostname)) continue;
 
-            urls.push(itemUrl);
-            searchResponses.push({
-                link: itemUrl.toString(),
+            searchResults.push({
+                url: itemUrl,
                 title: item.title,
                 snippet: item.description,
             });
         }
 
-        // Start background jobs if requested
-        if (loadPages)
-            this.fetchContent(false, signal, ...urls)
-                .forEach(promise => promise.catch(() => { }));
-
-        return searchResponses;
+        return searchResults;
     }
 
     /**
-     * Run multiple search queries in parallel and return deduplicated results.
+     * Run multiple search queries in parallel, dedup, filter against `filter` set,
+     * and do one backfill round if results fall short of target.
      *
-     * @param offset Brave API result offset (for pagination / follow-up searches)
+     * @param params.queries list of search queries to run in parallel
+     * @param params.count desired number of results per query after filtering
+     * @param params.filter URLs to exclude
+     * @param params.signal optional AbortSignal to cancel requests
+     * @returns flat, deduplicated, filtered array of SearchResult
      */
-    async searchMulti(queries: string[], count: number, loadPages: boolean, signal?: AbortSignal, offset?: number): Promise<SearchResponse[]> {
-        const settled = await Promise.allSettled(
-            queries.map(query => this.search({ query, count, offset }, loadPages, signal))
-        );
+    async searchMulti(params: {
+        queries: string[];
+        count: number;
+        filter?: Set<string>;
+        signal?: AbortSignal;
+    }): Promise<SearchResult[]> {
+        const { queries, count, filter, signal } = params;
+        const fetchSize = count * SEARCH_FETCH_MULTIPLIER;
 
-        const responses: SearchResponse[] = [];
-        for (const result of settled) {
-            if (result.status === 'fulfilled') {
-                responses.push(...result.value);
-            } else {
-                console.log(`skipping failed search; err: ${result.reason}`);
+        const fetchBatch = async (offset: number): Promise<SearchResult[]> => {
+            const settled = await Promise.allSettled(
+                queries.map(query => this.search({ query, count: fetchSize, offset }, signal))
+            );
+
+            const batch: SearchResult[] = [];
+            for (const result of settled) {
+                if (result.status === 'fulfilled') {
+                    batch.push(...result.value);
+                } else {
+                    console.log(`searchMulti: skipping failed search; err: ${result.reason}`);
+                }
             }
+
+            return batch;
+        };
+
+        const results: SearchResult[] = [];
+        const seen = new Set<string>(filter);
+
+        const addResults = (batch: SearchResult[]) => {
+            for (const r of batch) {
+                const key = r.url.toString();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    results.push(r);
+                }
+            }
+        };
+
+        const target = count * queries.length;
+        let offset = 0;
+        let attempts = 0;
+
+        // Fetch URLs from search API until we hit our target result count
+        // (or we exceed our attempt quota)
+        while (results.length < target && attempts < MAX_BACKFILL_ATTEMPTS) {
+            addResults(await fetchBatch(offset));
+            offset += fetchSize;
+            attempts++;
         }
 
-        // Return only unique links
-        const seen = new Set<string>();
-        return responses.filter(r => {
-            if (seen.has(r.link)) return false;
-            
-            seen.add(r.link);
-            return true;
-        });
+        return results;
     }
 
     /**
