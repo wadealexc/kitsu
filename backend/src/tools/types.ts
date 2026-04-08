@@ -17,12 +17,6 @@ export type ToolSession = {
     contextLimit: number | undefined;
     /** Remaining token budget for tool results; updated by the completion loop each round */
     contextBudget: number | undefined;
-    /** Whether webSearch has been called during this request */
-    webSearchCalled: boolean;
-    /** Pages fetched but not yet returned to the model */
-    bufferedPages: Array<{ url: string; content: string; query: string }>;
-    /** Per-query Brave API offset for follow-up searches */
-    searchState: Map<string, number>;
     /** URLs already returned in tool results; seeded from message history */
     seenUrls: Set<string>;
 };
@@ -64,9 +58,6 @@ export function createToolSession(
         model,
         contextLimit,
         contextBudget: undefined,
-        webSearchCalled: false,
-        bufferedPages: [],
-        searchState: new Map(),
         seenUrls,
     };
 }

@@ -4,13 +4,8 @@ import type { Tool, ToolContext, ToolSession, BeforeRequestOptions, ToolEmit } f
 import type { Browser } from '../../browser/browser.js';
 import type { LlamaManager } from '../../llama/llamaManager.js';
 import * as proto from '../../protocol/index.js';
-import { fetchPagesRace, type FetchUrlEntry } from './webSearchUtils.js';
 
 const MAX_SEARCH_TERMS = 3;
-
-// Over-fetch by this multiplier relative to RETURN_COUNT, so we have
-// pages to buffer for moreResults follow-ups.
-const FETCH_MULTIPLIER = 2;
 
 // Number of pages per query to return to the model
 const RETURN_COUNT = 3;
@@ -57,8 +52,7 @@ class WebSearch implements Tool<Input, Output> {
 - Allows the assistant to search the web and use the results to inform responses
 - Provides up-to-date information for current events and recent data
 - Use this tool for accessing information beyond your knowledge cutoff
-- If the results retrieved are insufficient, the assistant can use the webSearch tool again. 
-- If provided, the moreResults tool can be used to fetch additional pages from the prior queries.
+- If the results retrieved are insufficient, the assistant can use the webSearch tool again.
 
 IMPORTANT - Use the correct year in search queries:
   - The current date is provided in your system prompt. You MUST use this year when searching for recent information.
@@ -108,31 +102,22 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
 
     async call(input: Input, session: ToolSession, signal: AbortSignal, emit: ToolEmit): Promise<Output> {
         const queries: string[] = input.queries.slice(0, MAX_SEARCH_TERMS);
-        const FETCH_COUNT = FETCH_MULTIPLIER * RETURN_COUNT;
 
-        // Mark webSearch as called so moreResults becomes available this round
-        session.webSearchCalled = true;
-
-        // Get the current Brave API offset for these queries (for multi-call pagination)
-        const currentOffset = session.searchState.get(queries[0] ?? '') ?? 0;
-
-        // Search with FETCH_COUNT results so we have extras to buffer
-        let responses = await this.browser.searchMulti(queries, FETCH_COUNT, false, signal, currentOffset);
+        let responses = await this.browser.searchMulti(queries, RETURN_COUNT, false, signal, 0);
 
         // Filter URLs already seen in this conversation
         let filtered = responses.filter(r => !session.seenUrls.has(r.link));
 
         // If filtering left us short, do a one-shot backfill from the next offset page
-        if (filtered.length < FETCH_COUNT) {
+        if (filtered.length < RETURN_COUNT) {
             try {
-                const backfillOffset = currentOffset + FETCH_COUNT;
-                const backfillResponses = await this.browser.searchMulti(queries, FETCH_COUNT, false, signal, backfillOffset);
+                const backfillResponses = await this.browser.searchMulti(queries, RETURN_COUNT, false, signal, RETURN_COUNT);
                 const existingLinks = new Set(filtered.map(r => r.link));
                 for (const r of backfillResponses) {
                     if (!session.seenUrls.has(r.link) && !existingLinks.has(r.link)) {
                         filtered.push(r);
                         existingLinks.add(r.link);
-                        if (filtered.length >= FETCH_COUNT) break;
+                        if (filtered.length >= RETURN_COUNT) break;
                     }
                 }
             } catch (err) {
@@ -144,7 +129,7 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
         const urlEntries: FetchUrlEntry[] = [];
         for (const response of filtered) {
             try {
-                urlEntries.push({ urlObj: new URL(response.link), query: queries[0] ?? '' });
+                urlEntries.push({ urlObj: new URL(response.link) });
             } catch {
                 console.log(`/tools/webSearch: malformed url ${response.link}; skipping`);
             }
@@ -159,7 +144,7 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
             },
         });
 
-        // Race-style fetch: return pages as they load, buffer excess for moreResults
+        // Race-style fetch: return pages as they load
         const results = await fetchPagesRace({
             urlEntries,
             returnCount: RETURN_COUNT,
@@ -169,12 +154,6 @@ REQUIREMENT - You MUST follow this when using the webSearch tool:
             signal,
             emit,
         });
-
-        // Update per-query offsets so moreResults knows where to continue
-        const nextOffset = currentOffset + FETCH_COUNT;
-        for (const query of queries) {
-            session.searchState.set(query, nextOffset);
-        }
 
         if (results.length === 0) {
             throw new Error('Context window is nearly full. Complete your answer without additional web searches.');
@@ -188,4 +167,115 @@ export default function webSearch(ctx: ToolContext): Tool<Input, Output> {
     if (!ctx.browser) throw new Error(`webSearch: no browser available`);
 
     return new WebSearch(ctx.browser, ctx.llama);
+}
+
+/* -------------------- FETCH HELPERS -------------------- */
+
+type FetchUrlEntry = {
+    urlObj: URL;
+};
+
+/**
+ * Fetch pages from a list of URLs using a race-style settlement queue.
+ *
+ * As pages load, each is tokenized and checked against the context budget.
+ * Pages that fit within budget (and under returnCount) are added to results.
+ *
+ * When contextBudget is undefined (no context limit configured), pages are
+ * returned in arrival order up to returnCount with no budget checking.
+ *
+ * @returns array of up to returnCount pages that fit within budget
+ */
+async function fetchPagesRace(params: {
+    urlEntries: FetchUrlEntry[];
+    returnCount: number;
+    session: ToolSession;
+    browser: Browser;
+    llama: LlamaManager;
+    signal: AbortSignal;
+    emit: ToolEmit;
+}): Promise<Array<{ url: string; content: string }>> {
+    const { urlEntries, returnCount, session, browser, llama, signal, emit } = params;
+
+    if (urlEntries.length === 0) return [];
+
+    // Early bail if context is already exhausted before we even start
+    if (session.contextBudget !== undefined && session.contextBudget <= 0) return [];
+
+    /* -------------------- SETTLEMENT QUEUE -------------------- */
+
+    type SettledPage = { url: string; content: string };
+
+    const settledQueue: Array<SettledPage | null> = [];
+    let notifyWaiter: (() => void) | undefined;
+    let inFlightCount = urlEntries.length;
+
+    const signalSettled = (item: SettledPage | null): void => {
+        settledQueue.push(item);
+        inFlightCount--;
+        const n = notifyWaiter;
+        notifyWaiter = undefined;
+        n?.();
+    };
+
+    // Launch all fetches
+    const urlObjs = urlEntries.map(e => e.urlObj);
+    const fetchPromises = browser.fetchContent(false, signal, ...urlObjs);
+
+    for (let i = 0; i < urlEntries.length; i++) {
+        const entry = urlEntries[i]!;
+        const promise = fetchPromises[i]!;
+        promise
+            .then(doc => signalSettled({ url: entry.urlObj.toString(), content: doc.content }))
+            .catch(() => signalSettled(null));
+    }
+
+    /* -------------------- CONSUMER LOOP -------------------- */
+
+    const results: Array<{ url: string; content: string }> = [];
+
+    while (results.length < returnCount) {
+        // Wait for at least one settled item if the queue is empty
+        if (settledQueue.length === 0) {
+            if (inFlightCount === 0) break;
+            await new Promise<void>(resolve => { notifyWaiter = resolve; });
+        }
+
+        // Drain currently available settled items
+        while (settledQueue.length > 0 && results.length < returnCount) {
+            const item = settledQueue.shift()!;
+
+            if (item === null) continue;  // Page load failed
+
+            // Check whether the page fits within the remaining context budget
+            let fitsInBudget = true;
+            if (session.contextBudget !== undefined) {
+                if (session.contextBudget <= 0) {
+                    fitsInBudget = false;
+                } else {
+                    const tokenCount = await llama.tokenize(item.content, session.model, signal);
+                    if (tokenCount > session.contextBudget) {
+                        fitsInBudget = false;
+                    } else {
+                        session.contextBudget -= tokenCount;
+                    }
+                }
+            }
+
+            const hostname = (() => {
+                try { return new URL(item.url).hostname; } catch { return item.url; }
+            })();
+
+            if (!fitsInBudget) {
+                emit({ type: 'page_loaded', data: { url: item.url, hostname } });
+                continue;
+            }
+
+            results.push({ url: item.url, content: item.content });
+            session.seenUrls.add(item.url);
+            emit({ type: 'page_loaded', data: { url: item.url, hostname } });
+        }
+    }
+
+    return results;
 }

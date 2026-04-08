@@ -107,7 +107,7 @@ router.post('/custom-completions', requireAuth, async (
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
-            // Filter tools based on session state (budget exhausted, moreResults availability, etc.)
+            // Filter tools based on session state (e.g. budget exhausted)
             const roundBody = toolRegistry.filterToolsForRound(body, session);
 
             const stream = (await llama.completions({
