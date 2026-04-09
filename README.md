@@ -143,25 +143,14 @@ kitsu is configured via `config.json` at the repo root. Copy `config.example.jso
 "web": {
     "enable": true,
     "braveAPIKey": "YOUR_API_KEY",
-    "runDangerouslyWithoutSandbox": false,
     "blacklistHosts": ["grokipedia.com"]
 }
 ```
 
 `blacklistHosts` is an optional list of hostnames to exclude from web search results. Blacklisted hosts are never fetched. Defaults to `[]`.
 
-**If you want to try this feature out quickly** to see if setting up the sandbox is "worth it," you can edit config to run without the sandbox (`runDangerouslyWithoutSandbox: true`), and it should 'just work.' But keep in mind that this will tell playwright to start chromium with `--no-sandbox`, which allows webpages to run arbitrary javascript on your system. If you do this, just use it for a quick trial run!
-
-**If you want to use this feature safely**: this part will vary based on your OS and may require some troubleshooting if things don't work perfectly. I'm just going to detail the steps I took - sorry this isn't super user friendly!
-
-Since I'm on Ubuntu, I followed these steps in the puppeteer docs ([troubleshooting/#using-setuid-sandbox](https://pptr.dev/troubleshooting#using-setuid-sandbox)). They work for playwright as well:
+After setting `enable: true`, install the Firefox browser for Playwright (one-time setup, run from the `backend/` directory):
 
 ```sh
-# Find playwright's chromium version
-cd ~/.cache/ms-playwright && ls
-# You should see a folder titled `chromium-<some version number>` (for example `chromium-1208`)
-cd chromium-1208/chrome-linux64
-sudo chown root:root chrome_sandbox
-sudo chmod 4755 chrome_sandbox
-sudo cp -p chrome_sandbox /usr/local/sbin/chrome-devel-sandbox
+cd backend && npx playwright install firefox
 ```

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { chromium, type Browser as PlaywrightBrowser, type Page, type BrowserContext } from 'playwright';
+import { firefox, type Browser as PlaywrightBrowser, type Page, type BrowserContext } from 'playwright';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 
@@ -574,30 +574,21 @@ export class Browser {
 }
 
 /**
- * Launch a Playwright Chromium browser and return an initialized Browser instance.
+ * Launch a Playwright Firefox browser and return an initialized Browser instance.
  *
- * Resource blocking (images, stylesheets, fonts, media) is set up on the context
+ * Resource blocking (images, fonts, media) is set up on the context
  * so all pages automatically skip these resource types during load.
  */
 export async function init(
     braveAPIKey: string,
-    runDangerouslyWithoutSandbox: boolean,
     blacklistHosts: string[] = [],
 ): Promise<Browser> {
-    if (runDangerouslyWithoutSandbox) {
-        console.log(chalk.red(`Browser.init: warning - starting browser process without sandbox`));
-    } else {
-        console.log(`Browser.init: starting browser...`);
-    }
+    console.log(`Browser.init: starting browser...`);
 
-    const browser = await chromium.launch({
+    const browser = await firefox.launch({
         handleSIGINT: false,
         handleSIGTERM: false,
         handleSIGHUP: false,
-        chromiumSandbox: !runDangerouslyWithoutSandbox,
-        args: [
-            '--disable-http2',
-        ],
     });
 
     const context = await browser.newContext({

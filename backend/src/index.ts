@@ -61,7 +61,6 @@ let browser: Browser.Browser | undefined = undefined;
 if (cfg.web.enable) {
     browser = await Browser.init(
         cfg.web.braveAPIKey,
-        cfg.web.runDangerouslyWithoutSandbox,
         cfg.web.blacklistHosts,
     );
 }

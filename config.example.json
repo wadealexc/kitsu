@@ -5,7 +5,6 @@
     "web": {
         "enable": false,
         "braveAPIKey": "",
-        "runDangerouslyWithoutSandbox": false,
         "blacklistHosts": ["grokipedia.com"]
     },
     "ports": {
