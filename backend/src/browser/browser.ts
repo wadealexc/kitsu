@@ -53,7 +53,7 @@ const PAGE_LOAD_TIMEOUT_MS = 10000;
 const PROCESS_TASKS_INTERVAL_MS = 100;
 
 // Resource types to block — we only need HTML text, not images/styles/fonts/media
-const BLOCKED_RESOURCE_TYPES = ['image', 'stylesheet', 'font', 'media'];
+const BLOCKED_RESOURCE_TYPES = ['image', 'font', 'media'];
 
 // If Readability extracts less than this fraction of the raw page text, fall back to innerText.
 // Prevents Readability from silently discarding most content on non-article pages
@@ -427,10 +427,9 @@ export class Browser {
 
             const html = await page.content();
 
-            // Parse HTML twice: once to measure raw text length (before Readability
-            // mutates the document), and once to feed Readability.
-            // We use linkedom textContent throughout — page.evaluate + innerText is
-            // unreliable when stylesheets are blocked (Chromium treats text as invisible).
+            // Use linkedom to run Readability and measure content ratio.
+            // Final text extraction uses page.evaluate + innerText for
+            // layout-aware formatting.
             const rawLength = parseHTML(html).document.body?.textContent?.trim().length ?? 0;
 
             const { document: readabilityDoc } = parseHTML(html);
@@ -443,26 +442,26 @@ export class Browser {
 
             let text: string;
             if (useReadability) {
-                // Re-parse Readability's cleaned HTML for heading pre-processing.
-                // textContent concatenates all text nodes with no block-level separation,
-                // so we inject newlines + markdown markers on headings before extraction.
+                // Inject Readability's cleaned HTML into the page for innerText extraction.
+                // Pre-process headings with markdown markers first.
                 const { document: articleDoc } = parseHTML(article!.content);
                 for (const h of articleDoc.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
                     const level = parseInt(h.tagName[1]!);
                     const hashes = '#'.repeat(Math.min(level, 4));
                     (h as any).textContent = `\n\n${hashes} ${(h as any).textContent}\n`;
                 }
-                text = articleDoc.body?.textContent
-                    || articleDoc.documentElement?.textContent
-                    || article!.textContent
+                const cleanedHtml = articleDoc.body?.innerHTML
+                    || articleDoc.documentElement?.innerHTML
+                    || article!.content
                     || '';
+                await page.setContent(cleanedHtml, { waitUntil: 'domcontentloaded' });
+                text = await page.evaluate(() => document.body?.innerText ?? '');
             } else {
-                // Fallback: strip structural chrome from the raw HTML and extract text
-                const { document: fallbackDoc } = parseHTML(html);
-                for (const el of fallbackDoc.querySelectorAll('nav, header, footer, aside, script, style')) {
-                    el.remove();
-                }
-                text = fallbackDoc.body?.textContent ?? '';
+                // Fallback: strip structural chrome in-page and extract with innerText
+                text = await page.evaluate(() => {
+                    document.body.querySelectorAll('nav, header, footer, aside, script, style').forEach(el => el.remove());
+                    return document.body?.innerText ?? '';
+                });
             }
 
             await page.close();
