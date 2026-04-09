@@ -143,9 +143,12 @@ kitsu is configured via `config.json` at the repo root. Copy `config.example.jso
 "web": {
     "enable": true,
     "braveAPIKey": "YOUR_API_KEY",
-    "runDangerouslyWithoutSandbox": false
+    "runDangerouslyWithoutSandbox": false,
+    "blacklistHosts": ["grokipedia.com"]
 }
 ```
+
+`blacklistHosts` is an optional list of hostnames to exclude from web search results. Blacklisted hosts are never fetched. Defaults to `[]`.
 
 **If you want to try this feature out quickly** to see if setting up the sandbox is "worth it," you can edit config to run without the sandbox (`runDangerouslyWithoutSandbox: true`), and it should 'just work.' But keep in mind that this will tell playwright to start chromium with `--no-sandbox`, which allows webpages to run arbitrary javascript on your system. If you do this, just use it for a quick trial run!
 

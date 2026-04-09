@@ -5,7 +5,8 @@
     "web": {
         "enable": false,
         "braveAPIKey": "",
-        "runDangerouslyWithoutSandbox": false
+        "runDangerouslyWithoutSandbox": false,
+        "blacklistHosts": ["grokipedia.com"]
     },
     "ports": {
         "llamaCpp": {

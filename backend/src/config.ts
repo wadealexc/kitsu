@@ -23,6 +23,7 @@ const WebEnabledSchema = z.object({
     enable: z.literal(true),
     braveAPIKey: z.string().min(1, { message: "Brave API key is required if web is enabled" }),
     runDangerouslyWithoutSandbox: z.boolean().default(false),
+    blacklistHosts: z.array(z.string()).default([]),
 });
 
 /// `looseObject` used here in case of including `WebEnabledSchema` keys when not enabled
@@ -40,6 +41,7 @@ const WebSchema = z.union([WebDisabledSchema, WebEnabledSchema]);
  *     "enable": boolean,                            // default: false
  *     "braveAPIKey": "your api key here",           // required if web.enable
  *     "runDangerouslyWithoutSandbox": boolean,      // default: false
+ *     "blacklistHosts": string[],                   // default: []
  * }
  * ```
  */

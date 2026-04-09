@@ -104,74 +104,25 @@ export class Browser {
         total: number,
     } | undefined = undefined;
 
-    // If we specifically get HTTP 429 - Too Many Requests, the host is added
-    // to a blacklist so that we don't try to load it again until I can investigate
-    // and figure out why we're triggering host-side ratelimiting.
-    private hostBlacklist: Set<string> = new Set();
+    // Hosts to skip when filtering search results. Seeded from config on init.
+    private hostBlacklist: Set<string>;
 
     constructor(
         browser: PlaywrightBrowser,
         context: BrowserContext,
         braveAPIKey: string,
+        blacklistHosts: string[],
     ) {
         this.browser = browser;
         this.context = context;
         this.braveAPIKey = braveAPIKey;
+        this.hostBlacklist = new Set(blacklistHosts);
 
         // When we receive a new task, spawn a worker if possible
         this.tasks.on('newTask', () => this.#startTaskLoop());
     }
 
     /* -------------------- SEARCH/TASK CREATION -------------------- */
-
-    /**
-     * Send a query to the Brave Search API and return the top `count` results.
-     *
-     * @param req the query and number of requested results
-     * @param signal optional AbortSignal to cancel the request
-     * @returns a list of search results from the Brave API
-     */
-    async search(req: SearchRequest, signal?: AbortSignal): Promise<SearchResult[]> {
-        const searchResults: SearchResult[] = [];
-
-        // Search via Brave Search API
-        const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}&offset=${req.offset ?? 0}`;
-        const response = await fetch(url, {
-            method: 'get',
-            signal,
-            headers: {
-                'Accept': 'application/json',
-                'Accept-Encoding': 'gzip',
-                'X-Subscription-Token': this.braveAPIKey,
-            }
-        });
-
-        if (!response.ok) {
-            const errorMsg = await response.text();
-            throw new Error(`Browser.search: Brave API error: ${response.status}: ${errorMsg}`);
-        }
-
-        // Parse/collect responses
-        const results = await response.json();
-        for (const item of (results.web?.results as BraveSearchResult[])) {
-            let itemUrl: URL;
-            try { itemUrl = new URL(item.url) } catch (err: any) {
-                console.error(`Browser.search: error parsing returned URL ${item.url}; skipping. Error: ${err}`);
-                continue;
-            }
-
-            // Skip results that we won't be able to load
-            if (this.hostBlacklist.has(itemUrl.hostname)) continue;
-
-            searchResults.push({
-                url: itemUrl,
-                title: item.title,
-                snippet: item.description,
-            });
-        }
-
-        return searchResults;
-    }
 
     /**
      * Run multiple search queries in parallel, dedup, filter against `filter` set,
@@ -194,7 +145,7 @@ export class Browser {
 
         const fetchBatch = async (offset: number): Promise<SearchResult[]> => {
             const settled = await Promise.allSettled(
-                queries.map(query => this.search({ query, count: fetchSize, offset }, signal))
+                queries.map(query => this.#search({ query, count: fetchSize, offset }, signal))
             );
 
             const batch: SearchResult[] = [];
@@ -212,13 +163,16 @@ export class Browser {
         const results: SearchResult[] = [];
         const seen = new Set<string>(filter);
 
+        // Accumulate search results, filtering out duplicate URLs and blacklisted hosts
         const addResults = (batch: SearchResult[]) => {
             for (const r of batch) {
                 const key = r.url.toString();
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    results.push(r);
-                }
+
+                if (seen.has(key)) continue;
+                if (this.#isBlacklisted(r.url.hostname)) continue;
+
+                seen.add(key);
+                results.push(r);
             }
         };
 
@@ -249,19 +203,15 @@ export class Browser {
         const results: Promise<Document>[] = [];
 
         for (const url of urls) {
-            if (this.isHostBlacklisted(url)) {
-                results.push(Promise.reject(`err: url is on host blacklist: ${url}`));
+            // 1. If we're currently fetching this content, resolve when we fetch it
+            // 2. Otherwise, create a new task and resolve when it's complete
+            if (this.tasks.has(url)) {
+                results.push(this.tasks.get(url)!.promise);
             } else {
-                // 1. If we're currently fetching this content, resolve when we fetch it
-                // 2. Otherwise, create a new task and resolve when it's complete
-                if (this.tasks.has(url)) {
-                    results.push(this.tasks.get(url)!.promise);
+                if (mustHaveTask) {
+                    results.push(Promise.reject(`required task did not exist for url: ${url}`));
                 } else {
-                    if (mustHaveTask) {
-                        results.push(Promise.reject(`required task did not exist for url: ${url}`));
-                    } else {
-                        results.push(this.tasks.create(url, signal).promise);
-                    }
+                    results.push(this.tasks.create(url, signal).promise);
                 }
             }
         }
@@ -288,7 +238,7 @@ export class Browser {
             promises.map((p, i) => [
                 i,
                 p.then(doc => ({ i, doc, url: urls[i]! }))
-                 .catch(() => ({ i, doc: null, url: urls[i]! })),
+                    .catch(() => ({ i, doc: null, url: urls[i]! })),
             ])
         );
 
@@ -318,6 +268,52 @@ export class Browser {
                 yield { ok: false, url: result.url };
             }
         }
+    }
+
+    /**
+     * Send a query to the Brave Search API and return the top `count` results.
+     *
+     * @param req the query and number of requested results
+     * @param signal optional AbortSignal to cancel the request
+     * @returns a list of search results from the Brave API
+     */
+    async #search(req: SearchRequest, signal?: AbortSignal): Promise<SearchResult[]> {
+        const searchResults: SearchResult[] = [];
+
+        // Search via Brave Search API
+        const url = `${BRAVE_SEARCH_API}?q=${encodeURIComponent(req.query)}&count=${req.count}&offset=${req.offset ?? 0}`;
+        const response = await fetch(url, {
+            method: 'get',
+            signal,
+            headers: {
+                'Accept': 'application/json',
+                'Accept-Encoding': 'gzip',
+                'X-Subscription-Token': this.braveAPIKey,
+            }
+        });
+
+        if (!response.ok) {
+            const errorMsg = await response.text();
+            throw new Error(`Browser.search: Brave API error: ${response.status}: ${errorMsg}`);
+        }
+
+        // Parse/collect responses
+        const results = await response.json();
+        for (const item of (results.web?.results as BraveSearchResult[])) {
+            let itemUrl: URL;
+            try { itemUrl = new URL(item.url) } catch (err: any) {
+                console.error(`Browser.search: error parsing returned URL ${item.url}; skipping. Error: ${err}`);
+                continue;
+            }
+
+            searchResults.push({
+                url: itemUrl,
+                title: item.title,
+                snippet: item.description,
+            });
+        }
+
+        return searchResults;
     }
 
     /* -------------------- TASK MANAGEMENT -------------------- */
@@ -364,12 +360,8 @@ export class Browser {
         while (this.tasks.hasWorker() && this.tasks.hasNext()) {
             const task = this.tasks.getNext()!;
 
-            // Skip if needed (blacklist or rate limit)
-            if (this.isHostBlacklisted(task.url)) {
-                console.log(`Blacklisted host found in task list; skipping url: ${task.url}`);
-                this.tasks.drop(task, `url is blacklisted: ${task.url}`);
-                continue;
-            } else if (this.getRateLimit(task.url) > MAX_REQUESTS_PER_HOST_PER_MIN) {
+            // Skip if rate limited
+            if (this.getRateLimit(task.url) > MAX_REQUESTS_PER_HOST_PER_MIN) {
                 console.log(`Rate limit encountered for url ${task.url}; dropping`);
                 this.tasks.drop(task, `url is self-ratelimited: ${task.url}`);
                 continue;
@@ -497,7 +489,6 @@ export class Browser {
             if (!response) throw new PageLoadError(`null response from page.goto`, false);
             if (!response.ok()) {
                 const code = response.status();
-                if (code === 429) this.hostBlacklist.add(url.hostname);
                 throw new PageLoadError(`http error: ${code}`, false);
             }
         } catch (err: any) {
@@ -526,8 +517,14 @@ export class Browser {
         console.log(chalk.dim(` - rate limits:\n${rateLimitStr}`));
     }
 
-    isHostBlacklisted(url: URL): boolean {
-        return this.hostBlacklist.has(url.hostname);
+    // Returns true if `hostname` exactly matches a blacklist entry or is a subdomain of one.
+    // e.g. entry "accuweather.com" blocks both "accuweather.com" and "www.accuweather.com".
+    #isBlacklisted(hostname: string): boolean {
+        for (const entry of this.hostBlacklist) {
+            if (hostname === entry || hostname.endsWith(`.${entry}`)) return true;
+        }
+
+        return false;
     }
 
     getRateLimit(url: URL): number {
@@ -573,12 +570,6 @@ export class Browser {
         await this.browser.close();
 
         console.log(chalk.green(`...done!`));
-
-        // Print url blacklist to console for further investigation
-        if (this.hostBlacklist.size !== 0) {
-            const hosts = [...this.hostBlacklist.values()];
-            console.log(`Host Blacklist contains elements; printing:\n ${JSON.stringify(hosts, null, 2)}`);
-        }
     }
 }
 
@@ -591,6 +582,7 @@ export class Browser {
 export async function init(
     braveAPIKey: string,
     runDangerouslyWithoutSandbox: boolean,
+    blacklistHosts: string[] = [],
 ): Promise<Browser> {
     if (runDangerouslyWithoutSandbox) {
         console.log(chalk.red(`Browser.init: warning - starting browser process without sandbox`));
@@ -621,8 +613,9 @@ export async function init(
         return route.continue();
     });
 
-    process.stdout.write(chalk.dim.green(`web browser running!\n`));
-    return new Browser(browser, context, braveAPIKey);
+    console.log(chalk.dim.green(`web browser running!`));
+    console.log(chalk.dim(` - host blacklist: ${blacklistHosts.toString()}`));
+    return new Browser(browser, context, braveAPIKey, blacklistHosts);
 }
 
 /* -------------------- ERRORS -------------------- */
