@@ -26,6 +26,8 @@ export type SearchResult = {
 
 const BRAVE_SEARCH_API = 'https://api.search.brave.com/res/v1/web/search';
 
+const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0';
+
 // Over-request from Brave to absorb filtering losses without needing a backfill round
 const SEARCH_FETCH_MULTIPLIER = 2;
 
@@ -51,6 +53,14 @@ const PAGE_LOAD_TIMEOUT_MS = 10000;
 
 // How often we check for outstanding work
 const PROCESS_TASKS_INTERVAL_MS = 100;
+
+// How often we poll for content stabilization after domcontentloaded
+const CONTENT_POLL_INTERVAL_MS = 100;
+
+// Requests open longer than this are considered persistent (websockets,
+// long-polling, analytics streams) and excluded from the "is the page
+// still loading?" check
+const PERSISTENT_REQUEST_MS = 5000;
 
 // Resource types to block — we only need HTML text, not images/styles/fonts/media
 const BLOCKED_RESOURCE_TYPES = ['image', 'font', 'media'];
@@ -469,16 +479,51 @@ export class Browser {
     }
 
     /**
-     * Navigate `page` to `url`, waiting for DOM content to load.
+     * Navigate `page` to `url` and wait for it to be ready for extraction.
      *
-     * Uses domcontentloaded (not networkidle2) for speed — resource blocking on
-     * the context means there is little remaining network activity after DOM load.
+     * Waits for domcontentloaded on initial navigation (fast for static/SSR
+     * sites), then polls content length and pending network requests to
+     * approximate when the page's main content is available. This handles SPAs that
+     * render content via JavaScript after the initial DOM load.
      *
-     * If `signal` is aborted, closes the page (which causes goto to reject).
+     * #gotoPage times out and closes the page after PAGE_LOAD_TIMEOUT_MS.
      */
     async #gotoPage(page: Page, url: URL, signal?: AbortSignal): Promise<void> {
-        const abortHandler = () => page.close();
+        // HACK:
+        //
+        // After messing with page/content load heuristics for a while, I found that
+        // just redirecting "www.reddit" to "old.reddit" allows me to keep the existing,
+        // functional approach for SPAs, and still get content from reddit, whose SPA
+        // is uniquely annoying.
+        //
+        // A more mature system would have some nice abstraction around this, but this is
+        // not a mature system. Sometimes you just gotta get things working.
+        if (url.hostname === 'www.reddit.com') {
+            url = new URL(url.toString().replace('www.reddit.com', 'old.reddit.com'));
+        }
+
+        const abortHandler = () => page.close({ reason: '#gotoPage: encountered abort signal' });
         signal?.addEventListener('abort', abortHandler, { once: true });
+
+        // Close the page if the overall timeout is exceeded
+        const timeout = setTimeout(
+            () => page.close({ reason: '#gotoPage: timed out' }),
+            PAGE_LOAD_TIMEOUT_MS,
+        );
+
+        // Track pending network requests for content-aware waiting.
+        // Requests open longer than PERSISTENT_REQUEST_MS are ignored
+        // (websockets, long-polling, analytics, etc.)
+        const pendingReqs = new Map<unknown, number>();
+        page.on('request', (req) => pendingReqs.set(req, Date.now()));
+        page.on('requestfinished', (req) => pendingReqs.delete(req));
+        page.on('requestfailed', (req) => pendingReqs.delete(req));
+
+        // Track whether the `load` event has fired. After load, remaining
+        // network requests are likely analytics/tracking, so we stop
+        // waiting for them and only require content stability.
+        let loaded = false;
+        page.on('load', () => { loaded = true; });
 
         try {
             const response = await page.goto(url.toString(), {
@@ -489,15 +534,42 @@ export class Browser {
             if (!response) throw new PageLoadError(`null response from page.goto`, false);
             if (!response.ok()) {
                 const code = response.status();
-                throw new PageLoadError(`http error: ${code}`, false);
+                // Some sites present a challenge/set cookies alongside 403. Retrying
+                // allows us to pass these checks on our next load.
+                throw new PageLoadError(`http error: ${code}`, code === 403);
+            }
+
+            // Poll until content stabilizes and network settles.
+            // Static/SSR sites exit almost immediately (content present,
+            // load fires quickly). SPAs wait for JS to render + API calls
+            // to complete.
+            let lastLength = -1;
+            while (true) {
+                const length = await page.evaluate(
+                    () => document.body?.innerText?.length ?? 0
+                );
+
+                const cutoff = Date.now() - PERSISTENT_REQUEST_MS;
+                let activeReqs = 0;
+                for (const start of pendingReqs.values()) {
+                    if (start >= cutoff) activeReqs++;
+                }
+
+                // We consider page/content to be stable if:
+                // 1. Page is loaded, or has no active network requests
+                // 2. AND content has not changed since last poll
+                if ((loaded || activeReqs === 0) && length === lastLength) break;
+                lastLength = length;
+
+                await new Promise(resolve => setTimeout(resolve, CONTENT_POLL_INTERVAL_MS));
             }
         } catch (err: any) {
-            // Playwright timeout → non-retryable
             if (err.name === 'TimeoutError') {
                 throw new PageLoadError(`timeout loading ${url}`, false);
             }
             throw err;
         } finally {
+            clearTimeout(timeout);
             signal?.removeEventListener('abort', abortHandler);
         }
     }
@@ -592,7 +664,7 @@ export async function init(
     });
 
     const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0',
+        userAgent: USER_AGENT,
     });
 
     // Block resources we don't need for text extraction
