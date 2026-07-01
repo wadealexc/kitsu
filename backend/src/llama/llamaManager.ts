@@ -622,6 +622,8 @@ export class LlamaManager implements Llama {
         if (this.llamaServerVerboseLogs) {
             console.log(chalk.dim(` - verbose logging enabled`));
             args.push('-lv', '999');
+        } else {
+            args.push('-lv', '4');
         }
 
         // Spawn llama-server as a detached process, making it the leader of a new
