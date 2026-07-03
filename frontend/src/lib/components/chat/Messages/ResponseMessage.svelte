@@ -204,7 +204,7 @@
                     id="response-message-model-name"
                     class="line-clamp-1 text-black dark:text-white"
                 >
-                    {model?.name ?? message.model}
+                    {model?.name ?? message.modelName ?? message.model}
                 </span>
             </Name>
 
