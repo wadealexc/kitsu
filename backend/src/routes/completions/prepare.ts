@@ -65,7 +65,7 @@ export async function prepareRequest(
             params = rest;
         }
 
-        if (!llama.getModelInfo(resolvedModel))
+        if (!await llama.getModelInfo(resolvedModel))
             throw new Error(`Model not found: ${resolvedModel}`);
     }
 

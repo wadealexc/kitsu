@@ -198,6 +198,8 @@ function handleStreamedResponse(responseString: string): proto.Result<proto.Comp
             continue;
         }
 
+        finalChunk = chunk;
+
         const choice = chunk.choices.at(0);
         if (!choice || !choice.delta) continue;
 
@@ -230,8 +232,6 @@ function handleStreamedResponse(responseString: string): proto.Result<proto.Comp
                 existingCall.function.arguments += call.function.arguments;
             }
         });
-
-        finalChunk = chunk;
     }
 
     if (!finalChunk) {

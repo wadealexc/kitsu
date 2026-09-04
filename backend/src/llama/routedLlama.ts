@@ -104,19 +104,19 @@ export class RoutedLlama implements Llama {
     // the frontend's loading affordances quiet without misleading it about
     // models that don't exist.
 
-    wake(modelName: string): LlamaStatus {
+    async wake(modelName: string): Promise<LlamaStatus> {
         if (!this.modelInfos.has(modelName))
             throw new Error(`RoutedLlama.wake: model not found: ${modelName}`);
         return 'active';
     }
 
-    getStatus(model: string): LlamaStatus {
+    async getStatus(model: string): Promise<LlamaStatus> {
         return this.modelInfos.has(model) ? 'active' : 'idle';
     }
 
     /* -------------------- GETTERS -------------------- */
 
-    getModelInfo(name: string): proto.ModelInfo | undefined {
+    async getModelInfo(name: string): Promise<proto.ModelInfo | undefined> {
         return this.modelInfos.get(name);
     }
 

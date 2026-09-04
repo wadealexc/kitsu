@@ -41,14 +41,14 @@ router.get('/', requireAuth, async (
 
         // Fetch custom models accessible to this user, filtered to those with available base models
         const allCustomModels = await Models.getCustomModels(db);
-        const availableModels: Types.ModelResponse[] = allCustomModels
-            .filter(model => baseModelNames.some(base => base === model.baseModelId))
-            .filter(model => Models.hasAccess(model, userId, 'read'))
-            .map(model => toModelStatusResponse(
-                model,
-                llama.getModelInfo(model.baseModelId)?.contextLength,
-                llama.getStatus(model.baseModelId),
-            ));
+        const availableModels: Types.ModelResponse[] = [];
+        for (const model of allCustomModels) {
+            if (!baseModelNames.includes(model.baseModelId)) continue;
+            if (!Models.hasAccess(model, userId, 'read')) continue;
+            const info = await llama.getModelInfo(model.baseModelId);
+            const status = await llama.getStatus(model.baseModelId);
+            availableModels.push(toModelStatusResponse(model, info?.contextLength, status));
+        }
 
         res.status(200).json(availableModels);
     } catch (err) {
@@ -140,12 +140,11 @@ router.post('/:modelId/wake', requireAuth, async (
         console.log(`wake request: ${resolvedModel}`);
 
         // Ensure base model exists
-        if (!llama.getModelInfo(resolvedModel)) {
+        if (!await llama.getModelInfo(resolvedModel)) {
             return res.status(404).json({ detail: `Model not found: ${modelId}` });
         }
 
-        // Fire-and-forget: loop handles start/swap asynchronously
-        const status = llama.wake(resolvedModel);
+        const status = await llama.wake(resolvedModel);
         return res.status(200).json({ status: status });
     } catch (err) {
         return res.status(500).json({ detail: `Wake failed: ${err}` });
@@ -395,9 +394,10 @@ router.get('/base', requireAdmin, async (
         const llama = req.app.locals.llama as Llama;
         const baseModelNames = llama.getAllModelNames();
 
-        const baseModels: Types.ModelResponse[] = baseModelNames.map(name => {
-            const modelInfo = llama.getModelInfo(name);
-            return toModelResponse({
+        const baseModels: Types.ModelResponse[] = [];
+        for (const name of baseModelNames) {
+            const modelInfo = await llama.getModelInfo(name);
+            baseModels.push(toModelResponse({
                 id: name,
                 userId,
                 baseModelId: name,
@@ -408,8 +408,8 @@ router.get('/base', requireAdmin, async (
                 isActive: true,
                 updatedAt: 0,
                 createdAt: 0,
-            }, modelInfo?.contextLength);
-        });
+            }, modelInfo?.contextLength));
+        }
 
         res.status(200).json(baseModels);
     } catch (err) {

@@ -33,9 +33,9 @@ export type LlamaStatus = 'idle' | 'queued' | 'active';
 export interface Llama {
     completions(req: LlamaRequest): Promise<LlamaResponse>;
     tokenize(content: string, model: string, signal: AbortSignal): Promise<number>;
-    wake(modelName: string): LlamaStatus;
-    getStatus(model: string): LlamaStatus;
-    getModelInfo(name: string): proto.ModelInfo | undefined;
+    wake(modelName: string): Promise<LlamaStatus>;
+    getStatus(model: string): Promise<LlamaStatus>;
+    getModelInfo(name: string): Promise<proto.ModelInfo | undefined>;
     getAllModelNames(): string[];
     stopServer(): Promise<void>;
     forceStopServer(): void;

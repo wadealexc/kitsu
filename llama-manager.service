@@ -1,0 +1,33 @@
+[Unit]
+Description=llama-manager inference router
+PartOf=kitsu.service
+
+[Service]
+# TODO: Change these options to use your username, and to
+#       reference the directory in which you placed kitsu
+User=YOUR_USER_HERE
+WorkingDirectory=%h/kitsu/llama-manager
+Environment=MANAGER_CONFIG=%h/kitsu/config.yaml
+ExecStart=%h/kitsu/llama-manager/run.sh --calc-max-ctx
+
+# Shutdown behavior - kill parent process only
+# (llama-manager will take care of child processes)
+TimeoutStopSec=20
+KillSignal=SIGINT
+KillMode=process
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Send output to journal
+#
+# check status:
+# systemctl status llama-manager
+#
+# view logs:
+# journalctl -u llama-manager -f
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=llama-manager

@@ -1,7 +1,9 @@
 [Unit]
 # start after network is up
 Description=kitsu
-After=network.target
+After=network-online.target llama-manager.service
+Wants=network-online.target
+Wants=llama-manager.service
 
 [Service]
 # Runs the `run.sh` script in the backend directory, which

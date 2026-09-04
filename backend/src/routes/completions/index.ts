@@ -101,7 +101,7 @@ router.post('/custom-completions', requireAuth, async (
     const roundLogs: RoundLog[] = [];
 
     // Create a per-request session for context budget tracking and webSearch state
-    const modelInfo = llama.getModelInfo(ctx.resolvedModel);
+    const modelInfo = await llama.getModelInfo(ctx.resolvedModel);
     const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, body.messages);
 
     try {

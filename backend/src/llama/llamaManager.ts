@@ -10,13 +10,13 @@ import chalk from 'chalk';
 import { type ModelConfig, type ModelEntry } from '../config.js';
 import * as proto from '../protocol/index.js';
 import LlamaStream from './llamaStream.js';
-import type { Llama, LlamaRequest, LlamaResponse } from './types.js';
+import type { Llama, LlamaRequest, LlamaResponse, LlamaStatus } from './types.js';
 
 // Command to start llama‑server via submodule
 const LLAMA_SERVER_BIN = '../llama.cpp/build/bin/llama-server';
 
 // How long to wait for a graceful shutdown before sending SIGKILL
-const SHUTDOWN_GRACE_MS = 5000;
+const SHUTDOWN_GRACE_MS = 50000;
 
 // How long to wait for a poll to succeed
 // (we shouldn't need long since this is all on the same machine)
@@ -27,7 +27,7 @@ const POLL_INTERVAL_MS = 100;
 
 // Number of times to ping `llama-server` process before giving up on life
 // (total wait time: NUM_RETRIES * POLL_INTERVAL_MS = 80 seconds)
-const NUM_RETRIES = 800;
+const NUM_RETRIES = 8000;
 
 // How often the main dispatch loop ticks
 const LOOP_INTERVAL_MS = 100;
@@ -251,7 +251,7 @@ export class LlamaManager implements Llama {
         console.log(`LlamaManager: starting`);
         this.#logVRAM();
 
-        this.requestQueue.push({ llama: this.defaultLlama, jobs: [] });
+        // this.requestQueue.push({ llama: this.defaultLlama, jobs: [] });
         this.sleepTimer = this.#newSleepTimer();
 
         const tick = async () => {
@@ -269,7 +269,7 @@ export class LlamaManager implements Llama {
      * Request that a model should be made active. Pushes the model into the queue,
      * to be picked up by the main loop. No-op if the model is already in the queue.
      */
-    wake(modelName: string): 'idle' | 'queued' | 'active' {
+    async wake(modelName: string): Promise<'idle' | 'queued' | 'active'> {
         const llama = this.llamas.get(modelName);
         if (!llama) throw new Error(`wake: model not found: ${modelName}`);
 
@@ -280,7 +280,7 @@ export class LlamaManager implements Llama {
         // Add to queue - loop will handle start/swap
         this.requestQueue.push({ llama, jobs: [] });
         this.sleepTimer?.reset();
-        return this.getStatus(llama);
+        return this.#status(llama);
     }
 
     /**
@@ -835,32 +835,36 @@ export class LlamaManager implements Llama {
 
     /* -------------------- GETTERS -------------------- */
 
-    getModelInfo(name: string): proto.ModelInfo | undefined {
+    async getModelInfo(name: string): Promise<proto.ModelInfo | undefined> {
         return this.llamas.get(name)?.model;
     }
 
     getAllModelNames(): string[] {
         return [
-            ...this.getBaseLlamas().map(llama => llama.model.name),
-            ...this.getVisionLlamas().map(llama => llama.model.name),
+            ...this.#baseLlamas().map(llama => llama.model.name),
+            ...this.#visionLlamas().map(llama => llama.model.name),
         ];
     }
 
-    getBaseLlamas(): LlamaInstance[] {
+    #baseLlamas(): LlamaInstance[] {
         return [
             ...this.llamas.values()
                 .filter(v => v.model.mmprojPath === undefined)
         ];
     }
 
-    getVisionLlamas(): LlamaInstance[] {
+    #visionLlamas(): LlamaInstance[] {
         return [
             ...this.llamas.values()
                 .filter(v => typeof v.model.mmprojPath === 'string')
         ];
     }
 
-    getStatus(model: LlamaInstance | string): 'idle' | 'queued' | 'active' {
+    async getStatus(model: string): Promise<LlamaStatus> {
+        return this.#status(model);
+    }
+
+    #status(model: LlamaInstance | string): LlamaStatus {
         const llama = typeof model === 'string' ? this.llamas.get(model) : model;
         if (!llama) {
             return 'idle';

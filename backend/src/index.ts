@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { readConfig } from './config.js';
 import * as middleware from './server/middleware.js';
 import { LlamaManager } from './llama/llamaManager.js';
+import { LlamaManagerAdapter } from './llama/llamaManagerAdapter.js';
 import { RoutedLlama } from './llama/routedLlama.js';
 import type { Llama } from './llama/types.js';
 import * as Browser from './browser/browser.js';
@@ -77,6 +78,11 @@ if (process.env.KITSU_MODE === 'beta') {
     llama = new RoutedLlama({
         models: cfg.models,
         prodBackendURL: cfg.routedLlama.url,
+    });
+} else if (cfg.llamaManager) {
+    llama = new LlamaManagerAdapter({
+        managerUrl: cfg.llamaManager.url,
+        models: cfg.models,
     });
 } else {
     const manager = new LlamaManager({

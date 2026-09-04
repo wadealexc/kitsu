@@ -92,7 +92,7 @@ const LogSchema = z.object({
 export type LogConfig = z.infer<typeof LogSchema>;
 
 const ModelEntrySchema = z.object({
-    gguf: z.string(),
+    gguf: z.string().default(''),
     mmproj: z.optional(z.string()),
     alias: z.optional(z.string()),
     args: z.optional(z.array(z.coerce.string())),
@@ -153,6 +153,22 @@ const RoutedLlamaSchema = z.object({
 
 export type RoutedLlamaConfig = z.infer<typeof RoutedLlamaSchema>;
 
+/**
+ * llamaManager settings — when set, the backend uses LlamaManagerAdapter instead of
+ * LlamaManager and forwards completions/tokenize to a local llama-manager instance.
+ *
+ * ```json
+ * "llamaManager": {
+ *     "url": "http://127.0.0.1:10001"
+ * }
+ * ```
+ */
+const LlamaManagerSchema = z.object({
+    url: z.url(),
+});
+
+export type LlamaManagerConfig = z.infer<typeof LlamaManagerSchema>;
+
 // Main config schema with strict mode (rejects extra fields)
 const ConfigSchema = z.object({
     llamaCpp: LlamaCppSchema,
@@ -161,6 +177,7 @@ const ConfigSchema = z.object({
     logs: LogSchema,
     models: ModelSchema,
     routedLlama: RoutedLlamaSchema.optional(),
+    llamaManager: LlamaManagerSchema.optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -223,6 +240,9 @@ async function validateFilesExist(config: Config) {
 
     // Beta envs (RoutedLlama) don't ship local GGUFs — skip the file checks.
     if (config.routedLlama) return;
+
+    // llama-manager handles GGUF management — skip the file checks.
+    if (config.llamaManager) return;
 
     const modelConfig: ModelConfig = config.models;
     const basePath = modelConfig.path;
