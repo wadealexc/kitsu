@@ -31,7 +31,7 @@ const router = Router();
 
 /* -------------------- CUSTOM COMPLETION -------------------- */
 
-const MAX_TOOL_ROUNDS = 10;
+const MAX_TOOL_ROUNDS = 100;
 
 // Context budget threshold: stop offering tools when conversation reaches this fraction of context
 const CONTEXT_THRESHOLD_PCT = 0.9;

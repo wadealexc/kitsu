@@ -54,6 +54,19 @@ export class LlamaManagerAdapter implements Llama {
     }
 
     async completions(req: LlamaRequest): Promise<LlamaResponse> {
+        if (req.emit) {
+            const data = await this.#listModels();
+            const target = data.find(e => e.id === req.body.model);
+
+            if (target?.active) {
+                // no emit
+            } else if (data.some(e => e.id !== req.body.model && e.active)) {
+                req.emit.onQueue();
+            } else {
+                req.emit.onLoading();
+            }
+        }
+
         const url = `${this.managerUrl}/v1/chat/completions`;
 
         const response = await fetch(url, {
@@ -128,11 +141,7 @@ export class LlamaManagerAdapter implements Llama {
 
     async getStatus(model: string): Promise<LlamaStatus> {
         try {
-            const url = `${this.managerUrl}/v1/models`;
-            const response = await fetch(url);
-            if (!response.ok) return 'idle';
-
-            const data = (await response.json() as { object: 'list', data: ModelListEntry[] }).data;
+            const data = await this.#listModels();
             const info = data.find(e => e.id === model);
             if (!info) return 'idle';
 
@@ -149,11 +158,7 @@ export class LlamaManagerAdapter implements Llama {
         if (!base) return undefined;
 
         try {
-            const url = `${this.managerUrl}/v1/models`;
-            const response = await fetch(url);
-            if (!response.ok) return base;
-
-            const data = (await response.json() as { object: 'list', data: ModelListEntry[] }).data;
+            const data = await this.#listModels();
             const info = data.find(e => e.id === model);
             if (!info) return base;
 
@@ -164,6 +169,13 @@ export class LlamaManagerAdapter implements Llama {
         } catch {
             return base;
         }
+    }
+
+    async #listModels(): Promise<ModelListEntry[]> {
+        const url = `${this.managerUrl}/v1/models`;
+        const response = await fetch(url);
+
+        return (await response.json() as { object: 'list', data: ModelListEntry[] }).data;
     }
 
     getAllModelNames(): string[] {
