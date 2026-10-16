@@ -8,7 +8,7 @@ PartOf=kitsu.service
 User=YOUR_USER_HERE
 WorkingDirectory=%h/kitsu/llama-manager
 Environment=MANAGER_CONFIG=%h/kitsu/config.yaml
-ExecStart=%h/kitsu/llama-manager/run.sh --calc-max-ctx
+ExecStart=%h/kitsu/llama-manager/run.sh --calc-breakpoints --idle
 
 # Shutdown behavior - kill parent process only
 # (llama-manager will take care of child processes)
