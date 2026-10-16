@@ -276,6 +276,8 @@
                                             ></div>
                                         </div>
                                     </div>
+                                {:else if !message.done}
+                                    <ModelStatusPill status="waiting" />
                                 {/if}
                             {:else}
                                 {#if message.blocks && message.blocks.length > 0}

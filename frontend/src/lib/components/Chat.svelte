@@ -647,6 +647,11 @@
     const sendMessageSSE = async (model: Model, userMessage: ChatMessage) => {
         console.log(`sendMessageSSE | model: ${model.name}`);
 
+        // Reset stream context immediately so the previous message's state
+        // (e.g. promptProcessing) can't leak into the gap before the backend
+        // sends its first event for this message.
+        streamContext.set(null);
+
         // 1. Add empty assistant placeholder to history
         const stream = model.params.stream_response ?? true;
         const responseMessage = appendMessage(history, {
@@ -697,7 +702,6 @@
             // 3. Stream state setup
             generating = true;
             const contextTotal = model.contextLength ?? 0;
-            streamContext.set(null);
             toolProgress = new Map<string, WebSearchProgress | LoadWebpageProgress>();
             modelStatus = undefined;
 
