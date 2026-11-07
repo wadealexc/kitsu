@@ -47,7 +47,8 @@
         isEditingMessage,
         editScrollPosition,
         toolServers,
-        virtualKeyboardOpen
+        virtualKeyboardOpen,
+        generatingChats
     } from '$lib/stores';
     import { wakeModel } from '$lib/apis/models';
 
@@ -65,7 +66,10 @@
         type StreamTimings,
         type PromptProgress,
         type ToolProgressState,
-        type UrlStatus
+        type UrlStatus,
+        type TextStreamUpdate,
+        resumeChatCompletion,
+        stopChatCompletion
     } from '$lib/apis/completions';
     import { getFolderById, updateFolderById } from '$lib/apis/folders';
 
@@ -164,6 +168,15 @@
     const navigateHandler = async () => {
         console.log('navigateHandler');
 
+        // Stop following the previous chat's reply here; it carries on on the backend
+        streamSeq++;
+        resumeAttempts = 0;
+        generationController?.abort();
+        generationController = null;
+        generating = false;
+        modelStatus = undefined;
+        toolProgress = undefined;
+
         loading = true;
 
         prompt = '';
@@ -186,6 +199,13 @@
 
         await tick();
         loading = false;
+
+        // A reply still being written (on the backend)? Follow it.
+        const last = history.currentId ? history.messages[history.currentId] : undefined;
+        if (last?.role === 'assistant' && !last.done) {
+            // The model list may not have loaded yet; it's only needed for the context meter
+            void resumeResponse(resolveModel(last.model ?? '') ?? $selectedModel, last);
+        }
 
         // Back after iOS discarded the app? Return to where you were, not the bottom.
         const resume = takeResumePosition();
@@ -440,13 +460,12 @@
         history = chatContent.history;
         await tick();
 
-        // Note: can restrict to just string | null?
-        if (history.currentId) {
-            // Note: ... why?
-            for (const message of Object.values(history.messages)) {
-                if (message && message.role === 'assistant') {
-                    message.done = true;
-                }
+        // Older replies left unfinished (the backend went away mid-reply) count as
+        // finished. The latest one may still be running on the backend: navigateHandler
+        // follows it, or shows it as interrupted if nothing is running.
+        for (const message of Object.values(history.messages)) {
+            if (message && message.role === 'assistant' && message.id !== history.currentId) {
+                message.done = true;
             }
         }
 
@@ -723,11 +742,8 @@
                 .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
         );
 
-        try {
-            generationController = new AbortController();
-
-            // 2. API call
-            const textStream = await chatCompletion(localStorage.token, generationController, {
+        await streamResponse(model, responseMessage, (controller) =>
+            chatCompletion(localStorage.token, controller, {
                 stream: stream,
                 chatId: $chatId,
                 chat: {
@@ -742,11 +758,104 @@
                 },
                 promptVariables,
                 ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {})
-            });
+            })
+        );
+    };
+
+    // Replies run on the backend whatever happens to the connection (see the
+    // backend's completions/jobs.ts). A dropped stream is reconnected; leaving the
+    // chat just stops following it here.
+    let stoppedByUser = false;
+    /** Increments when the chat changes, so an old stream stops touching the page. */
+    let streamSeq = 0;
+    let resumeAttempts = 0;
+    const MAX_RESUME_ATTEMPTS = 6;
+
+    /** Follows a reply already running in this chat (or brings back its saved result). */
+    const resumeResponse = async (model: Model | null, message: ChatMessage) => {
+        const id = $chatId;
+        if (!id) return;
+        message.content = '';
+        message.blocks = [];
+        message.done = false;
+        delete message.error;
+        history.messages[message.id] = message;
+        history = history;
+        await streamResponse(model, message, (controller) =>
+            resumeChatCompletion(localStorage.token, controller, id)
+        );
+    };
+
+    /** Reconnects to a reply whose stream dropped, once the page is visible. */
+    const scheduleResume = (model: Model | null, messageId: string) => {
+        const seq = streamSeq;
+        const run = async () => {
+            document.removeEventListener('visibilitychange', onVisible);
+            const message = history.messages[messageId];
+            if (seq !== streamSeq || !message || message.done) return;
+            if (resumeAttempts++ >= MAX_RESUME_ATTEMPTS) {
+                await reconcileWithServer(message);
+                return;
+            }
+            await resumeResponse(model, message);
+        };
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') setTimeout(run, 300);
+        };
+        if (document.visibilityState === 'visible') {
+            setTimeout(run, Math.min(500 * 2 ** resumeAttempts, 8000));
+        } else {
+            document.addEventListener('visibilitychange', onVisible);
+        }
+    };
+
+    /**
+     * Nothing is running for this reply any more: show what the backend saved.
+     * A reply still unfinished there was interrupted (e.g. the backend restarted).
+     */
+    const reconcileWithServer = async (message: ChatMessage) => {
+        generating = false;
+        modelStatus = undefined;
+        toolProgress = undefined;
+        const id = $chatId;
+        const saved =
+            id && !id.startsWith('local:')
+                ? (await getChatById(localStorage.token, id).catch(() => null))?.chat?.history?.messages?.[message.id]
+                : undefined;
+        if (saved) Object.assign(message, saved);
+        if (!message.done) {
+            message.done = true;
+            if (!message.error) message.error = { content: 'This reply was interrupted.' };
+        }
+        history.messages[message.id] = message;
+        history = history;
+    };
+
+    /**
+     * Streams a reply into `responseMessage`: `open` starts one (sendMessageSSE) or
+     * follows one already running (resumeResponse; null when nothing is).
+     */
+    const streamResponse = async (
+        model: Model | null,
+        responseMessage: ChatMessage,
+        open: (controller: AbortController) => Promise<AsyncGenerator<TextStreamUpdate> | null>
+    ) => {
+        stoppedByUser = false;
+        const seq = streamSeq;
+        try {
+            generationController = new AbortController();
+
+            // 2. API call
+            const textStream = await open(generationController);
+            if (!textStream) {
+                await reconcileWithServer(responseMessage);
+                return;
+            }
+            generatingChats.update((set) => new Set(set).add($chatId));
 
             // 3. Stream state setup
             generating = true;
-            const contextTotal = model.contextLength ?? 0;
+            const contextTotal = model?.contextLength ?? 0;
             toolProgress = new Map<string, ToolProgressState>();
             modelStatus = undefined;
 
@@ -918,10 +1027,15 @@
                     }
                 }
                 else if (type === 'model:queued')
-                    modelStatus = { status: 'queued', modelName: model.name };
+                    modelStatus = { status: 'queued', modelName: model?.name ?? responseMessage.modelName ?? '' };
                 else if (type === 'model:loading')
-                    modelStatus = { status: 'loading', modelName: model.name };
+                    modelStatus = { status: 'loading', modelName: model?.name ?? responseMessage.modelName ?? '' };
                 else if (type === 'chat:completion') {
+                    generatingChats.update((set) => {
+                        const next = new Set(set);
+                        next.delete($chatId);
+                        return next;
+                    });
                     finalizeReasoning();
                     generating = false;
                     generationController = null;
@@ -942,6 +1056,9 @@
             // TODO - is it possible to accidentally skip updates because `update` contains
             // multitudes?
             for await (const update of textStream) {
+                // Another chat is open now: stop following here (the reply carries on)
+                if (seq !== streamSeq) return;
+
                 if (update.error) {
                     generating = false;
                     generationController = null;
@@ -977,20 +1094,50 @@
                 }
             }
 
-            // 6. Fallback: if the backend never sent a chat-event (e.g. aborted connection),
-            // ensure the message is marked done.
+            // 6. The stream ended without the reply finishing: the connection dropped
+            // (e.g. iOS suspended the app). The reply carries on on the backend, so
+            // reconnect to it, unless the user stopped it.
             if (!responseMessage.done) {
                 finalizeReasoning();
                 finalizeToolCalls();
-                responseMessage.done = true;
+                if (stoppedByUser) {
+                    responseMessage.done = true;
+                } else {
+                    generating = false;
+                    generationController = null;
+                    scheduleResume(model, responseMessage.id);
+                }
                 syncMessage();
                 await tick();
+            } else {
+                resumeAttempts = 0;
             }
 
             toolProgress = undefined;
             modelStatus = undefined;
         } catch (error) {
+            if (seq !== streamSeq) return; // another chat is open now
             console.error('SSE streaming error:', error);
+
+            // Stopped by the user, or the connection dropped (the reply carries on on
+            // the backend): neither is an error in the reply.
+            if (stoppedByUser || (error as any)?.name === 'AbortError' || error instanceof TypeError) {
+                for (const block of responseMessage.blocks ?? []) {
+                    if (block.type === 'tool_call' && !block.done) block.done = true;
+                }
+                toolProgress = undefined;
+                modelStatus = undefined;
+                generating = false;
+                generationController = null;
+                if (stoppedByUser) {
+                    responseMessage.done = true;
+                    history.messages[responseMessage.id] = responseMessage;
+                    history = history;
+                } else {
+                    scheduleResume(model, responseMessage.id);
+                }
+                return;
+            }
 
             // TODO: This is a hack because I was too lazy to enable finalizeToolCalls
             // scoped within this error handler.
@@ -1017,9 +1164,17 @@
 
     const stopResponse = async () => {
         if (generating) {
+            stoppedByUser = true;
             generating = false;
+            // The reply runs on the backend: stop it there (it keeps what it wrote)
+            if ($chatId) void stopChatCompletion(localStorage.token, $chatId).catch(() => {});
             generationController?.abort();
             generationController = null;
+            generatingChats.update((set) => {
+                const next = new Set(set);
+                next.delete($chatId);
+                return next;
+            });
         }
     };
 

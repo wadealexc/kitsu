@@ -1,18 +1,31 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
 
     import { getModels } from '$lib/apis/models';
     import { getToolServers } from '$lib/apis/mcp';
+    import { getActiveCompletions } from '$lib/apis/completions';
 
-    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar, virtualKeyboardOpen } from '$lib/stores';
+    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar, virtualKeyboardOpen, generatingChats } from '$lib/stores';
 
     import Sidebar from '$lib/components/Sidebar.svelte';
     import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
     import Spinner from '$lib/components/common/Spinner.svelte';
 
     let loaded = false;
+
+    // Which chats have a reply being written (see onMount)
+    let generatingTimer: ReturnType<typeof setInterval> | undefined;
+    const pollGenerating = async () => {
+        if (document.visibilityState !== 'visible') return;
+        const active = await getActiveCompletions(localStorage.token).catch(() => null);
+        if (active) generatingChats.set(new Set(active.map((a) => a.chatId)));
+    };
+    onDestroy(() => {
+        clearInterval(generatingTimer);
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', pollGenerating);
+    });
 
     /** Drops drafts (Chat.svelte keeps them in localStorage) untouched for a week. */
     const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -78,6 +91,12 @@
 
         clearChatInputStorage();
         models.set(await getModels(localStorage.token));
+        // Which chats have a reply being written, for the sidebar (replies run on
+        // the backend, so this includes ones started elsewhere or before a reload)
+        void pollGenerating();
+        generatingTimer = setInterval(pollGenerating, 3000);
+        document.addEventListener('visibilitychange', pollGenerating);
+
         // Tool servers load in the background; the page doesn't wait for them
         getToolServers(localStorage.token)
             .then((servers) => toolServers.set(servers))

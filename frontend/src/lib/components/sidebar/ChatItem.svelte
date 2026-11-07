@@ -25,6 +25,8 @@
     } from '$lib/stores';
 
     import ChatMenu from './ChatMenu.svelte';
+    import Spinner from '$lib/components/common/Spinner.svelte';
+    import { generatingChats } from '$lib/stores';
     import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
     import ShareChatModal from '$lib/components/chat/ShareChatModal.svelte';
     import DragGhost from '$lib/components/common/DragGhost.svelte';
@@ -353,17 +355,25 @@
             on:focus={(e) => {}}
             draggable="false"
         >
-            <div class=" flex self-center flex-1 w-full">
+            <div class=" flex self-center flex-1 w-full items-center gap-2">
                 <div
                     dir="auto"
                     class=" text-left self-center overflow-hidden w-full h-[20px] truncate"
                 >
-                    {title}
+                    {title || 'New Chat'}
                 </div>
+                {#if $generatingChats.has(id)}
+                    <!-- A reply is being written in this chat -->
+                    <span class="shrink-0 flex items-center" title="Writing a reply">
+                        <Spinner className="size-3.5 text-sky-500 dark:text-sky-400" />
+                    </span>
+                {/if}
             </div>
         </a>
     {/if}
 
+    <!-- No menu while a reply is being written: the spinner is there instead -->
+    {#if !$generatingChats.has(id)}
     <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
         id="sidebar-chat-item-menu"
@@ -430,4 +440,5 @@
             </ChatMenu>
         </div>
     </div>
+    {/if}
 </div>

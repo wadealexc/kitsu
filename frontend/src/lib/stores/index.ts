@@ -23,6 +23,9 @@ export const mobile = writable(false);
 /** An on-screen keyboard is covering part of the screen (set by the app layout) */
 export const virtualKeyboardOpen = writable(false);
 
+/** Chats with a reply being generated (on the backend), for the sidebar */
+export const generatingChats = writable<Set<string>>(new Set());
+
 export const chatId = writable('');
 export const chatTitle = writable('');
 
