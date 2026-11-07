@@ -48,6 +48,15 @@
 
     $: structured = record(block.structured);
 
+    // Arguments as the model sent them, indented for reading
+    $: prettyArguments = (() => {
+        try {
+            return JSON.stringify(JSON.parse(block.arguments || '{}'), null, 2);
+        } catch {
+            return block.arguments;
+        }
+    })();
+
     type Result = { url: string; title: string; snippet?: string };
     $: results = (Array.isArray(structured.results) ? structured.results : [])
         .map(record)
@@ -203,20 +212,31 @@
         transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}
     >
         {#if results.length > 0}
-            <ol class="!list-none !pl-0 !my-0 flex flex-col gap-0.5 text-xs">
+            <!-- Search results: pills like the page pills; each opens the site -->
+            <div class="flex flex-col items-start gap-1">
                 {#each results as r (r.url)}
-                    <li class="!pl-0 !my-0 flex items-baseline gap-1.5 min-w-0">
-                        <a
-                            href={r.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="truncate !no-underline !font-normal !text-gray-600 dark:!text-gray-400 hover:!text-gray-900 dark:hover:!text-gray-100"
-                            title={r.snippet ?? r.title}>{r.title}</a
+                    <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={r.snippet ?? r.title}
+                        class="group/pill max-w-full inline-flex items-center gap-1.5 text-xs rounded px-1.5 py-0.5 !no-underline transition-colors bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
+                    >
+                        <span class="shrink-0 font-medium !text-sky-700 dark:!text-sky-300">{hostnameOf(r.url)}</span>
+                        <span class="truncate !font-normal !text-gray-600 dark:!text-gray-300">{r.title}</span>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            class="size-3 shrink-0 text-gray-400 dark:text-gray-500 group-hover/pill:text-gray-700 dark:group-hover/pill:text-gray-200"
                         >
-                        <span class="shrink-0 text-gray-400 dark:text-gray-500">{hostnameOf(r.url)}</span>
-                    </li>
+                            <path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5z" clip-rule="evenodd" />
+                            <path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 001.06.053L16.5 4.44v2.81a.75.75 0 001.5 0v-4.5a.75.75 0 00-.75-.75h-4.5a.75.75 0 000 1.5h2.553l-9.056 8.194a.75.75 0 00-.053 1.06z" clip-rule="evenodd" />
+                        </svg>
+                    </a>
                 {/each}
-            </ol>
+            </div>
         {/if}
 
         {#if pages.length > 0}
@@ -298,12 +318,29 @@
                 </button>
             </div>
             <div class="max-h-[70vh] overflow-y-auto px-5 py-4 flex flex-col gap-3">
-                {#if viewing === 'raw' && block.arguments && block.arguments !== '{}'}
+                {#if viewing === 'raw'}
+                    <!-- What the model sent, then what the tool returned -->
+                    <section class="flex flex-col gap-1.5">
+                        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {'Input'}
+                        </div>
+                        <pre
+                            class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{prettyArguments}</pre>
+                    </section>
+                    <section class="flex flex-col gap-1.5">
+                        <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {'Result'}
+                            {#if block.failed}
+                                <span class="normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300">{'Error'}</span>
+                            {/if}
+                        </div>
+                        <pre
+                            class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 font-sans">{block.result}</pre>
+                    </section>
+                {:else}
                     <pre
-                        class="whitespace-pre-wrap break-words text-xs text-gray-500 dark:text-gray-400 font-mono">{block.arguments}</pre>
+                        class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300 font-sans">{pageContent(viewing)}</pre>
                 {/if}
-                <pre
-                    class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300 font-sans">{viewing === 'raw' ? block.result : pageContent(viewing)}</pre>
             </div>
         </div>
     </Modal>
