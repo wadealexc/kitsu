@@ -121,7 +121,67 @@ async function screenshot(): Promise<string> {
     });
 }
 
-async function handle(command: { id: string; op: string; code?: string }): Promise<void> {
+/**
+ * Samples layout on every frame for `ms` milliseconds: the visual viewport (which
+ * shows the keyboard), window scroll, and where the top bar, message input and
+ * focused element sit. With `armed`, waits for the next touch first, so
+ * the trace covers what a tap does.
+ */
+async function trace(ms: number, armed: boolean): Promise<unknown> {
+    if (armed) {
+        await new Promise<void>((resolve) => {
+            // A real touch only: the app also focuses the input by itself
+            const go = () => {
+                document.removeEventListener('touchstart', go, true);
+                resolve();
+            };
+            document.addEventListener('touchstart', go, true);
+        });
+    }
+
+    const top = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().top) : null);
+    const bottom = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().bottom) : null);
+    const start = performance.now();
+    const frames: unknown[] = [];
+
+    await new Promise<void>((resolve) => {
+        const sample = () => {
+            const t = Math.round(performance.now() - start);
+            const vv = window.visualViewport;
+            const nav = document.querySelector('nav');
+            const input = document.getElementById('chat-input');
+            const active = document.activeElement !== document.body ? document.activeElement : null;
+            frames.push({
+                t,
+                vvH: vv ? Math.round(vv.height) : null,
+                vvTop: vv ? Math.round(vv.offsetTop) : null,
+                scrollY: Math.round(window.scrollY),
+                innerH: window.innerHeight,
+                appH: getComputedStyle(document.documentElement).getPropertyValue('--app-height'),
+                navTop: top(nav),
+                inputBottom: bottom(input?.closest('form') ?? input),
+                active: active ? describe(active) : null,
+                activeTop: top(active),
+                activeBottom: bottom(active)
+            });
+            if (t < ms) requestAnimationFrame(sample);
+            else resolve();
+        };
+        requestAnimationFrame(sample);
+    });
+
+    // Only frames where something changed, to keep it readable
+    let last = '';
+    return frames.filter((f: any) => {
+        const { t: _t, ...rest } = f;
+        const key = JSON.stringify(rest);
+        if (key === last) return false;
+        last = key;
+        return true;
+    });
+}
+
+async function handle(command: { id: string; op: string; code?: string; ms?: number; armed?: boolean }): Promise<void> {
     let result: unknown;
     let error: string | undefined;
     try {
@@ -131,6 +191,8 @@ async function handle(command: { id: string; op: string; code?: string }): Promi
             result = describe(await fn());
         } else if (command.op === 'measure') {
             result = measure();
+        } else if (command.op === 'trace') {
+            result = await trace(command.ms ?? 2500, command.armed ?? true);
         } else if (command.op === 'screenshot') {
             result = await screenshot();
         } else {

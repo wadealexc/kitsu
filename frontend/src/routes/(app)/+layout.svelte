@@ -6,7 +6,7 @@
     import { getModels } from '$lib/apis/models';
     import { getToolServers } from '$lib/apis/mcp';
 
-    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar } from '$lib/stores';
+    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar, virtualKeyboardOpen } from '$lib/stores';
 
     import Sidebar from '$lib/components/Sidebar.svelte';
     import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
@@ -36,6 +36,7 @@
         prevVvHeight = vv.height;
 
         document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
+        virtualKeyboardOpen.set(vv.height < window.innerHeight - 100);
         // iOS pushes the web view when the keyboard opens, ignoring
         // overflow:hidden.  Counter-scroll to keep content at the top.
         if (window.scrollY !== 0) {

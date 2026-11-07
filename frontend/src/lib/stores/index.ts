@@ -20,6 +20,9 @@ export const user: Writable<SessionUser | undefined> = writable(undefined);
 
 export const mobile = writable(false);
 
+/** An on-screen keyboard is covering part of the screen (set by the app layout) */
+export const virtualKeyboardOpen = writable(false);
+
 export const chatId = writable('');
 export const chatTitle = writable('');
 

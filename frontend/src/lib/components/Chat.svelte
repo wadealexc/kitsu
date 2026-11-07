@@ -45,7 +45,8 @@
         selectedModel,
         isEditingMessage,
         editScrollPosition,
-        toolServers
+        toolServers,
+        virtualKeyboardOpen
     } from '$lib/stores';
     import { wakeModel } from '$lib/apis/models';
 
@@ -1214,7 +1215,7 @@
 
                 <div
                     class={hasMessages || systemPromptVisible
-                        ? `${$mobile ? 'pb-8' : 'pb-5'} z-10 relative ${$mobile && $isEditingMessage ? 'hidden' : ''}`
+                        ? `${$mobile ? ($virtualKeyboardOpen ? 'pb-2' : 'pb-8') : 'pb-5'} z-10 relative ${$mobile && $isEditingMessage ? 'hidden' : ''}`
                         : `h-full flex flex-col items-center ${$mobile ? 'justify-end pb-5' : 'justify-center'}`}
                 >
                     {#if !hasMessages && !systemPromptVisible}

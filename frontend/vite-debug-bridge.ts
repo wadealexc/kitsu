@@ -9,6 +9,7 @@
  *   POST /__debug/api/eval {code, client?}    run JS in the page (async body; `return` a value)
  *   GET  /__debug/api/measure?client=         viewport, keyboard, safe area, scroll positions
  *   POST /__debug/api/screenshot?client=      page re-rendered from the DOM, saved as a PNG
+ *   POST /__debug/api/trace {ms?, armed?, client?}  per-frame layout samples, from the next tap
  *
  * Events are also appended to $KITSU_DEBUG_DIR/events.jsonl.
  */
@@ -32,6 +33,8 @@ type StoredEvent = { seq: number; client: string; t: number; kind: string; data?
 
 const MAX_EVENTS = 10_000;
 const COMMAND_TIMEOUT_MS = 20_000;
+/** A trace waits for the user to tap, so it gets longer. */
+const TRACE_TIMEOUT_MS = 600_000;
 
 export function debugBridge(options: { token: string; dir: string }): Plugin {
     const clients = new Map<string, Client>();
@@ -59,13 +62,13 @@ export function debugBridge(options: { token: string; dir: string }): Plugin {
         return [...clients.values()].sort((a, b) => b.lastSeen - a.lastSeen)[0];
     };
 
-    const command = (client: Client, op: string, extra: Record<string, unknown> = {}) =>
+    const command = (client: Client, op: string, extra: Record<string, unknown> = {}, timeoutMs = COMMAND_TIMEOUT_MS) =>
         new Promise<{ result?: unknown; error?: string }>((resolve) => {
             const id = String(++nextCommand);
             const timer = setTimeout(() => {
                 pending.delete(id);
                 resolve({ error: 'timed out: the page may be suspended or closed' });
-            }, COMMAND_TIMEOUT_MS);
+            }, timeoutMs);
             pending.set(id, (reply) => {
                 clearTimeout(timer);
                 resolve(reply);
@@ -167,6 +170,11 @@ export function debugBridge(options: { token: string; dir: string }): Plugin {
 
                 if (req.method === 'GET' && route === '/measure') {
                     return json(res, 200, await command(client, 'measure'));
+                }
+
+                if (req.method === 'POST' && route === '/trace') {
+                    const extra = { ms: Number(body.ms ?? 2500), armed: body.armed !== false };
+                    return json(res, 200, await command(client, 'trace', extra, TRACE_TIMEOUT_MS + extra.ms));
                 }
 
                 if (req.method === 'POST' && route === '/screenshot') {

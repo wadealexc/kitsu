@@ -16,6 +16,7 @@
     } from '$lib/stores';
 
     import { convertHeicToJpeg, dataUrlToBlobUrl } from '$lib/utils';
+    import { caretAt, focusWithoutPan, isIOS, keyboardOpen } from '$lib/utils/iosKeyboard';
     import { extractFile } from '$lib/apis/files';
 
     import InputMenu from './MessageInput/InputMenu.svelte';
@@ -76,6 +77,22 @@
     });
 
     $: submitDisabled = (prompt === '' && files.length === 0) || extractingFiles;
+
+    // iOS: a tap in the message box (not its buttons) focuses the editor without the
+    // whole app sliding up while the keyboard opens. See iosKeyboard.ts.
+    const onComposerTouchEnd = (e: TouchEvent) => {
+        const editor = document.getElementById('chat-input');
+        // The editor may already have focus without a keyboard (kitsu focuses it
+        // on load, which on iOS doesn't open one), so check the keyboard instead.
+        if (!editor || !isIOS() || keyboardOpen()) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, label, select, [role=button]')) return;
+
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        const caret = caretAt(touch?.clientX ?? -1, touch?.clientY ?? -1, editor);
+        focusWithoutPan(editor, { moved: e.currentTarget as HTMLElement, caret, slide: true });
+    };
 
     export const setText = async (text?: string): Promise<void> => {
         const chatInput = document.getElementById('chat-input');
@@ -318,6 +335,7 @@
                         class="flex-1 flex flex-col relative w-full shadow-lg rounded-xl border {$temporaryChatEnabled
                             ? 'border-dashed border-gray-100 dark:border-gray-800 hover:border-gray-200 focus-within:border-gray-200 hover:dark:border-gray-700 focus-within:dark:border-gray-700'
                             : ' border-gray-100/30 dark:border-gray-700/40 hover:border-gray-200 focus-within:border-gray-100 hover:dark:border-gray-600 focus-within:dark:border-gray-600'}  transition px-1 bg-gray-50 dark:bg-gray-800 backdrop-blur-sm dark:text-gray-100"
+                        on:touchend|capture|nonpassive={onComposerTouchEnd}
                         on:pointerdown={(e) => {
                             // Prevent focus loss (keyboard dismiss) for all elements
                             // except the submit button, which needs click to fire for form submit
@@ -406,7 +424,7 @@
                                 0
                                     ? 'pt-2.5'
                                     : ''}"
-                                style="max-height: min(24rem, calc(var(--app-height, 100dvh) - 10rem));"
+                                style="max-height: min(24rem, calc(var(--app-height, 100dvh) - 12rem));"
                                 id="chat-input-container"
                                 on:pointerdown|stopPropagation
                             >

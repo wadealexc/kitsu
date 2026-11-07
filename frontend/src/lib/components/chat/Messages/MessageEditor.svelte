@@ -2,6 +2,7 @@
     import { tick, createEventDispatcher, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
     import { isEditingMessage, mobile } from '$lib/stores';
+    import { focusWithoutPan } from '$lib/utils/iosKeyboard';
 
     export let content: string = '';
     export let primaryLabel: string = 'Save';
@@ -86,7 +87,9 @@
         if (textAreaElement) {
             textAreaElement.style.height = '';
             textAreaElement.style.height = `${textAreaElement.scrollHeight}px`;
-            textAreaElement.focus({ preventScroll: true });
+            // On iOS, waits for the keyboard: the editor is moved aside while it opens
+            // so the app doesn't slide, then scrolled into view in the smaller space.
+            await focusWithoutPan(textAreaElement, { moved: containerElement });
         }
         if (scrollWrapperElement) {
             scrollWrapperElement.scrollTop = scrollWrapperElement.scrollHeight;

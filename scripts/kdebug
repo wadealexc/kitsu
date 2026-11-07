@@ -5,6 +5,7 @@
 #   kdebug measure [client]       viewport, keyboard, safe area, focus, scroll positions
 #   kdebug eval 'js' [client]     run JS in the page (async body; `return` a value)
 #   kdebug shot [client]          screenshot re-rendered from the DOM; prints the PNG path
+#   kdebug trace [ms] [client]    per-frame layout samples for ms (default 2500), starting at the next tap
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)/frontend"
 TOKEN="$(cat "$DIR/.debug/token")"
@@ -17,7 +18,8 @@ case "${1:-}" in
     events)  curl "${H[@]}" "$BASE/events?since=${2:-0}&limit=${3:-200}" ;;
     measure) curl "${H[@]}" "$BASE/measure$(q "${2:-}")" ;;
     eval)    curl "${H[@]}" -X POST "$BASE/eval" -d "$(node -e 'console.log(JSON.stringify({ code: process.argv[1], client: process.argv[2] || undefined }))' "$2" "${3:-}")" ;;
+    trace)   curl "${H[@]}" -X POST "$BASE/trace" -d "{\"ms\": ${2:-2500}${3:+, \"client\": \"$3\"}}" ;;
     shot)    out=$(curl "${H[@]}" -X POST "$BASE/screenshot$(q "${2:-}")"); echo "$out" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const r=JSON.parse(s);console.log(r.file?require("path").resolve(process.argv[1],r.file):s)})' "$DIR" ;;
-    *) sed -n '2,8p' "$0"; exit 1 ;;
+    *) sed -n '2,9p' "$0"; exit 1 ;;
 esac
 echo
