@@ -59,6 +59,22 @@
         await setSessionUser(sessionUser);
     };
 
+    // Dev server only: one-tap sign-in from frontend/.env.development.local
+    const devLogin =
+        import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN_USER && import.meta.env.VITE_DEV_LOGIN_PASSWORD
+            ? {
+                  username: import.meta.env.VITE_DEV_LOGIN_USER as string,
+                  password: import.meta.env.VITE_DEV_LOGIN_PASSWORD as string
+              }
+            : null;
+
+    const devSignIn = async () => {
+        if (!devLogin) return;
+        username = devLogin.username;
+        password = devLogin.password;
+        await signInHandler();
+    };
+
     const submitHandler = async () => {
         if (mode === 'signin') {
             await signInHandler();
@@ -161,6 +177,16 @@
                                 >
                                     {mode === 'signin' ? 'Sign in' : 'Create Account'}
                                 </button>
+
+                                {#if devLogin && mode === 'signin'}
+                                    <button
+                                        class="mt-2 border border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-700/5 dark:hover:bg-gray-100/5 text-gray-500 dark:text-gray-400 transition w-full rounded-full font-medium text-sm py-2.5"
+                                        type="button"
+                                        on:click={devSignIn}
+                                    >
+                                        {`Sign in as ${devLogin.username} (dev)`}
+                                    </button>
+                                {/if}
 
                                 {#if $config.enableSignup}
                                     <div class=" mt-4 text-sm text-center">

@@ -29,3 +29,6 @@ config.yaml
 .claude/
 .coutput/
 
+
+# Local env overrides (dev credentials etc.)
+.env*.local
