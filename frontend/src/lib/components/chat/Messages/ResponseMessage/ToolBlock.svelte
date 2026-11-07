@@ -74,8 +74,25 @@
               ? args.query
               : undefined;
 
-    // A page pill. `range` is where the page's text sits in the result, if the server says.
-    type Page = UrlStatus & { title?: string; range?: [number, number] };
+    // A page pill. `range` is where the page's text sits in the result, if the server says;
+    // `content` is the page's text in results from kitsu's old built-in tools.
+    type Page = UrlStatus & { title?: string; range?: [number, number]; content?: string };
+
+    /**
+     * Chats from before MCP have calls to the old built-in webSearch/loadWebpage
+     * tools: arguments {queries} or {urls}, result a JSON list of {url, content}.
+     */
+    $: legacyPages = (() => {
+        if (block.structured || !block.result || block.failed) return null;
+        try {
+            const parsed = JSON.parse(block.result);
+            if (!Array.isArray(parsed) || !parsed.every((p) => p && typeof p.url === 'string')) return null;
+            return parsed as { url: string; content?: string }[];
+        } catch {
+            return null;
+        }
+    })();
+    $: legacyQueries = Array.isArray(args.queries) ? args.queries.filter((q): q is string => typeof q === 'string') : [];
 
     // Pages: from the result once it's in, live from progress until then
     let pages: Page[] = [];
@@ -99,6 +116,19 @@
                         ...(range ? { range } : {})
                     };
                 });
+        } else if (legacyPages && !isLive) {
+            const loaded = legacyPages.map((p): Page => ({
+                url: p.url,
+                hostname: hostnameOf(p.url),
+                status: 'loaded',
+                content: p.content ?? ''
+            }));
+            // Old loadWebpage: requested pages missing from the result failed
+            const requested = Array.isArray(args.urls) ? args.urls.filter((u): u is string => typeof u === 'string') : [];
+            const failed = requested
+                .filter((u) => !legacyPages!.some((p) => p.url === u))
+                .map((u): Page => ({ url: u, hostname: hostnameOf(u), status: 'failed' }));
+            pages = [...loaded, ...failed];
         } else if (isLive && progress && progress.pages.length > 0) {
             pages = progress.pages;
         } else if (!isLive && Array.isArray(args.urls)) {
@@ -121,6 +151,8 @@
         ? (progress?.message ?? (query ? `Searching for “${query}”` : `Running ${block.name}`))
         : results.length > 0
           ? `${plural(results.length, 'result')} for “${query ?? ''}”${duration}`
+          : legacyQueries.length > 0 && pages.length > 0
+            ? `Read ${plural(loadedCount, 'page')} for “${legacyQueries.join('”, “')}”${duration}`
           : pages.length > 0
             ? loadedCount > 0
                 ? `Read ${plural(loadedCount, 'page')}${failedCount ? ` · ${failedCount} failed` : ''}${duration}`
@@ -148,6 +180,7 @@
 
     /** One page's text: its slice of the result, or all of it for a single page. */
     const pageContent = (page: Page): string => {
+        if (page.content !== undefined) return page.content;
         const result = block.result ?? '';
         if (page.range) return result.slice(page.range[0], page.range[1]).trim();
         return pages.length === 1 ? result : '';
