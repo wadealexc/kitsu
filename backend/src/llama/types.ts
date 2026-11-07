@@ -22,14 +22,12 @@ export type LlamaResponse = {
 
 /* -------------------- LLAMA INTERFACE -------------------- */
 
-/**
- * Common interface for completion backends. Implemented by `LlamaManager` (which
- * shells out to llama.cpp processes) and `RoutedLlama` (which forwards requests
- * to a remote kitsu backend, used in beta/dev environments to avoid running
- * llama.cpp locally).
- */
 export type LlamaStatus = 'idle' | 'queued' | 'active';
 
+/**
+ * Inference backend. Implemented by `LlamaManagerAdapter`, which talks to
+ * llama-manager over HTTP; tests use a mock.
+ */
 export interface Llama {
     completions(req: LlamaRequest): Promise<LlamaResponse>;
     tokenize(content: string, model: string, signal: AbortSignal): Promise<number>;
@@ -37,6 +35,4 @@ export interface Llama {
     getStatus(model: string): Promise<LlamaStatus>;
     getModelInfo(name: string): Promise<proto.ModelInfo | undefined>;
     getAllModelNames(): string[];
-    stopServer(): Promise<void>;
-    forceStopServer(): void;
 }

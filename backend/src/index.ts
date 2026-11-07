@@ -7,9 +7,7 @@ import chalk from 'chalk';
 
 import { readConfig } from './config.js';
 import * as middleware from './server/middleware.js';
-import { LlamaManager } from './llama/llamaManager.js';
 import { LlamaManagerAdapter } from './llama/llamaManagerAdapter.js';
-import { RoutedLlama } from './llama/routedLlama.js';
 import type { Llama } from './llama/types.js';
 import * as Browser from './browser/browser.js';
 import { ToolRegistry } from './tools/registry.js';
@@ -25,9 +23,6 @@ import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
 
 /* -------------------- CONFIG -------------------- */
-
-// Check for 'verbose' option for llama-server verbosity
-const LLAMA_SERVER_VERBOSITY = process.argv.slice(2).includes('-vb');
 
 const CONFIG_PATH = '../config.json';
 const cfg = await readConfig(CONFIG_PATH);
@@ -66,35 +61,10 @@ if (cfg.web.enable) {
     );
 }
 
-// In beta mode, route completions/tokenize to a remote prod backend instead
-// of running a local llama-server. The mode flag is set by the `beta:backend`
-// npm alias; the prod URL comes from beta's own config.json (written by
-// `beta:sync`).
-let llama: Llama;
-if (process.env.KITSU_MODE === 'beta') {
-    if (!cfg.routedLlama)
-        throw new Error('KITSU_MODE=beta requires `routedLlama` block in config.json');
-
-    llama = new RoutedLlama({
-        models: cfg.models,
-        prodBackendURL: cfg.routedLlama.url,
-    });
-} else if (cfg.llamaManager) {
-    llama = new LlamaManagerAdapter({
-        managerUrl: cfg.llamaManager.url,
-        models: cfg.models,
-    });
-} else {
-    const manager = new LlamaManager({
-        ports: cfg.ports.llamaCpp,
-        llamaServerVerbose: LLAMA_SERVER_VERBOSITY,
-        logDirectory: cfg.logs.path, logFilePrefix: logFilePrefix,
-        sleepAfterXSeconds: cfg.llamaCpp.sleepAfterXSeconds,
-        models: cfg.models,
-    });
-    manager.startDefault();
-    llama = manager;
-}
+const llama: Llama = new LlamaManagerAdapter({
+    managerUrl: cfg.llamaManager.url,
+    models: cfg.models,
+});
 
 // Initialize tool registry
 const tools = new ToolRegistry({ browser, llama });
@@ -158,19 +128,13 @@ async function shutdown(signal: string) {
     console.log(`received shutdown signal: ${signal}`);
 
     await Promise.allSettled([
-        // 1. Kill llama-server if it's running
-        new Promise<void>(async (resolve) => {
-            try { await llama.stopServer() }
-            catch (err) { console.error(`shutdown: llama.stopServer failed: `, err) }
-            finally { resolve() }
-        }),
-        // 2. Close browser if it's running
+        // 1. Close browser if it's running
         new Promise<void>(async (resolve) => {
             try { if (browser) await browser.shutdown() }
             catch (err) { console.error(`shutdown: browser.shutdown failed: `, err) }
             finally { resolve() }
         }),
-        // 3. Write chat logs to file
+        // 2. Write chat logs to file
         new Promise<void>(async (resolve) => {
             if (!logger) {
                 resolve();
@@ -192,7 +156,7 @@ async function shutdown(signal: string) {
     console.log('goodbye!');
 }
 
-// Listen to OS signals, shutdown llama if needed
+// Listen to OS signals and shut down cleanly
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.once(signal, async () => {
         await shutdown(signal);
@@ -208,8 +172,3 @@ for (const evt of ['uncaughtException', 'unhandledRejection'] as const) {
         process.exit(1);
     });
 }
-
-process.once('exit', () => {
-    // Attempt last-ditch cleanup, sending SIGKILL if we still have a process running
-    try { llama.forceStopServer() } catch { };
-});

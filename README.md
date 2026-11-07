@@ -1,9 +1,9 @@
 ## kitsu
 
-kitsu is a self-hosted chat application built on top of [llama.cpp](https://github.com/ggml-org/llama.cpp). It provides a web frontend and a backend API that manages llama.cpp processes, handles authentication, and runs tool calls.
+kitsu is a self-hosted chat application for local models. It provides a web frontend and a backend API that handles authentication, chat history and tool calls. Inference runs on [llama-manager](https://github.com/wadealexc/llama-manager), usually on a separate GPU machine.
 
 **Features:**
-- **Model management (sleep mode and wake-on-keystroke)** — define multiple models in `config.json`; kitsu serves them on demand and swaps between them automatically. Idle models are shut down after a configurable timeout to save system resources. When a user starts typing on the frontend, the backend begins waking up the selected model.
+- **Wake-on-keystroke** — when a user starts typing, the backend asks llama-manager to start loading the selected model. llama-manager handles loading, swapping and sleeping models.
 - **Web search and page loading** — uses Brave search + Playwright to give models access to the web
 - **File uploads** — supports PDF, JSON, text, and image uploads in chat
 
@@ -18,24 +18,15 @@ This is a hobby project, use at your own risk. This codebase makes a lot of assu
 
 ### Setup
 
-#### Clone, Install Dependencies, Build Llama.cpp
+#### Clone and install dependencies
 
 ```sh
 git clone --recurse-submodules https://github.com/wadealexc/kitsu
 cd kitsu
-
-# Install deps
 npm run install:all
-
-# Build llama.cpp
-cd llama.cpp
-cmake -B build -DGGML_CUDA=ON
-cmake --build build --config Release
-
-cd ..
 ```
 
-See [llama.cpp build docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md) for other configurations.
+The `llama-manager` submodule is only needed if you run llama-manager on the same machine; see its README for setup.
 
 #### Configure
 
@@ -43,24 +34,9 @@ See [llama.cpp build docs](https://github.com/ggml-org/llama.cpp/blob/master/doc
 cp config.example.json config.json
 ```
 
-Edit `config.json` — at minimum, set your model paths and ports. See [Configuration](#configuration) below.
+Edit `config.json` — at minimum, set `llamaManager.url` and the models to offer. See [Configuration](#configuration) below.
 
 TODO: add a script to automate creation of config.json from config.example.json 
-
-#### Add models
-
-Place GGUF files in the `models/` directory. Subdirectories are supported:
-
-```
-models/
-  my-model/
-    model-q6.gguf
-    mmproj.gguf     # optional, for vision models
-```
-
-Then reference them in `config.json` under `models.models`.
-
-TODO: add a script that auto-updates config.json as models are added to models
 
 ---
 
@@ -106,33 +82,26 @@ sudo systemctl restart kitsu
 
 kitsu is configured via `config.json` at the repo root. Copy `config.example.json` as a starting point.
 
-**`models`** — define models and the models directory:
+**`llamaManager`** — where llama-manager is running:
+```json
+"llamaManager": {
+    "url": "http://192.168.87.30:10001"
+}
+```
+
+**`models`** — the models to offer users, by the name llama-manager serves them under, with optional inference defaults:
 ```json
 "models": {
-    "path": "./models",
-    "onStart": "my-model",
     "models": [
-        {
-            "gguf": "my-model/model-q6",
-            "alias": "my-model",
-            "args": ["--ctx-size", "32768"]
-        }
+        { "alias": "my-model", "params": { "temperature": 0.7 } }
     ]
 }
 ```
 
-**`ports`** — configure host/port for llama-server and the backend:
+**`ports`** — host/port for the backend:
 ```json
 "ports": {
-    "llamaCpp": { "port": 8070, "host": "0.0.0.0" },
-    "backend":  { "port": 8071, "host": "0.0.0.0" }
-}
-```
-
-**`llamaCpp`** — sleep timeout:
-```json
-"llamaCpp": {
-    "sleepAfterXSeconds": 600
+    "backend": { "port": 8071, "host": "0.0.0.0" }
 }
 ```
 

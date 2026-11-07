@@ -2,11 +2,8 @@ import type { ModelParams } from '../routes/types/index.js';
 
 export interface ModelInfo {
     name: string;
-    path: string;                        // required: non-mmproj .gguf
-    mmprojPath: string | undefined;      // optional: mmproj-*.gguf
-    args: string[];                      // CLI args for llama-server
     params: ModelParams;                 // inference defaults from config
-    contextLength?: number;              // parsed from --ctx-size in model config args
+    contextLength?: number;              // n_ctx reported by llama-manager
 }
 
 // https://platform.openai.com/docs/api-reference/chat/create

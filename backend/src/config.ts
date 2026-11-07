@@ -4,21 +4,6 @@ import path from 'path';
 
 import { z } from 'zod';
 
-const LlamaCppSchema = z.object({
-    sleepAfterXSeconds: z.number().min(0).default(600),
-});
-
-/**
- * llama runner settings:
- *
- * ```json
- * "llamaCpp": {
- *     "sleepAfterXSeconds": number,                 // default: 600
- * }
- * ```
- */
-export type LlamaCppConfig = z.infer<typeof LlamaCppSchema>;
-
 const WebEnabledSchema = z.object({
     enable: z.literal(true),
     braveAPIKey: z.string().min(1, { message: "Brave API key is required if web is enabled" }),
@@ -46,10 +31,6 @@ const WebSchema = z.union([WebDisabledSchema, WebEnabledSchema]);
 export type WebConfig = z.infer<typeof WebSchema>;
 
 const PortSchema = z.object({
-    llamaCpp: z.object({
-        port: z.coerce.number().default(8080),
-        host: z.string().default('0.0.0.0'),
-    }),
     backend: z.object({
         port: z.coerce.number().default(8081),
         host: z.string().default('0.0.0.0'),
@@ -61,10 +42,6 @@ const PortSchema = z.object({
  *
  * ```json
  * "ports": {
- *     "llamaCpp": {
- *         port: number,                             // default: 8080
- *         host: string                              // default: '0.0.0.0'
- *     },
  *     "backend": {
  *         port: number,                             // default: 8081
  *         host: string                              // default: '0.0.0.0'
@@ -92,44 +69,25 @@ const LogSchema = z.object({
 export type LogConfig = z.infer<typeof LogSchema>;
 
 const ModelEntrySchema = z.object({
-    gguf: z.string().default(''),
-    mmproj: z.optional(z.string()),
-    alias: z.optional(z.string()),
-    args: z.optional(z.array(z.coerce.string())),
+    // Name llama-manager serves the model under
+    alias: z.string().min(1),
+    // Inference defaults (temperature, system prompt, etc.)
     params: z.record(z.string(), z.any()).optional(),
 });
 
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
 
 const ModelSchema = z.object({
-    path: z.string().default('./models'),
-    onStart: z.string().min(1, { message: "Startup model required - this should be the alias of one of the models you defined in config" }),
     models: z.array(ModelEntrySchema).min(1),
 });
 
 /**
- * Model settings:
+ * Models offered to users. Loading and unloading is llama-manager's job.
  *
  * ```json
  * "models": {
- *     "path": string,                               // default: './models'
- *     "onStart": string,                            // OPTIONAL; default: first entry in `models`
- *     "models": [                                   // REQUIRED; model definitions
- *         {
- *             // Points to `./models/qwen/Qwen3-VL-30B-A3B-Thinking-Q6_K.gguf`
- *             "gguf": "qwen/Qwen3-VL-30B-A3B-Thinking-Q6_K",
- *             // OPTIONAL; points to `./models/qwen/mmproj-BF16.gguf`
- *             "mmproj": "qwen/mmproj-BF16",
- *             // OPTIONAL: API will serve model under this alias
- *             "alias": "qwen3-vl-30b",
- *             // OPTIONAL: Extra CLI args for llama-server
- *             "args": [
- *                 "--ctx-size",
- *                 50000
- *             ],
- *             // OPTIONAL: Inference defaults (temperature, system prompt, etc.)
- *             "params": { "temperature": 0.7, "system": "You are a helpful assistant." }
- *         }
+ *     "models": [
+ *         { "alias": "qwen3.8-dense-mtp", "params": { "temperature": 1.0 } }
  *     ]
  * }
  * ```
@@ -137,29 +95,11 @@ const ModelSchema = z.object({
 export type ModelConfig = z.infer<typeof ModelSchema>;
 
 /**
- * routedLlama settings — when set, the backend uses RoutedLlama instead of
- * LlamaManager and forwards completions/tokenize to a remote kitsu backend.
- * Only consulted when `KITSU_MODE=beta`.
- *
- * ```json
- * "routedLlama": {
- *     "url": "http://192.168.87.30:8071"
- * }
- * ```
- */
-const RoutedLlamaSchema = z.object({
-    url: z.url(),
-});
-
-export type RoutedLlamaConfig = z.infer<typeof RoutedLlamaSchema>;
-
-/**
- * llamaManager settings — when set, the backend uses LlamaManagerAdapter instead of
- * LlamaManager and forwards completions/tokenize to a local llama-manager instance.
+ * llama-manager, which runs inference (usually on another machine).
  *
  * ```json
  * "llamaManager": {
- *     "url": "http://127.0.0.1:10001"
+ *     "url": "http://192.168.87.30:10001"
  * }
  * ```
  */
@@ -171,13 +111,11 @@ export type LlamaManagerConfig = z.infer<typeof LlamaManagerSchema>;
 
 // Main config schema with strict mode (rejects extra fields)
 const ConfigSchema = z.object({
-    llamaCpp: LlamaCppSchema,
     web: WebSchema,
     ports: PortSchema,
     logs: LogSchema,
     models: ModelSchema,
-    routedLlama: RoutedLlamaSchema.optional(),
-    llamaManager: LlamaManagerSchema.optional(),
+    llamaManager: LlamaManagerSchema,
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -199,35 +137,10 @@ export async function readConfig(configPath: string): Promise<Config> {
     // get absolute paths regardless of CWD
     const configDir = path.dirname(path.resolve(configPath));
     config.logs.path = path.resolve(configDir, config.logs.path);
-    config.models.path = path.resolve(configDir, config.models.path);
 
     // Ensure existence of each of the files referenced by the config
     await validateFilesExist(config);
     return config;
-}
-
-async function validateModelFiles(basePath: string, model: z.infer<typeof ModelEntrySchema>) {
-    // Validate GGUF file exists
-    let ggufPath = path.join(basePath, model.gguf);
-    if (!ggufPath.endsWith('.gguf')) ggufPath += '.gguf';
-
-    try {
-        await stat(ggufPath);
-    } catch (err: any) {
-        throw new Error(`config error; could not find model.gguf: ${ggufPath}; err: ${err}`);
-    }
-
-    // Validate MMProj exists if specified
-    if (model.mmproj) {
-        let mmprojPath = path.join(basePath, model.mmproj);
-        if (!mmprojPath.endsWith('.gguf')) mmprojPath += '.gguf';
-
-        try {
-            await stat(mmprojPath);
-        } catch (err: any) {
-            throw new Error(`config error; could not find model.mmproj: ${mmprojPath}; err: ${err}`);
-        }
-    }
 }
 
 async function validateFilesExist(config: Config) {
@@ -236,18 +149,5 @@ async function validateFilesExist(config: Config) {
         if (!stats.isDirectory()) throw new Error(`path is not a directory`);
     } catch (err: any) {
         throw new Error(`config error locating log path: ${config.logs.path}; err: ${err}`);
-    }
-
-    // Beta envs (RoutedLlama) don't ship local GGUFs — skip the file checks.
-    if (config.routedLlama) return;
-
-    // llama-manager handles GGUF management — skip the file checks.
-    if (config.llamaManager) return;
-
-    const modelConfig: ModelConfig = config.models;
-    const basePath = modelConfig.path;
-
-    for (const model of modelConfig.models) {
-        await validateModelFiles(basePath, model);
     }
 }

@@ -34,20 +34,11 @@ export class LlamaManagerAdapter implements Llama {
         this.managerUrl = params.managerUrl.replace(/\/+$/, '');
 
         this.modelInfos = new Map(params.models.models.map(model => {
-            const name = model.alias ?? model.gguf;
-            const args = model.args ?? [];
-            const ctxIdx = args.indexOf('--ctx-size');
-            const contextLength = ctxIdx !== -1 ? Number(args[ctxIdx + 1]) || undefined : undefined;
-
             const info: proto.ModelInfo = {
-                name,
-                path: '',
-                mmprojPath: undefined,
-                args,
+                name: model.alias,
                 params: model.params ?? {},
-                contextLength,
             };
-            return [name, info];
+            return [model.alias, info];
         }));
 
         console.log(`LlamaManagerAdapter: targeting ${this.managerUrl} with models: ${[...this.modelInfos.keys()].join(', ')}`);
@@ -180,13 +171,5 @@ export class LlamaManagerAdapter implements Llama {
 
     getAllModelNames(): string[] {
         return [...this.modelInfos.keys()];
-    }
-
-    async stopServer(): Promise<void> {
-        console.log('LlamaManagerAdapter.stopServer: nothing to stop');
-    }
-
-    forceStopServer(): void {
-        console.log('LlamaManagerAdapter.forceStopServer: nothing to stop');
     }
 }

@@ -27,13 +27,14 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.7.1",
+    "@types/pdf-parse": "^1.1.5",
     "@types/puppeteer": "^5.4.7",
     "@types/supertest": "^6.0.3",
-    "@types/pdf-parse": "^1.1.5",
     "diff": "^8.0.4",
     "drizzle-kit": "^0.31.8",
     "puppeteer": "^24.40.0",
     "supertest": "^7.2.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   },
   "dependencies": {

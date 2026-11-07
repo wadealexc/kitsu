@@ -1,46 +1,31 @@
 {
-    "llamaCpp": {
-        "sleepAfterXSeconds": 600
-    },
     "web": {
         "enable": false,
         "braveAPIKey": "",
         "blacklistHosts": ["grokipedia.com"]
     },
     "ports": {
-        "llamaCpp": {
-            "port": 8080,
-            "host": "192.168.87.30"
-        },
-        "shim": {
-            "port": 8081,
-            "host": "192.168.87.30"
+        "backend": {
+            "port": 8071,
+            "host": "0.0.0.0"
         }
     },
     "logs": {
-        "path": "./logs",
+        "path": "./backend/logs",
         "enable": false
     },
+    "llamaManager": {
+        "url": "http://127.0.0.1:10001"
+    },
     "models": {
-        "path": "./models",
-        "onStart": "qwen3-vl-30b",
         "models": [
             {
-                "gguf": "qwen3-vl-30b/Qwen3-VL-30B-A3B-Thinking-Q6_K",
-                "mmproj": "qwen3-vl-30b/mmproj-BF16",
-                "alias": "qwen3-vl-30b",
-                "args": [
-                    "--ctx-size",
-                    50000
-                ]
-            },
-            {
-                "gguf": "gpt-oss-20b/gpt-oss-20b-mxfp4",
-                "alias": "gpt-oss-20b",
-                "args": [
-                    "--ctx-size",
-                    0
-                ]
+                "alias": "qwen3.8-dense-mtp",
+                "params": {
+                    "temperature": 1.0,
+                    "top_p": 0.95,
+                    "top_k": 20
+                }
             }
         ]
     }
