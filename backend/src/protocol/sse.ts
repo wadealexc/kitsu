@@ -11,7 +11,12 @@ export type SseUsage = {
     completion_tokens: number;
     total_tokens: number;
     completion_tokens_per_second?: number;
+    /** Prompt tokens processed per second (cached tokens excluded) */
     prompt_tokens_per_second?: number;
+    /** The conversation's size once this reply finished */
+    context_tokens?: number;
+    /** What this reply added to the conversation: generated text and tool results */
+    message_tokens?: number;
 };
 
 /* -------------------- EVENT PAYLOAD TYPES -------------------- */

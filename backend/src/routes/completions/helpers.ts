@@ -184,6 +184,13 @@ export type UsageInfo = {
 
     totalPredictedMs: number;
     totalPromptMs: number;
+
+    /** Prompt tokens actually processed (not served from the cache) */
+    processedTokens: number;
+    /** Conversation size before this reply: the first round's prompt */
+    contextBefore?: number;
+    /** Conversation size after the latest round: prompt plus what it generated */
+    contextAfter?: number;
 };
 
 export function newUsageInfo(): UsageInfo {
@@ -193,11 +200,13 @@ export function newUsageInfo(): UsageInfo {
         total_tokens: 0,
         totalPredictedMs: 0,
         totalPromptMs: 0,
+        processedTokens: 0,
     };
 }
 
 /**
  * Merges timings/usage from a single CompletionResponse into running totals.
+ * A reply with tool calls has several rounds, each seeing the whole conversation.
  */
 export function accumulateUsage(info: UsageInfo, response: proto.CompletionResponse): UsageInfo {
     const tokensOut = response.timings?.predicted_n ?? response.usage?.completion_tokens ?? 0;
@@ -214,6 +223,9 @@ export function accumulateUsage(info: UsageInfo, response: proto.CompletionRespo
         total_tokens: info.total_tokens + tokensIn + tokensOut,
         totalPredictedMs,
         totalPromptMs,
+        processedTokens: info.processedTokens + promptIn,
+        contextBefore: info.contextBefore ?? tokensIn,
+        contextAfter: tokensIn + tokensOut,
     };
 }
 
@@ -221,8 +233,10 @@ export function getFinalUsage(info: UsageInfo): SseUsage {
     const completionTps = info.totalPredictedMs > 0
         ? (info.completion_tokens / info.totalPredictedMs) * 1000
         : undefined;
-    const promptTps = info.totalPromptMs > 0
-        ? (info.prompt_tokens / info.totalPromptMs) * 1000
+    // Only tokens that were processed: cached ones take no time, and counting them
+    // gave nonsense speeds
+    const promptTps = info.totalPromptMs > 0 && info.processedTokens > 0
+        ? (info.processedTokens / info.totalPromptMs) * 1000
         : undefined;
 
     return {
@@ -231,5 +245,9 @@ export function getFinalUsage(info: UsageInfo): SseUsage {
         total_tokens: info.total_tokens,
         completion_tokens_per_second: completionTps,
         prompt_tokens_per_second: promptTps,
+        ...(info.contextAfter !== undefined ? { context_tokens: info.contextAfter } : {}),
+        ...(info.contextAfter !== undefined && info.contextBefore !== undefined
+            ? { message_tokens: info.contextAfter - info.contextBefore }
+            : {}),
     };
 }

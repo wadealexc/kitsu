@@ -57,6 +57,8 @@ export const ChatMessageUsageSchema = z.object({
     total_tokens: z.number().optional(),
     completion_tokens_per_second: z.number().optional(),
     prompt_tokens_per_second: z.number().optional(),
+    context_tokens: z.number().optional(),
+    message_tokens: z.number().optional(),
 }).passthrough();
 export type ChatMessageUsage = z.infer<typeof ChatMessageUsageSchema>;
 

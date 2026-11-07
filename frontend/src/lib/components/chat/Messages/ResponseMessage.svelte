@@ -108,6 +108,30 @@
         editorRef?.activate(saved, { focus: false });
     });
 
+    /**
+     * The info button's summary of a reply's token use. Replies from before
+     * kitsu recorded context sizes only have reliable generation figures.
+     */
+    const usageSummary = (usage: NonNullable<ChatMessage['usage']>): string => {
+        const tokens = (n: number) => `${Math.round(n).toLocaleString()} tokens`;
+        const rate = (n: number) =>
+            `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} tok/s`;
+
+        const rows: [string, string][] = [];
+        if (typeof usage.context_tokens === 'number') rows.push(['Total context', tokens(usage.context_tokens)]);
+        if (typeof usage.message_tokens === 'number') rows.push(['This message', tokens(usage.message_tokens)]);
+        else if (typeof usage.completion_tokens === 'number') rows.push(['This message', tokens(usage.completion_tokens)]);
+        if (typeof usage.completion_tokens_per_second === 'number')
+            rows.push(['Generation speed', rate(usage.completion_tokens_per_second)]);
+        // Older replies counted cached tokens in this, giving nonsense; only trust new ones
+        if (typeof usage.context_tokens === 'number' && typeof usage.prompt_tokens_per_second === 'number')
+            rows.push(['Processing speed', rate(usage.prompt_tokens_per_second)]);
+
+        return `<div class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-xs font-sans py-0.5">${rows
+            .map(([label, value]) => `<span class="text-gray-400">${label}</span><span class="text-right tabular-nums">${value}</span>`)
+            .join('')}</div>`;
+    };
+
     const editMessageHandler = async () => {
         const container = document.getElementById('messages-container');
         if (container) {
@@ -407,19 +431,7 @@
 
                             {#if message.usage}
                                 <Tooltip
-                                    content={message.usage
-                                        ? `<pre>${sanitizeResponseContent(
-                                              JSON.stringify(message.usage, null, 2)
-                                                  .replace(/"([^(")"]+)":/g, '$1:')
-                                                  .slice(1, -1)
-                                                  .split('\n')
-                                                  .map((line) => line.slice(2))
-                                                  .map((line) =>
-                                                      line.endsWith(',') ? line.slice(0, -1) : line
-                                                  )
-                                                  .join('\n')
-                                          )}</pre>`
-                                        : ''}
+                                    content={usageSummary(message.usage)}
                                     placement="bottom"
                                 >
                                     <button
