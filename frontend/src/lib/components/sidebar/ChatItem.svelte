@@ -346,11 +346,11 @@
                 doubleClicked = true;
                 renameHandler();
             }}
-            on:mouseenter={(e) => {
-                mouseOver = true;
+            on:pointerenter={(e) => {
+                if (e.pointerType === 'mouse') mouseOver = true;
             }}
-            on:mouseleave={(e) => {
-                mouseOver = false;
+            on:pointerleave={(e) => {
+                if (e.pointerType === 'mouse') mouseOver = false;
             }}
             on:focus={(e) => {}}
             draggable="false"
@@ -374,10 +374,14 @@
 
     <!-- No menu while a reply is being written: the spinner is there instead -->
     {#if !$generatingChats.has(id)}
+    <!-- No menu on touch screens: a tap counts as hover there, so revealing it on hover
+         made iOS spend the first tap on that (half-highlighting the row) and need a
+         second tap to open the chat. -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
         id="sidebar-chat-item-menu"
         class="
+        [@media(hover:none)]:hidden
         {id === $chatId || confirmEdit
             ? 'from-gray-100 dark:from-gray-850 selected'
             : selected
@@ -388,11 +392,11 @@
             : 'right-1'} top-[4px] py-1 pr-0.5 mr-1.5 pl-5 bg-linear-to-l from-80%
 
               to-transparent"
-        on:mouseenter={(e) => {
-            mouseOver = true;
+        on:pointerenter={(e) => {
+            if (e.pointerType === 'mouse') mouseOver = true;
         }}
-        on:mouseleave={(e) => {
-            mouseOver = false;
+        on:pointerleave={(e) => {
+            if (e.pointerType === 'mouse') mouseOver = false;
         }}
     >
         <div class="flex self-center z-10 items-end">
