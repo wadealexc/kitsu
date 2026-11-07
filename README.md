@@ -60,9 +60,11 @@ docker compose restart kitsu
 ### Run (Dev)
 
 ```sh
-npm run dev                                                    # backend on :8071
-KITSU_HMR=1 BACKEND_URL=http://localhost:8071 npm run dev:frontend   # frontend on :5050, live reload
+docker compose stop     # if the container is running: dev mode uses the same ports and data
+./scripts/dev.sh        # backend on :8071 (restarts on changes), frontend on :5050 (live reload)
 ```
+
+`dev.sh` also starts a debug bridge: every page served by the dev server (including the iOS home screen app, through your HTTPS proxy) reports console output, errors and lifecycle events (backgrounding, suspend and resume, keyboard and viewport changes), and can be inspected and driven from this machine with `scripts/kdebug` (run it without arguments for usage).
 
 For a one-tap sign-in button on the dev server's login page, put `VITE_DEV_LOGIN_USER` and `VITE_DEV_LOGIN_PASSWORD` in `frontend/.env.development.local` (git-ignored, dev builds only).
 

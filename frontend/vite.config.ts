@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import { debugBridge } from './vite-debug-bridge';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://192.168.87.30:8071';
 
@@ -23,6 +24,10 @@ export default defineConfig({
 	},
 	plugins: [
 		sveltekit(),
+		// Dev-only remote debugging of pages, e.g. the iOS home-screen app (see vite-debug-bridge.ts)
+		...(process.env.VITE_DEBUG_BRIDGE === '1'
+			? [debugBridge({ token: process.env.KITSU_DEBUG_TOKEN ?? '', dir: process.env.KITSU_DEBUG_DIR ?? '.debug' })]
+			: []),
 	],
 	build: {
 		sourcemap: true

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Talk to pages connected to the dev server's debug bridge (scripts/dev.sh).
+#   kdebug clients                list connected pages
+#   kdebug events [since] [limit] console, errors and lifecycle events after seq `since`
+#   kdebug measure [client]       viewport, keyboard, safe area, focus, scroll positions
+#   kdebug eval 'js' [client]     run JS in the page (async body; `return` a value)
+#   kdebug shot [client]          screenshot re-rendered from the DOM; prints the PNG path
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")/.." && pwd)/frontend"
+TOKEN="$(cat "$DIR/.debug/token")"
+BASE="${KITSU_DEBUG_URL:-http://localhost:5050}/__debug/api"
+H=(-s -H "x-debug-token: $TOKEN" -H 'content-type: application/json')
+q() { [ -n "${1:-}" ] && printf '?client=%s' "$1"; }
+
+case "${1:-}" in
+    clients) curl "${H[@]}" "$BASE/clients" ;;
+    events)  curl "${H[@]}" "$BASE/events?since=${2:-0}&limit=${3:-200}" ;;
+    measure) curl "${H[@]}" "$BASE/measure$(q "${2:-}")" ;;
+    eval)    curl "${H[@]}" -X POST "$BASE/eval" -d "$(node -e 'console.log(JSON.stringify({ code: process.argv[1], client: process.argv[2] || undefined }))' "$2" "${3:-}")" ;;
+    shot)    out=$(curl "${H[@]}" -X POST "$BASE/screenshot$(q "${2:-}")"); echo "$out" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const r=JSON.parse(s);console.log(r.file?require("path").resolve(process.argv[1],r.file):s)})' "$DIR" ;;
+    *) sed -n '2,8p' "$0"; exit 1 ;;
+esac
+echo
