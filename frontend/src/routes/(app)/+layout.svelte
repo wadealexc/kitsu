@@ -6,8 +6,10 @@
     import { getModels } from '$lib/apis/models';
     import { getToolServers } from '$lib/apis/mcp';
     import { getActiveCompletions } from '$lib/apis/completions';
+    import { reloadChatList } from '$lib/utils/chatList';
+    import { get } from 'svelte/store';
 
-    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar, virtualKeyboardOpen, generatingChats } from '$lib/stores';
+    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar, virtualKeyboardOpen, generatingChats, chats } from '$lib/stores';
 
     import Sidebar from '$lib/components/Sidebar.svelte';
     import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
@@ -20,7 +22,19 @@
     const pollGenerating = async () => {
         if (document.visibilityState !== 'visible') return;
         const active = await getActiveCompletions(localStorage.token).catch(() => null);
-        if (active) generatingChats.set(new Set(active.map((a) => a.chatId)));
+        if (!active) return;
+
+        const previous = get(generatingChats);
+        const now = new Set(active.map((a) => a.chatId));
+        generatingChats.set(now);
+
+        // A reply running in a chat the sidebar doesn't list (started on another
+        // device or tab), or one that just finished (it may have a new title):
+        // refresh the list.
+        const listed = new Set((get(chats) ?? []).map((c) => c.id));
+        const unlisted = [...now].some((id) => !id.startsWith('local:') && !listed.has(id));
+        const finished = [...previous].some((id) => !now.has(id));
+        if (unlisted || finished) await reloadChatList().catch(() => {});
     };
     onDestroy(() => {
         clearInterval(generatingTimer);
