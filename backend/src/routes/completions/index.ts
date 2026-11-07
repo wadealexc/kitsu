@@ -1,4 +1,4 @@
-import { Router, type Response, type NextFunction } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import chalk from 'chalk';
 import { z } from 'zod';
 
@@ -26,6 +26,7 @@ import {
 import { createToolSession } from '../../tools/types.js';
 import { doTasks } from './tasks.js';
 import { Chats, db } from '../../db/index.js';
+import { GenerationJob, JobConflict, jobs } from './jobs.js';
 
 const router = Router();
 
@@ -35,6 +36,27 @@ const MAX_TOOL_ROUNDS = 100;
 
 // Context budget threshold: tool calls are refused once the conversation reaches this fraction of context
 const CONTEXT_THRESHOLD_PCT = 0.9;
+
+/** Starts an SSE response. */
+function startSse(res: Response): void {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    // Stream through reverse proxies (nginx) instead of buffering
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.status(200);
+    res.flushHeaders();
+}
+
+/** Streams a job to this response: what it has sent so far, then the rest live. */
+function follow(res: Response, job: GenerationJob): void {
+    const unsubscribe = job.subscribe({
+        write: (chunk) => { res.write(chunk); },
+        end: () => { res.end(); },
+    });
+    // The client leaving doesn't stop the job; it just stops following
+    res.once('close', unsubscribe);
+}
 
 /**
  * POST /api/v1/chat/custom-completions
@@ -46,56 +68,97 @@ const CONTEXT_THRESHOLD_PCT = 0.9;
  * and passes it back to the model in a multi-round loop that only ends when the
  * model produces its final result.
  *
- * Tool definitions and executions are injected automatically - they must already
- * exist and be configured on the backend.
- * 
+ * The reply runs as a job tied to the chat (see jobs.ts): if this request's
+ * connection drops, it carries on and is saved; GET .../:chatId/stream picks it
+ * back up, and POST .../:chatId/stop stops it.
+ *
  * This endpoint emits several non-OAI SSE events which are consumed by the frontend.
  */
 router.post('/custom-completions', requireAuth, async (
     req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
     res: Response<any | Types.ErrorResponse>,
-    next: NextFunction,
 ) => {
     console.log(`custom-completions: received request`);
 
     const llama = req.app.locals.llama as Llama;
     const toolRegistry = req.app.locals.tools as ToolRegistry;
 
-    const ctrl = new AbortController();
-    const taskCtrl = new AbortController();
-    {
-        // Abort taskCtrl if parent aborts
-        ctrl.signal.addEventListener('abort', () => {
-            taskCtrl.abort();
-        }, { once: true });
-
-        // Abort ctrl if client/request aborts or finishes
-        res.once('close', () => ctrl.abort());
-        req.once('aborted', () => {
-            console.log(chalk.dim.yellow(`[custom-completions] client aborted request`));
-            ctrl.abort();
-        });
-    }
-
     let ctx: ChatRequestContext;
-    let body: proto.CompletionRequest;
     try {
-        // Validate request, resolve model, system prompt, params, and tools, 
+        // Validate request, resolve model, system prompt, params, and tools,
         // and construct OAI message format
         ctx = await prepareRequest(req, llama, toolRegistry);
-        body = ctx.completionBody;
     } catch (err: any) {
         return res.status(400).json({ detail: err?.message ?? String(err) });
     }
 
-    // Commit SSE headers before any writes
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    // Stream through reverse proxies (nginx) instead of buffering
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.status(200);
-    res.flushHeaders();
+    let job: GenerationJob;
+    try {
+        job = jobs.start(ctx.chatId, ctx.userId, ctx.chat.history.currentId ?? null);
+    } catch (err) {
+        if (err instanceof JobConflict) return res.status(409).json({ detail: err.message });
+        throw err;
+    }
+
+    startSse(res);
+    follow(res, job);
+    void runGeneration(job, ctx, llama, toolRegistry);
+});
+
+/**
+ * GET /api/v1/chat/custom-completions/active
+ * Access Control: Any authenticated user
+ *
+ * The user's chats with a reply being generated right now.
+ */
+router.get('/custom-completions/active', requireAuth, (req, res) => {
+    res.json(jobs.running(req.user!.id));
+});
+
+/**
+ * GET /api/v1/chat/custom-completions/:chatId/stream
+ * Access Control: The chat's user
+ *
+ * Replays the reply being generated in this chat from the start, then follows
+ * it live. 404 when nothing is running (or finished within the last minute).
+ */
+router.get('/custom-completions/:chatId/stream', requireAuth, (req: Request<{ chatId: string }>, res: Response) => {
+    const job = jobs.get(req.params.chatId);
+    if (!job || job.userId !== req.user!.id) {
+        return res.status(404).json({ detail: 'No reply is being generated in this chat' });
+    }
+    startSse(res);
+    follow(res, job);
+});
+
+/**
+ * POST /api/v1/chat/custom-completions/:chatId/stop
+ * Access Control: The chat's user
+ *
+ * Stops the reply being generated in this chat; what it wrote so far is kept.
+ */
+router.post('/custom-completions/:chatId/stop', requireAuth, (req: Request<{ chatId: string }>, res: Response) => {
+    const job = jobs.get(req.params.chatId);
+    if (!job || job.userId !== req.user!.id || job.status !== 'running') {
+        return res.status(404).json({ detail: 'No reply is being generated in this chat' });
+    }
+    job.stop();
+    return res.json({ stopped: true });
+});
+
+/** The tool-call loop for one reply, streaming into its job and saving the chat. */
+async function runGeneration(
+    job: GenerationJob,
+    ctx: ChatRequestContext,
+    llama: Llama,
+    toolRegistry: ToolRegistry,
+): Promise<void> {
+    let body: proto.CompletionRequest = ctx.completionBody;
+    const signal = job.signal;
+
+    // Title generation runs after the reply; it stops if the job is stopped
+    const taskCtrl = new AbortController();
+    signal.addEventListener('abort', () => taskCtrl.abort(), { once: true });
 
     let totalUsage: UsageInfo = newUsageInfo();
     let finalContent = '';
@@ -106,7 +169,7 @@ router.post('/custom-completions', requireAuth, async (
     const notes = Object.fromEntries(Object.values(ctx.chat.history.messages)
         .filter(m => m.notes?.length)
         .map(m => [m.id, m.notes!]));
-    emitSseEvent(res, ctx.chatId, { type: 'chat:notes', data: notes });
+    emitSseEvent(job, ctx.chatId, { type: 'chat:notes', data: notes });
 
     // Per-request session for context budget tracking and tools turned off
     const modelInfo = await llama.getModelInfo(ctx.resolvedModel);
@@ -120,15 +183,15 @@ router.post('/custom-completions', requireAuth, async (
 
             const stream = (await llama.completions({
                 body,
-                signal: ctrl.signal,
+                signal,
                 emit: {
-                    onQueue: emitCallback(res, ctx.chatId, { type: 'model:queued' }),
-                    onLoading: emitCallback(res, ctx.chatId, { type: 'model:loading' }),
+                    onQueue: emitCallback(job, ctx.chatId, { type: 'model:queued' }),
+                    onLoading: emitCallback(job, ctx.chatId, { type: 'model:loading' }),
                 },
             })).stream;
 
-            // Pipe llama -> done filter -> res (keep res open between rounds)
-            stream.withDoneFilter().pipe(res, { end: false });
+            // Pipe llama -> done filter -> job (kept open between rounds)
+            stream.withDoneFilter().pipe(job.writable(), { end: false });
 
             // Wait until the model is done responding
             const result = await stream.finished();
@@ -162,7 +225,7 @@ router.post('/custom-completions', requireAuth, async (
 
             // If model responds with tool calls, emit events and execute tools
             const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
-            const toolExec = await emitEventsAndExecuteTools(res, ctx.chatId, toolRegistry, toolCalls, ctrl.signal, session);
+            const toolExec = await emitEventsAndExecuteTools(job, ctx.chatId, toolRegistry, toolCalls, signal, session);
 
             finalContent = accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs());
 
@@ -183,6 +246,9 @@ router.post('/custom-completions', requireAuth, async (
             // If model did not produce tool calls, we're done
             if (!toolExec) break;
             prevToolExec = toolExec;
+
+            // Save progress so far: if the backend goes away mid-reply, this much is kept
+            await persistChat(ctx, { content: finalContent, blocks, usage: getFinalUsage(totalUsage), done: false });
 
             // Append assistant + tool messages to history for next round
             const roundMessage = result.value.choices[0]?.message;
@@ -209,11 +275,11 @@ router.post('/custom-completions', requireAuth, async (
         const finalUsage: SseUsage = getFinalUsage(totalUsage);
 
         // Dispatch tasks to request model once completion loop is finished
-        const taskPromise = doTasks(llama, body.model, res, ctx, taskCtrl.signal);
+        const taskPromise = doTasks(llama, body.model, job, ctx, taskCtrl.signal);
 
         // Emit usage immediately so the frontend can show the usage icon without
         // waiting for tasks to complete.
-        emitSseEvent(res, ctx.chatId, {
+        emitSseEvent(job, ctx.chatId, {
             type: 'chat:completion',
             data: { done: true, usage: finalUsage },
         });
@@ -227,31 +293,30 @@ router.post('/custom-completions', requireAuth, async (
 
         // Title generation runs after persist - chat:title event is emitted inside doTasks()
         await taskPromise;
-
-        res.end();
+        job.finish('done');
     } catch (err: any) {
-        console.error(`[custom-completions] mid-stream error:`, err);
-        const errMsg = err?.message ?? String(err);
+        const usage = getFinalUsage(totalUsage);
 
-        const errorUsage = getFinalUsage(totalUsage);
-        emitSseEvent(res, ctx.chatId, {
-            type: 'chat:completion',
-            data: { done: true, usage: errorUsage, error: { content: errMsg } },
-        });
-
-        await persistChat(ctx, {
-            content: finalContent,
-            blocks,
-            usage: errorUsage,
-            done: false,
-            error: { content: errMsg }
-        });
-
-        res.end();
+        if (job.status === 'stopped') {
+            // Stopped by the user: keep what was written, without an error
+            console.log(chalk.dim.yellow(`[custom-completions] stopped by the user (${ctx.chatId})`));
+            emitSseEvent(job, ctx.chatId, { type: 'chat:completion', data: { done: true, usage } });
+            await persistChat(ctx, { content: finalContent, blocks, usage, done: true });
+            job.finish('stopped');
+        } else {
+            console.error(`[custom-completions] mid-stream error:`, err);
+            const errMsg = err?.message ?? String(err);
+            emitSseEvent(job, ctx.chatId, {
+                type: 'chat:completion',
+                data: { done: true, usage, error: { content: errMsg } },
+            });
+            await persistChat(ctx, { content: finalContent, blocks, usage, done: false, error: { content: errMsg } });
+            job.finish('error');
+        }
     }
 
     logCompletion(ctx.resolvedModel, roundLogs);
-});
+}
 
 /* -------------------- OAI COMPLETION -------------------- */
 

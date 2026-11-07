@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Sink } from './jobs.js';
 import chalk from 'chalk';
 
 import type { Llama } from '../../llama/types.js';
@@ -23,7 +23,7 @@ Create a chat title that summarizes the following user message:
 export async function doTasks(
     llama: Llama,
     taskModel: string,
-    res: Response,
+    res: Sink,
     ctx: ChatRequestContext,
     signal: AbortSignal,
 ): Promise<void> {

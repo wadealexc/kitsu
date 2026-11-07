@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Sink } from './jobs.js';
 import chalk from 'chalk';
 
 import type * as proto from '../../protocol/index.js';
@@ -13,7 +13,7 @@ import type * as Types from '../types/index.js';
  * Writes a typed `event: chat-event` SSE frame to the response.
  */
 export function emitSseEvent(
-    res: Response,
+    res: Sink,
     chatId: string,
     payload: SseEventPayload,
 ): void {
@@ -25,7 +25,7 @@ export function emitSseEvent(
  * Returns a callback function that will emit the provided SSE event when called.
  */
 export function emitCallback(
-    res: Response,
+    res: Sink,
     chatId: string,
     payload: SseEventPayload,
 ): (() => void) {
@@ -42,7 +42,7 @@ export type ToolExecResult = {
 };
 
 export async function emitEventsAndExecuteTools(
-    res: Response,
+    res: Sink,
     chatId: string,
     toolRegistry: ToolRegistry,
     toolCalls: proto.AssistantToolCall[],

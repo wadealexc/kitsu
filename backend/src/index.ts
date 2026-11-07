@@ -11,6 +11,7 @@ import { LlamaManagerAdapter } from './llama/llamaManagerAdapter.js';
 import type { Llama } from './llama/types.js';
 import { McpManager } from './mcp/manager.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
+import { jobs } from './routes/completions/jobs.js';
 import { db, McpServers } from './db/index.js';
 import { ToolRegistry } from './tools/registry.js';
 import authsRouter from './routes/auths.js';
@@ -143,6 +144,8 @@ async function shutdown(signal: string) {
     console.log(`received shutdown signal: ${signal}`);
 
     await Promise.allSettled([
+        // Stop replies in progress: each saves what it has so far
+        (async () => { jobs.stopAll(); await new Promise(r => setTimeout(r, 500)); })(),
         // 1. Close MCP connections
         mcp.close().catch(err => console.error(`shutdown: mcp.close failed: `, err)),
         // 2. Write chat logs to file
