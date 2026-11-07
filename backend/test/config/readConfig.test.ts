@@ -27,7 +27,6 @@ describe('readConfig', () => {
         const cfg = await readConfig(write(example));
 
         assert.strictEqual(cfg.llamaManager.url, 'http://127.0.0.1:10001');
-        assert.strictEqual(cfg.models.models[0]!.alias, 'qwen3.8-dense-mtp');
         assert.strictEqual(cfg.logs.path, path.join(dir, 'backend', 'logs'));
     });
 
@@ -41,5 +40,11 @@ describe('readConfig', () => {
         const example = JSON.parse(fs.readFileSync('../config.example.json', 'utf-8'));
         example.llamaCpp = { sleepAfterXSeconds: 600 };
         await assert.rejects(readConfig(write(example)), /llamaCpp/);
+    });
+
+    test('rejects a models list: llama-manager says which models exist', async () => {
+        const example = JSON.parse(fs.readFileSync('../config.example.json', 'utf-8'));
+        example.models = { models: [{ alias: 'x' }] };
+        await assert.rejects(readConfig(write(example)), /models/);
     });
 });

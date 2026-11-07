@@ -151,7 +151,7 @@ export class MockLlama {
         return Math.ceil(content.length / 4);
     }
 
-    getAllModelNames(): string[] {
+    async getAllModelNames(): Promise<string[]> {
         return this.models;
     }
 }

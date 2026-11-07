@@ -58,10 +58,7 @@ app.use('/static', express.static(path.resolve('static')));
 
 /* -------------------- LLAMA, MCP SERVERS, TOOLS -------------------- */
 
-const llama: Llama = new LlamaManagerAdapter({
-    managerUrl: cfg.llamaManager.url,
-    models: cfg.models,
-});
+const llama: Llama = new LlamaManagerAdapter({ managerUrl: cfg.llamaManager.url });
 
 // Connect to the MCP servers an admin has added; their tools are what models can call
 const mcp = new McpManager();

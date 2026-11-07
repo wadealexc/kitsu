@@ -15,7 +15,7 @@ const router = Router();
  * Access Control: Any authenticated user.
  * 
  * @note this method only returns custom models in the DB that have baseModelIds matching
- * models currently served by LlamaManager. i.e. if you remove a base model from
+ * models llama-manager currently serves. i.e. if you remove a base model from
  * LlamaManager, any custom models in the DB using it as the base will not be
  * returned here.
  * 
@@ -37,7 +37,7 @@ router.get('/', requireAuth, async (
     try {
         // Get base models from LlamaManager to validate availability
         const llama = req.app.locals.llama as Llama;
-        const baseModelNames = llama.getAllModelNames();
+        const baseModelNames = await llama.getAllModelNames();
 
         // Fetch custom models accessible to this user, filtered to those with available base models
         const allCustomModels = await Models.getCustomModels(db);
@@ -176,7 +176,7 @@ router.post('/create', requireAuth, async (
     try {
         // Validate base model is available in LlamaManager
         const llama = req.app.locals.llama as Llama;
-        const baseModelNames = llama.getAllModelNames();
+        const baseModelNames = await llama.getAllModelNames();
         if (!baseModelNames.includes(formData.baseModelId)) throw BadRequestError('base model not found');
 
         // Check if model ID already exists in database
@@ -291,7 +291,7 @@ router.post('/model/update', requireAuth, async (
         // If baseModelId is being changed, validate it's available in llamaManager
         if (formData.baseModelId !== model.baseModelId) {
             const llama = req.app.locals.llama as Llama;
-            const baseModelNames = llama.getAllModelNames();
+            const baseModelNames = await llama.getAllModelNames();
 
             if (!baseModelNames.includes(formData.baseModelId))
                 throw BadRequestError(`base model '${formData.baseModelId}' not found`);
@@ -374,7 +374,7 @@ router.post('/model/delete', requireAuth, async (
  * GET /api/v1/models/base
  * Access Control: Admin only
  *
- * Get all base models from LlamaManager (backend-configured models from config.json).
+ * Get all base models: the models llama-manager serves.
  * @note Does NOT query database - returns models configured in backend. The idea is that
  * the admin 'runs' the server, and will occasionally add new GGUFs to the config,
  * but these models should not be made generally available until the admin has time
@@ -392,7 +392,7 @@ router.get('/base', requireAdmin, async (
     try {
         // Get base models from LlamaManager
         const llama = req.app.locals.llama as Llama;
-        const baseModelNames = llama.getAllModelNames();
+        const baseModelNames = await llama.getAllModelNames();
 
         const baseModels: Types.ModelResponse[] = [];
         for (const name of baseModelNames) {

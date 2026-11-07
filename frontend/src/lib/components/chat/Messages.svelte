@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { reloadChatList } from '$lib/utils/chatList';
     import {
         chats,
         settings,
@@ -113,7 +114,7 @@
             });
 
             currentChatPage.set(1);
-            chats.set(await getChatList(localStorage.token, $currentChatPage));
+            await reloadChatList();
         }
     };
 

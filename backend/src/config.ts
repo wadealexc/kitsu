@@ -42,32 +42,6 @@ const LogSchema = z.object({
  */
 export type LogConfig = z.infer<typeof LogSchema>;
 
-const ModelEntrySchema = z.object({
-    // Name llama-manager serves the model under
-    alias: z.string().min(1),
-    // Inference defaults (temperature, system prompt, etc.)
-    params: z.record(z.string(), z.any()).optional(),
-});
-
-export type ModelEntry = z.infer<typeof ModelEntrySchema>;
-
-const ModelSchema = z.object({
-    models: z.array(ModelEntrySchema).min(1),
-});
-
-/**
- * Models offered to users. Loading and unloading is llama-manager's job.
- *
- * ```json
- * "models": {
- *     "models": [
- *         { "alias": "qwen3.8-dense-mtp", "params": { "temperature": 1.0 } }
- *     ]
- * }
- * ```
- */
-export type ModelConfig = z.infer<typeof ModelSchema>;
-
 /**
  * llama-manager, which runs inference (usually on another machine).
  *
@@ -87,7 +61,6 @@ export type LlamaManagerConfig = z.infer<typeof LlamaManagerSchema>;
 const ConfigSchema = z.object({
     ports: PortSchema,
     logs: LogSchema,
-    models: ModelSchema,
     llamaManager: LlamaManagerSchema,
 }).strict();
 

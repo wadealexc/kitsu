@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { reloadChatList } from '$lib/utils/chatList';
     import { uuid } from '$lib/utils/uuid';
     import { toast } from 'svelte-sonner';
 
@@ -1116,7 +1117,7 @@
                         if (savedChat) {
                             temporaryChatEnabled.set(false);
                             chatId.set(savedChat.id);
-                            chats.set(await getChatList(localStorage.token, $currentChatPage));
+                            await reloadChatList();
 
                             await goto(`/c/${savedChat.id}`);
                             toast.success('Conversation saved successfully');

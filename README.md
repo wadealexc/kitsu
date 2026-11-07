@@ -34,7 +34,7 @@ The `llama-manager` submodule is only needed if you run llama-manager on the sam
 cp config.example.json config.json
 ```
 
-Edit `config.json` — at minimum, set `llamaManager.url` and the models to offer. See [Configuration](#configuration) below.
+Edit `config.json` — at minimum, set `llamaManager.url`. See [Configuration](#configuration) below.
 
 TODO: add a script to automate creation of config.json from config.example.json 
 
@@ -79,14 +79,7 @@ kitsu is configured via `config.json` at the repo root. Copy `config.example.jso
 }
 ```
 
-**`models`** — the models to offer users, by the name llama-manager serves them under, with optional inference defaults:
-```json
-"models": {
-    "models": [
-        { "alias": "my-model", "params": { "temperature": 0.7 } }
-    ]
-}
-```
+Models aren't listed in the config: kitsu offers whatever llama-manager serves. Sampling defaults belong to the models users create in the Models page.
 
 **`ports`** — host/port for the backend:
 ```json

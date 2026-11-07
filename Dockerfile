@@ -5,8 +5,7 @@
 # Needs config.json (mounted) and WEBUI_SECRET_KEY (from .env); see README.
 
 # ---- frontend: static SvelteKit build ----
-# Node 22 like the old frontend image: newer npm rejects this lockfile (missing optional platform packages)
-FROM node:22-slim AS frontend
+FROM node:26-slim AS frontend
 WORKDIR /src
 # The frontend imports shared types from ../backend/src
 COPY backend/src backend/src

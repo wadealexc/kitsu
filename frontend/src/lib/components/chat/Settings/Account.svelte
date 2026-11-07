@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { reloadChatList } from '$lib/utils/chatList';
     import { toast } from 'svelte-sonner';
     import { onMount } from 'svelte';
     import { user, chats, scrollPaginationEnabled, currentChatPage } from '$lib/stores';
@@ -67,7 +68,7 @@
             toast.success(`Successfully imported ${res.length} chats.`);
         }
         currentChatPage.set(1);
-        await chats.set(await getChatList(localStorage.token, $currentChatPage));
+        await reloadChatList();
         scrollPaginationEnabled.set(true);
     };
 
@@ -84,7 +85,7 @@
             toast.error(`${error}`);
         });
         currentChatPage.set(1);
-        await chats.set(await getChatList(localStorage.token, $currentChatPage));
+        await reloadChatList();
         scrollPaginationEnabled.set(true);
     };
 

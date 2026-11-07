@@ -11,17 +11,5 @@
     },
     "llamaManager": {
         "url": "http://127.0.0.1:10001"
-    },
-    "models": {
-        "models": [
-            {
-                "alias": "qwen3.8-dense-mtp",
-                "params": {
-                    "temperature": 1.0,
-                    "top_p": 0.95,
-                    "top_k": 20
-                }
-            }
-        ]
     }
 }

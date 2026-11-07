@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 
-import type { ModelConfig } from '../config.js';
 import * as proto from '../protocol/index.js';
 import LlamaStream from './llamaStream.js';
 import type { Llama, LlamaRequest, LlamaResponse, LlamaStatus } from './types.js';
@@ -22,26 +21,23 @@ type ModelListEntry = {
     n_ctx: number;
 }
 
+/** How long a model list from llama-manager is reused before asking again. */
+const MODEL_LIST_TTL_MS = 5_000;
+
+/**
+ * Talks to llama-manager, which serves the models: the model list comes from it,
+ * not from kitsu's config.
+ */
 export class LlamaManagerAdapter implements Llama {
 
     private managerUrl: string;
-    private modelInfos: Map<string, proto.ModelInfo>;
+    /** Last list llama-manager gave, kept for when it can't be reached. */
+    private lastModels: ModelListEntry[] = [];
+    private lastFetchedAt = 0;
 
-    constructor(params: {
-        managerUrl: string;
-        models: ModelConfig;
-    }) {
+    constructor(params: { managerUrl: string }) {
         this.managerUrl = params.managerUrl.replace(/\/+$/, '');
-
-        this.modelInfos = new Map(params.models.models.map(model => {
-            const info: proto.ModelInfo = {
-                name: model.alias,
-                params: model.params ?? {},
-            };
-            return [model.alias, info];
-        }));
-
-        console.log(`LlamaManagerAdapter: targeting ${this.managerUrl} with models: ${[...this.modelInfos.keys()].join(', ')}`);
+        console.log(`LlamaManagerAdapter: targeting ${this.managerUrl}`);
     }
 
     async completions(req: LlamaRequest): Promise<LlamaResponse> {
@@ -113,7 +109,7 @@ export class LlamaManagerAdapter implements Llama {
     }
 
     async wake(model: string): Promise<LlamaStatus> {
-        if (!this.modelInfos.has(model))
+        if (!(await this.getAllModelNames()).includes(model))
             throw new Error(`LlamaManagerAdapter.wake: model not found: ${model}`);
 
         const status = await this.getStatus(model);
@@ -145,31 +141,34 @@ export class LlamaManagerAdapter implements Llama {
     }
 
     async getModelInfo(model: string): Promise<proto.ModelInfo | undefined> {
-        const base = this.modelInfos.get(model);
-        if (!base) return undefined;
-
-        try {
-            const data = await this.#listModels();
-            const info = data.find(e => e.id === model);
-            if (!info) return base;
-
-            return {
-                ...base,
-                contextLength: info.n_ctx,
-            };
-        } catch {
-            return base;
-        }
+        const info = (await this.#models()).find(e => e.id === model);
+        if (!info) return undefined;
+        return { name: info.id, params: {}, contextLength: info.n_ctx };
     }
 
     async #listModels(): Promise<ModelListEntry[]> {
         const url = `${this.managerUrl}/v1/models`;
         const response = await fetch(url);
+        if (!response.ok) throw new Error(`llama-manager /v1/models returned ${response.status}`);
 
-        return (await response.json() as { object: 'list', data: ModelListEntry[] }).data;
+        const models = (await response.json() as { object: 'list', data: ModelListEntry[] }).data;
+        this.lastModels = models;
+        this.lastFetchedAt = Date.now();
+        return models;
     }
 
-    getAllModelNames(): string[] {
-        return [...this.modelInfos.keys()];
+    /** The model list, reused for a few seconds, or the last known one if llama-manager is unreachable. */
+    async #models(): Promise<ModelListEntry[]> {
+        if (Date.now() - this.lastFetchedAt < MODEL_LIST_TTL_MS) return this.lastModels;
+        try {
+            return await this.#listModels();
+        } catch (err) {
+            console.error(`LlamaManagerAdapter: couldn't list models: ${err}`);
+            return this.lastModels;
+        }
+    }
+
+    async getAllModelNames(): Promise<string[]> {
+        return (await this.#models()).map(m => m.id);
     }
 }

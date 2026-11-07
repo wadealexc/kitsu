@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { reloadChatList } from '$lib/utils/chatList';
     import { toast } from 'svelte-sonner';
     import { goto } from '$app/navigation';
     import { onMount, createEventDispatcher, tick, onDestroy } from 'svelte';
@@ -72,7 +73,7 @@
             }
 
             currentChatPage.set(1);
-            await chats.set(await getChatList(localStorage.token, $currentChatPage));
+            await reloadChatList();
 
             dispatch('change');
         }
@@ -90,7 +91,7 @@
             goto(`/c/${res.id}`);
 
             currentChatPage.set(1);
-            await chats.set(await getChatList(localStorage.token, $currentChatPage));
+            await reloadChatList();
         }
     };
 
@@ -123,7 +124,7 @@
 
             if (res) {
                 currentChatPage.set(1);
-                await chats.set(await getChatList(localStorage.token, $currentChatPage));
+                await reloadChatList();
 
                 dispatch('change');
 

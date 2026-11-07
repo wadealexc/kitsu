@@ -34,5 +34,5 @@ export interface Llama {
     wake(modelName: string): Promise<LlamaStatus>;
     getStatus(model: string): Promise<LlamaStatus>;
     getModelInfo(name: string): Promise<proto.ModelInfo | undefined>;
-    getAllModelNames(): string[];
+    getAllModelNames(): Promise<string[]>;
 }
