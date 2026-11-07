@@ -32,6 +32,21 @@ export const isIOS = (): boolean =>
     (/iPhone|iPad|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
+/**
+ * How tall the visible area was the last time the keyboard was open, so a
+ * layout can be fitted to it before the keyboard opens. Until we've seen the
+ * keyboard, half the screen (a fair guess for an iPhone in portrait).
+ */
+let lastKeyboardViewportHeight: number | undefined;
+if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        if (keyboardOpen()) lastKeyboardViewportHeight = window.visualViewport!.height;
+    });
+}
+
+export const expectedKeyboardViewportHeight = (): number =>
+    lastKeyboardViewportHeight ?? Math.round(window.innerHeight * 0.5);
+
 /** True while an on-screen keyboard takes up part of the screen. */
 export const keyboardOpen = (): boolean => {
     const vv = window.visualViewport;

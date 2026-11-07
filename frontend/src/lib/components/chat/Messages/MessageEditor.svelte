@@ -2,7 +2,8 @@
     import { tick, createEventDispatcher, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
     import { isEditingMessage, mobile } from '$lib/stores';
-    import { focusWithoutPan } from '$lib/utils/iosKeyboard';
+    import { expectedKeyboardViewportHeight, isIOS, keyboardOpen } from '$lib/utils/iosKeyboard';
+    import { portal } from '$lib/utils/portal';
 
     export let content: string = '';
     export let primaryLabel: string = 'Save';
@@ -21,7 +22,14 @@
     let textAreaElement: HTMLTextAreaElement;
     let buttonBarElement: HTMLDivElement;
     let containerElement: HTMLDivElement;
-    let scrollWrapperElement: HTMLDivElement;
+
+    /**
+     * On phones the editor is a full-screen sheet rather than part of the message
+     * list: inside a long scrolling list, iOS scrolls the list to "reveal" the
+     * cursor when the keyboard opens and lands far from the editor. Nothing
+     * around the sheet scrolls, so there's nothing for it to move.
+     */
+    const sheet = get(mobile);
 
     const endEdit = () => isEditingMessage.set(false);
     onDestroy(endEdit);
@@ -34,13 +42,17 @@
      *  containers and to account for floating UI that overlaps the
      *  scroll area (e.g. the scroll-to-bottom button above MessageInput).
      */
-    function scrollEditorIntoView(): void {
+    function scrollEditorIntoView(visibleBottomLimit?: number): void {
         if (!containerElement || !buttonBarElement) return;
 
         const scrollParent = containerElement.closest('#messages-container');
         if (!scrollParent) return;
 
-        const scrollRect = scrollParent.getBoundingClientRect();
+        const parentRect = scrollParent.getBoundingClientRect();
+        const scrollRect = {
+            top: parentRect.top,
+            bottom: Math.min(parentRect.bottom, visibleBottomLimit ?? Infinity)
+        };
         const containerRect = containerElement.getBoundingClientRect();
         const buttonRect = buttonBarElement.getBoundingClientRect();
 
@@ -80,37 +92,59 @@
         }
     }
 
+    /** On iOS before the keyboard opens: the visible height once it has. */
+    let keyboardHeightGuess: number | undefined;
+
+    $: maxHeight = `min(24rem, calc(${keyboardHeightGuess ? `${keyboardHeightGuess}px` : 'var(--app-height, 100dvh)'} - 8rem))`;
+
+    /** Grow the textarea with its text, up to the maximum height, and show the end. */
+    function fitTextarea(): void {
+        if (!textAreaElement) return;
+        textAreaElement.style.height = '';
+        textAreaElement.style.height = `${textAreaElement.scrollHeight}px`;
+        textAreaElement.scrollTop = textAreaElement.scrollHeight;
+    }
+
     export async function activate(initialContent?: string) {
         isEditingMessage.set(true);
         editedContent = initialContent ?? content;
+
+        if (sheet) {
+            // The cursor at the start, near the top of the sheet: above where the
+            // keyboard will be, so iOS doesn't slide anything to reveal it.
+            await tick();
+            if (textAreaElement) {
+                textAreaElement.setSelectionRange(0, 0);
+                textAreaElement.scrollTop = 0;
+                textAreaElement.focus({ preventScroll: true });
+            }
+            return;
+        }
+
+        // iOS scrolls the message list to reveal the cursor when the keyboard opens,
+        // often far from the editor. So before focusing, fit the editor into the space
+        // that will be left above the keyboard and show the cursor there: then there's
+        // nothing for iOS to reveal.
+        keyboardHeightGuess = isIOS() && !keyboardOpen() ? expectedKeyboardViewportHeight() : undefined;
         await tick();
+
         if (textAreaElement) {
-            textAreaElement.style.height = '';
-            textAreaElement.style.height = `${textAreaElement.scrollHeight}px`;
-            // On iOS, waits for the keyboard: the editor is moved aside while it opens
-            // so the app doesn't slide, then scrolled into view in the smaller space.
-            await focusWithoutPan(textAreaElement, { moved: containerElement });
-        }
-        if (scrollWrapperElement) {
-            scrollWrapperElement.scrollTop = scrollWrapperElement.scrollHeight;
+            fitTextarea();
+            // The cursor at the end, which is the part of the text shown
+            const end = textAreaElement.value.length;
+            textAreaElement.setSelectionRange(end, end);
         }
 
-        // Scroll immediately so the editor is visible (handles desktop and
-        // cases where the mobile keyboard is already open).
         await tick();
-        scrollEditorIntoView();
+        scrollEditorIntoView(keyboardHeightGuess);
+        textAreaElement?.focus({ preventScroll: true });
 
-        // On mobile, the keyboard opens after focus and resizes the viewport.
-        // Debounce: wait for the keyboard animation to finish and layout to
-        // settle before re-scrolling.
+        // Once the keyboard is up (mobile), settle the editor into the final space.
         if (window.visualViewport) {
-            let resizeTimer: NodeJS.Timeout;
+            let resizeTimer: ReturnType<typeof setTimeout>;
             const onResize = () => {
                 clearTimeout(resizeTimer);
                 resizeTimer = setTimeout(() => {
-                    if (scrollWrapperElement) {
-                        scrollWrapperElement.scrollTop = scrollWrapperElement.scrollHeight;
-                    }
                     scrollEditorIntoView();
                 }, 150);
             };
@@ -123,16 +157,13 @@
         }
     }
 
-    function handleInput(e: Event) {
-        const t = e.target as HTMLTextAreaElement;
-        t.style.height = '';
-        t.style.height = `${t.scrollHeight}px`;
-        if (
-            scrollWrapperElement &&
-            scrollWrapperElement.scrollHeight > scrollWrapperElement.clientHeight
-        ) {
-            scrollWrapperElement.scrollTop = scrollWrapperElement.scrollHeight;
-        }
+    function handleInput() {
+        if (!textAreaElement) return;
+        // Keep the cursor's scroll position while typing: only regrow the box
+        const scrollTop = textAreaElement.scrollTop;
+        textAreaElement.style.height = '';
+        textAreaElement.style.height = `${textAreaElement.scrollHeight}px`;
+        textAreaElement.scrollTop = scrollTop;
         scrollEditorIntoView();
     }
 
@@ -146,32 +177,59 @@
     }
 </script>
 
+{#if sheet}
+    <div
+        use:portal
+        class="fixed inset-x-0 top-0 z-[60] flex flex-col bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+        style="height: var(--app-height, 100dvh); padding-top: env(safe-area-inset-top);"
+        role="dialog"
+        aria-label="Edit message"
+    >
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800 text-sm font-medium">
+            <button
+                class="px-3 py-1.5 rounded-3xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                on:click={() => dispatch('cancel')}>{'Cancel'}</button
+            >
+            <div class="flex-1"></div>
+            {#if secondaryLabel}
+                <button
+                    class="px-3.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-3xl disabled:opacity-40"
+                    on:click={() => dispatch('secondary', { content: editedContent })}
+                    disabled={!isDirty}>{secondaryLabel}</button
+                >
+            {/if}
+            <button
+                class="px-3.5 py-1.5 bg-gray-900 dark:bg-white text-gray-100 dark:text-gray-800 rounded-3xl disabled:opacity-40"
+                on:click={() => dispatch('confirm', { content: editedContent })}
+                disabled={!isDirty}>{primaryLabel}</button
+            >
+        </div>
+
+        <div class="px-4"><slot name="files" /></div>
+
+        <!-- 16px text: smaller makes iOS zoom the page on focus -->
+        <textarea
+            bind:this={textAreaElement}
+            class="flex-1 min-h-0 w-full resize-none overflow-y-auto bg-transparent outline-hidden px-4 py-3 text-base leading-relaxed"
+            bind:value={editedContent}
+            on:keydown={handleKeydown}
+        ></textarea>
+    </div>
+{:else}
 <div bind:this={containerElement} class={containerClass}>
     <slot name="files" />
 
-    {#if scrollContainer}
-        <div
-            bind:this={scrollWrapperElement}
-            class="overflow-auto"
-            style="max-height: min(24rem, calc(var(--app-height, 100dvh) - 8rem));"
-        >
-            <textarea
-                bind:this={textAreaElement}
-                class="bg-transparent outline-hidden w-full resize-none {textareaClass}"
-                bind:value={editedContent}
-                on:input={handleInput}
-                on:keydown={handleKeydown}
-            ></textarea>
-        </div>
-    {:else}
-        <textarea
-            bind:this={textAreaElement}
-            class="bg-transparent outline-hidden w-full resize-none {textareaClass}"
-            bind:value={editedContent}
-            on:input={handleInput}
-            on:keydown={handleKeydown}
-        ></textarea>
-    {/if}
+    <!-- With scrollContainer, the textarea scrolls itself past a maximum height.
+         (Not a scrolling box around a full-height textarea: iOS keeps the cursor in
+         view by scrolling the wrong containers then.) -->
+    <textarea
+        bind:this={textAreaElement}
+        class="bg-transparent outline-hidden w-full resize-none {scrollContainer ? 'overflow-y-auto' : ''} {textareaClass}"
+        style:max-height={scrollContainer ? maxHeight : null}
+        bind:value={editedContent}
+        on:input={handleInput}
+        on:keydown={handleKeydown}
+    ></textarea>
 
     <div
         bind:this={buttonBarElement}
@@ -209,3 +267,4 @@
         </div>
     </div>
 </div>
+{/if}
