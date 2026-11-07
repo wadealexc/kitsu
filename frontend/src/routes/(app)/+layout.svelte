@@ -19,6 +19,8 @@
 
     // Which chats have a reply being written (see onMount)
     let generatingTimer: ReturnType<typeof setInterval> | undefined;
+    /** Chats the list was already refreshed for, so a missing one doesn't refresh it every poll */
+    const refreshedFor = new Set<string>();
     const pollGenerating = async () => {
         if (document.visibilityState !== 'visible') return;
         const active = await getActiveCompletions(localStorage.token).catch(() => null);
@@ -30,11 +32,15 @@
 
         // A reply running in a chat the sidebar doesn't list (started on another
         // device or tab), or one that just finished (it may have a new title):
-        // refresh the list.
-        const listed = new Set((get(chats) ?? []).map((c) => c.id));
-        const unlisted = [...now].some((id) => !id.startsWith('local:') && !listed.has(id));
+        // refresh the list, once each. Only when the list is loaded: re-rendering it
+        // every few seconds would swallow taps on phones.
+        const list = get(chats);
+        if (list === null) return;
+        const listed = new Set(list.map((c) => c.id));
+        const unlisted = [...now].filter((id) => !id.startsWith('local:') && !listed.has(id) && !refreshedFor.has(id));
         const finished = [...previous].some((id) => !now.has(id));
-        if (unlisted || finished) await reloadChatList().catch(() => {});
+        unlisted.forEach((id) => refreshedFor.add(id));
+        if (unlisted.length || finished) await reloadChatList().catch(() => {});
     };
     onDestroy(() => {
         clearInterval(generatingTimer);

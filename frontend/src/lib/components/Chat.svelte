@@ -206,6 +206,7 @@
             // The model list may not have loaded yet; it's only needed for the context meter
             void resumeResponse(resolveModel(last.model ?? '') ?? $selectedModel, last);
         }
+        runningHere = !!$chatId && $generatingChats.has($chatId);
 
         // Back after iOS discarded the app? Return to where you were, not the bottom.
         const resume = takeResumePosition();
@@ -771,6 +772,38 @@
     let resumeAttempts = 0;
     const MAX_RESUME_ATTEMPTS = 6;
 
+    /**
+     * Replies started or finished somewhere else (another tab or device, or a
+     * regenerate before a reload) while this chat is open: the sidebar's poll of
+     * running replies tells us, then we reload the chat and follow the reply.
+     */
+    let runningHere = false;
+    let syncingFromServer = false;
+    $: onRunningChats($generatingChats);
+    const onRunningChats = async (running: Set<string>) => {
+        const id = $chatId;
+        const nowRunning = !!id && running.has(id);
+        const wasRunning = runningHere;
+        runningHere = nowRunning;
+        // Already streaming (or about to): generationController is set before the request
+        if (!id || loading || generating || generationController || syncingFromServer || $isEditingMessage) return;
+        if (nowRunning === wasRunning) return;
+
+        syncingFromServer = true;
+        try {
+            const fresh = await getChatById(localStorage.token, id).catch(() => null);
+            if (!fresh || id !== $chatId || generating) return;
+            history = fresh.chat.history;
+            await tick();
+            const last = history.currentId ? history.messages[history.currentId] : undefined;
+            if (nowRunning && last?.role === 'assistant' && !last.done) {
+                void resumeResponse(resolveModel(last.model ?? '') ?? $selectedModel, last);
+            }
+        } finally {
+            syncingFromServer = false;
+        }
+    };
+
     /** Follows a reply already running in this chat (or brings back its saved result). */
     const resumeResponse = async (model: Model | null, message: ChatMessage) => {
         const id = $chatId;
@@ -815,6 +848,7 @@
      */
     const reconcileWithServer = async (message: ChatMessage) => {
         generating = false;
+        generationController = null;
         modelStatus = undefined;
         toolProgress = undefined;
         const id = $chatId;

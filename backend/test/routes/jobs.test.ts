@@ -129,6 +129,24 @@ describe('generation jobs', () => {
         assert.strictEqual(reply.done, true);
     });
 
+    test('saves the chat with the unfinished reply as soon as it starts', async () => {
+        const chatId = crypto.randomUUID();
+        mock.enqueue(slowReply(['slow ', 'reply'], 80));
+        const body = chatBody(chatId);
+        const res = await fetch(`${base}/custom-completions`, { method: 'POST', headers: auth(), body: JSON.stringify(body) });
+        const reader = res.body!.getReader();
+        await reader.read();
+
+        // Mid-reply, the saved chat already has the reply, unfinished
+        const saved = await Chats.getChatById(chatId, db);
+        const reply = saved!.chat.history.messages[body.chat.history.currentId!]!;
+        assert.strictEqual(saved!.chat.history.currentId, body.chat.history.currentId);
+        assert.strictEqual(reply.done, false);
+
+        // Let it finish, so it doesn't show up as running in later tests
+        while (!(await reader.read()).done) { /* drain */ }
+    });
+
     test('stop ends the reply, keeping what was written', async () => {
         const chatId = crypto.randomUUID();
         mock.enqueue(slowReply(['a ', 'b ', 'c ', 'd ', 'e ', 'f'], 60));
@@ -196,7 +214,7 @@ describe('compactReplay', () => {
     test('merges token runs, keeps everything else in order, drops stale progress', () => {
         const stream = [
             tok({}, { prompt_progress: { total: 10, cache: 0, processed: 5 } }),
-            tok({ reasoning_content: 'Let ' }), tok({ reasoning_content: 'me ' }), tok({ reasoning_content: 'think' }),
+            tok({ reasoning_content: 'Let ' }, { timings: { predicted_n: 1 } }), tok({ reasoning_content: 'me ' }, { timings: { predicted_n: 2 } }), tok({ reasoning_content: 'think' }, { timings: { predicted_n: 3 } }),
             tok({ content: 'Hel' }), tok({ content: 'lo ' }),
             'event: chat-event\ndata: {"chatId":"c","data":{"type":"tool_call:start","data":{"id":"1","name":"t","arguments":"{}"}}}\n\n',
             tok({ content: 'wor' }), tok({ content: 'ld' }),
@@ -208,6 +226,7 @@ describe('compactReplay', () => {
         const events = out.split('\n\n');
         assert.strictEqual(events.length, 6, out);
         assert.deepStrictEqual(JSON.parse(events[0]!.slice(6)).choices[0].delta, { reasoning_content: 'Let me think' });
+        assert.deepStrictEqual(JSON.parse(events[0]!.slice(6)).timings, { predicted_n: 3 }, 'keeps the latest timings');
         assert.deepStrictEqual(JSON.parse(events[1]!.slice(6)).choices[0].delta, { content: 'Hello ' });
         assert.ok(events[2]!.startsWith('event: chat-event'));
         assert.deepStrictEqual(JSON.parse(events[3]!.slice(6)).choices[0].delta, { content: 'world' });

@@ -126,8 +126,10 @@ export function compactReplay(text: string): string {
 
         const choice = chunk?.choices?.[0];
         const delta = choice?.delta;
+        // Token events carry per-token timings (kitsu asks for them); a merged event
+        // keeps the latest, which is all the frontend uses
         const kind: keyof Delta | undefined =
-            delta && !choice.finish_reason && !delta.tool_calls && !chunk.timings && !chunk.usage
+            delta && !choice.finish_reason && !delta.tool_calls && !chunk.usage
                 ? (typeof delta.reasoning_content === 'string' && delta.reasoning_content && !delta.content ? 'reasoning_content'
                     : typeof delta.content === 'string' && delta.content && !delta.reasoning_content ? 'content' : undefined)
                 : undefined;
@@ -136,6 +138,7 @@ export function compactReplay(text: string): string {
             if (pending && pending.kind !== kind) flush();
             if (!pending) pending = { kind, sample: chunk, text: '' };
             pending.text += delta[kind];
+            if (chunk.timings) pending.sample = { ...pending.sample, timings: chunk.timings };
             continue;
         }
 

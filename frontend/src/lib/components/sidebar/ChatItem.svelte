@@ -293,7 +293,7 @@
                 ? 'bg-gray-100 dark:bg-gray-850 selected'
                 : selected
                   ? 'bg-gray-100 dark:bg-gray-850/70 selected'
-                  : 'group-hover:bg-gray-100 dark:group-hover:bg-gray-850/50'}  whitespace-nowrap text-ellipsis relative"
+                  : '[@media(hover:hover)]:group-hover:bg-gray-100 dark:[@media(hover:hover)]:group-hover:bg-gray-850/50'}  whitespace-nowrap text-ellipsis relative"
         >
             <input
                 id="chat-title-input-{id}"
@@ -326,7 +326,7 @@
                 ? 'bg-gray-100 dark:bg-gray-850 selected'
                 : selected
                   ? 'bg-gray-100 dark:bg-gray-850/70 selected'
-                  : ' group-hover:bg-gray-100 dark:group-hover:bg-gray-850/50'}  whitespace-nowrap text-ellipsis"
+                  : ' [@media(hover:hover)]:group-hover:bg-gray-100 dark:[@media(hover:hover)]:group-hover:bg-gray-850/50'}  whitespace-nowrap text-ellipsis"
             href="/c/{id}"
             on:click={() => {
                 dispatch('select');
