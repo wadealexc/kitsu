@@ -57,7 +57,7 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
             const successful = document.execCommand('copy');
             const msg = successful ? 'successful' : 'unsuccessful';
             console.log('Fallback: Copying text command was ' + msg);
-            result = true;
+            result = successful;
         } catch (err) {
             console.error('Fallback: Oops, unable to copy', err);
         }
@@ -78,6 +78,34 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
         });
 
     return result;
+};
+
+/**
+ * Copies text that isn't known yet, e.g. a link the server is still creating.
+ *
+ * Call it straight from a click or tap, before any `await`: Safari (and iOS home
+ * screen apps) only allow clipboard writes during the tap itself, so the write
+ * starts now with a ClipboardItem that waits for the text. Resolves to whether
+ * the copy worked. Without the async clipboard API (plain HTTP) it falls back to
+ * copying once the text arrives, which may be refused.
+ */
+export const copyToClipboardLater = async (text: Promise<string>): Promise<boolean> => {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        const blob = text.then((t) => new Blob([t], { type: 'text/plain' }));
+        try {
+            await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+            return true;
+        } catch (err) {
+            console.error('copyToClipboardLater: ClipboardItem write failed: ', err);
+        }
+    }
+
+    try {
+        return await copyToClipboard(await text);
+    } catch (err) {
+        console.error('copyToClipboardLater: ', err);
+        return false;
+    }
 };
 
 export const getImportOrigin = (_chats: any[]): string => {

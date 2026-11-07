@@ -2,7 +2,7 @@
     import { toast } from 'svelte-sonner';
     import { deleteSharedChatById, getChatById, shareChatById } from '$lib/apis/chats';
     import type { Chat } from '@backend/routes/types';
-    import { copyToClipboard } from '$lib/utils';
+    import { copyToClipboardLater } from '$lib/utils';
 
     import Modal from '../common/Modal.svelte';
     import Link from '../icons/Link.svelte';
@@ -12,25 +12,6 @@
 
     let chat: Chat | null = null;
     let shareUrl = null;
-    const copyUrlToClipboard = async (url: string) => {
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-        if (isSafari) {
-            // Oh, Safari, you're so special, let's give you some extra love and attention
-            const getUrlPromise = async () => new Blob([url], { type: 'text/plain' });
-            await navigator.clipboard
-                .write([new ClipboardItem({ 'text/plain': getUrlPromise() })])
-                .then(() => {
-                    console.log('Async: Copying to clipboard was successful!');
-                })
-                .catch((error) => {
-                    console.error('Async: Could not copy text: ', error);
-                });
-        } else {
-            copyToClipboard(url);
-        }
-    };
-
     const shareLocalChat = async () => {
         const sharedChat = await shareChatById(localStorage.token, chatId);
         shareUrl = `${window.location.origin}/s/${sharedChat.shareId}`;
@@ -40,9 +21,13 @@
         return shareUrl;
     };
 
-    const copyExistingShareLink = async () => {
-        const url = `${window.location.origin}/s/${chat?.shareId}`;
-        await copyUrlToClipboard(url);
+    const reportCopy = (copied: boolean) => {
+        if (copied) {
+            toast.success('Copied shared chat URL to clipboard!');
+            show = false;
+        } else {
+            toast.error("Couldn't copy the link. Tap Copy Link again.");
+        }
     };
 
     export let show = false;
@@ -120,9 +105,9 @@
                                     class="self-center flex items-center gap-1 px-3.5 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
                                     type="button"
                                     on:click={async () => {
-                                        await copyExistingShareLink();
-                                        toast.success('Copied shared chat URL to clipboard!');
-                                        show = false;
+                                        // No await before the copy: it must start during the tap
+                                        const url = `${window.location.origin}/s/${chat?.shareId}`;
+                                        reportCopy(await copyToClipboardLater(Promise.resolve(url)));
                                     }}
                                 >
                                     <Link />
@@ -134,10 +119,12 @@
                                     type="button"
                                     id="copy-and-share-chat-button"
                                     on:click={async () => {
-                                        const url = await shareLocalChat();
-                                        await copyUrlToClipboard(url);
-                                        toast.success('Copied shared chat URL to clipboard!');
-                                        show = false;
+                                        // Start sharing and the copy together, so the copy
+                                        // happens during the tap (Safari requires it). If it's
+                                        // refused, the chat is shared by now and the dialog
+                                        // shows the plain Copy Link button for a second tap.
+                                        const url = shareLocalChat();
+                                        reportCopy(await copyToClipboardLater(url));
                                     }}
                                 >
                                     <Link />
