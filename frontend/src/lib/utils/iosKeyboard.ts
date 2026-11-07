@@ -18,11 +18,11 @@
  */
 
 /** When the slide should finish, counted from focus: about when the keyboard is fully up. */
-const SLIDE_END_MS = 340;
+const SLIDE_END_MS = 250;
 /** Shortest slide, so it still reads as motion rather than a jump. */
-const MIN_SLIDE_MS = 160;
-/** Eases out like the keyboard, without covering most of the distance in the first frame. */
-const SLIDE_EASING = 'cubic-bezier(0.25, 0.75, 0.3, 1)';
+const MIN_SLIDE_MS = 90;
+/** A quick ease-out (tried slower and gentler; this felt better on the phone). */
+const SLIDE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 
 /** How long to wait for the keyboard before putting things back anyway. */
 const FALLBACK_MS = 700;
