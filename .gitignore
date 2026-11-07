@@ -4,8 +4,8 @@
 
 # Config
 config.json
-docker-compose.yml
 config.yaml
+.env
 
 # Backend runtime dirs
 /models/*

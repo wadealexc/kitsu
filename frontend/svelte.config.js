@@ -23,6 +23,8 @@ const config = {
 		// poll for new version name every 60 seconds (to trigger reload mechanic in +layout.svelte)
 		version: {
 			name: (() => {
+				// Docker builds have no git; the build passes the commit in
+				if (process.env.KITSU_VERSION) return process.env.KITSU_VERSION;
 				try {
 					return child_process.execSync('git rev-parse HEAD').toString().trim();
 				} catch {

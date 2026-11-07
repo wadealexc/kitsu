@@ -40,41 +40,31 @@ TODO: add a script to automate creation of config.json from config.example.json
 
 ---
 
-### Run (Quick Start)
-
-```sh
-npm run dev             # backend
-npm run dev:frontend    # frontend
-```
-
----
-
 ### Run (Prod)
 
-Build the backend and install the systemd service:
+kitsu runs as one container: the backend serves the API and the built frontend.
 
 ```sh
-npm run build
-./install-service.sh
-sudo systemctl enable --now kitsu
+cp config.example.json config.json          # then edit
+echo "WEBUI_SECRET_KEY=$(openssl rand -hex 32)" > .env
+KITSU_VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
 ```
 
-Start the frontend:
+The app is at `http://<host>:5050` and the API at `http://<host>:8071` (for other tools: `/api/v1/chat/completions` is OpenAI-compatible). The database and logs live in `backend/data` and `backend/logs`, and migrations run at startup. Put it behind an HTTPS reverse proxy: browsers keep the clipboard and some other features to secure pages, and the iOS home screen app needs it.
 
 ```sh
-docker compose up -d
+docker compose logs -f kitsu
+docker compose restart kitsu
 ```
 
-The frontend is available at `http://localhost:5050`.
-
-Useful service commands:
+### Run (Dev)
 
 ```sh
-systemctl status kitsu
-journalctl -u kitsu -f -o cat
-sudo systemctl stop kitsu
-sudo systemctl restart kitsu
+npm run dev                                                    # backend on :8071
+KITSU_HMR=1 BACKEND_URL=http://localhost:8071 npm run dev:frontend   # frontend on :5050, live reload
 ```
+
+For a one-tap sign-in button on the dev server's login page, put `VITE_DEV_LOGIN_USER` and `VITE_DEV_LOGIN_PASSWORD` in `frontend/.env.development.local` (git-ignored, dev builds only).
 
 ---
 

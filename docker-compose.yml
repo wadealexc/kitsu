@@ -1,16 +1,23 @@
+# kitsu on the app server. Inference runs elsewhere (llamaManager.url in config.json).
+#
+#   cp config.example.json config.json   # then edit
+#   echo "WEBUI_SECRET_KEY=$(openssl rand -hex 32)" > .env
+#   docker compose up -d --build
+name: kitsu
+
 services:
-  frontend:
+  kitsu:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      args:
+        KITSU_VERSION: ${KITSU_VERSION:-dev}
     restart: unless-stopped
     ports:
-      - "5050:5050"
+      - "5050:8071"   # the app
+      - "8071:8071"   # the API, for other tools (OpenAI-compatible /api/v1/chat/completions)
     environment:
-      - BACKEND_URL=http://192.168.87.30:8071
-      - BACKEND_SRC=/backend-src
-      - ENV=dev
-      - GIT_DISCOVERY_ACROSS_FILESYSTEM=1
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?set WEBUI_SECRET_KEY in .env}
     volumes:
-      - ./frontend:/app
-      - ./backend/src:/backend-src:ro
+      - ./config.json:/app/config.json:ro
+      - ./backend/data:/app/backend/data
+      - ./backend/logs:/app/backend/logs

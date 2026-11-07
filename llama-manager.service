@@ -1,6 +1,5 @@
 [Unit]
 Description=llama-manager inference router
-PartOf=kitsu.service
 
 [Service]
 # TODO: Change these options to use your username, and to

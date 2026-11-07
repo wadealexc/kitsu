@@ -89,6 +89,29 @@ app.use('/api/v1/mcp', mcpServersRouter);
 app.use('/api/version', versionRouter);
 app.use('/health', healthRouter);
 
+/* -------------------- FRONTEND -------------------- */
+
+// In the docker image the backend also serves the built frontend (a static
+// SvelteKit app). Unknown non-API paths get index.html so client routes load.
+const FRONTEND_DIR = process.env.KITSU_FRONTEND_DIR;
+if (FRONTEND_DIR) {
+    const indexHtml = path.join(FRONTEND_DIR, 'index.html');
+    app.use(express.static(FRONTEND_DIR, {
+        index: 'index.html',
+        // Hashed build assets never change; everything else is checked each time
+        setHeaders: (res, filePath) => {
+            res.setHeader('Cache-Control', filePath.includes(`${path.sep}_app${path.sep}immutable${path.sep}`)
+                ? 'public, max-age=31536000, immutable'
+                : 'no-cache');
+        },
+    }));
+    app.get('/{*splat}', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        res.setHeader('Cache-Control', 'no-cache');
+        res.sendFile(indexHtml);
+    });
+}
+
 /* -------------------- ERROR HANDLING AND SHUTDOWN -------------------- */
 
 const BACKEND_URL = `http://${cfg.ports.backend.host}:${cfg.ports.backend.port}`;
@@ -97,15 +120,9 @@ app.listen(cfg.ports.backend.port, cfg.ports.backend.host, () => {
     console.log(`kitsu-backend listening on ${chalk.cyan(BACKEND_URL)}`);
 });
 
-app.all('/{*splat}', async (req, res) => {
-    console.log(`got unknown request to: ${req.originalUrl}`);
-    console.log(`headers: ${JSON.stringify(req.headers, null, 2)}`);
-    console.log(`method: ${req.method}`);
-    // console.log(`body: ${req.body}`);
-
-    console.log(`${JSON.stringify(JSON.parse(req.body.toString('utf8')), null, 2)}`);
-
-    res.send('result text');
+app.all('/{*splat}', (req, res) => {
+    console.log(`unknown route: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ detail: 'Not found' });
 });
 
 // Error handler

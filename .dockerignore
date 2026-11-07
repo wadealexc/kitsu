@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.svelte-kit
+frontend/build
+backend/data
+backend/logs
+llama-manager
+models
+.git
+.env
+**/.env*
+config.json
+config.yaml
