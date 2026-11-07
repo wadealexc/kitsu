@@ -53,9 +53,10 @@ export async function emitEventsAndExecuteTools(
 
     // Emit SSE events for each tool call
     for (const tc of toolCalls) {
+        const server = toolRegistry.find(tc.function.name)?.serverName;
         emitSseEvent(res, chatId, {
             type: 'tool_call:start',
-            data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments },
+            data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments, ...(server ? { server } : {}) },
         });
     }
 
@@ -89,6 +90,8 @@ export async function emitEventsAndExecuteTools(
                 arguments: r.arguments,
                 result: r.result.ok ? r.result.output : r.result.error,
                 failed: !r.result.ok,
+                ...(r.server ? { server: r.server } : {}),
+                ...(r.result.structured ? { structured: r.result.structured } : {}),
             },
         });
     }
@@ -133,6 +136,8 @@ export function accumulateBlocks(
             done: true,
             result: r.result.ok ? r.result.output : r.result.error,
             failed: !r.result.ok,
+            ...(r.server ? { server: r.server } : {}),
+            ...(r.result.structured ? { structured: r.result.structured } : {}),
         });
     }
 

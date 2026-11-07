@@ -1,93 +1,49 @@
-import { toJSONSchema } from 'zod';
-
-import loadTools from './loader.js';
-import type { Tool, ToolContext, ToolSession, BeforeRequestOptions, ToolProgress, ToolEmit } from './types.js';
+import type { Llama } from '../llama/types.js';
+import type { McpManager, McpTool } from '../mcp/manager.js';
 import * as proto from '../protocol/index.js';
+import type { ToolProgress, ToolSession } from './types.js';
 
 export type ToolCallResult =
-    | { ok: true; output: string }
-    | { ok: false; error: string };
+    | { ok: true; output: string; structured?: Record<string, unknown> }
+    | { ok: false; error: string; structured?: Record<string, unknown> };
 
 export type ToolRoundResult = {
     id: string;
     name: string;
     arguments: string;
+    /** Name of the MCP server the tool came from */
+    server?: string;
     result: ToolCallResult;
 };
 
+/**
+ * The tools offered to the model: every tool of every MCP server an admin added.
+ *
+ * The same definitions go out on every request, whatever the user has turned
+ * off, so the start of the prompt (and llama.cpp's cache of it) stays the same.
+ * Calls to tools the user turned off are answered with an error instead.
+ */
 export class ToolRegistry {
 
-    private ctx: ToolContext;
-    private tools: Map<string, Tool>;
+    constructor(private mcp: McpManager, private llama: Llama) { }
 
-    constructor(ctx: ToolContext) {
-        this.ctx = ctx;
-
-        this.tools = new Map();
-
-        loadTools().forEach((factory => {
-            try {
-                const tool = factory(this.ctx);
-                this.tools.set(tool.name(), tool);
-            } catch (err: any) {
-                console.error(`Failed to load tool: ${err}; skipping`);
-            }
-        }));
-    }
-
-    /**
-     * Each tool may have preflight changes to completion requests. This method
-     * iterates over each tool, allows it to mutate the request, and returns the
-     * final request.
-     */
-    async beforeRequest(req: proto.CompletionRequest, opts: BeforeRequestOptions): Promise<proto.CompletionRequest> {
-        for (const tool of this.tools.values()) {
-            // Don't perform preflight changes if the tool was not included
-            if (!req.tools) continue;
-            if (-1 === req.tools.findIndex(t => t.function.name === tool.name())) continue;
-
-            if (tool.beforeRequest) req = await tool.beforeRequest(req, opts);
-        }
-
-        return req;
-    }
-
-    /**
-     * Injects tool definitions into the request body and runs all beforeRequest hooks.
-     * 
-     * Returns the new request body
-     */
-    async prepareTools(body: proto.CompletionRequest, opts: BeforeRequestOptions): Promise<proto.CompletionRequest> {
-        const withTools = { ...body, tools: this.getToolDefinitions() };
-        return this.beforeRequest(withTools, opts);
+    tools(): McpTool[] {
+        return this.mcp.tools();
     }
 
     getToolDefinitions(): proto.ToolDefinition[] {
-        return [...this.tools.values()].map(tool => ({
+        return this.tools().map(tool => ({
             type: 'function' as const,
             function: {
-                name: tool.name(),
-                description: tool.description(),
-                parameters: toJSONSchema(tool.inputSchema()),
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema,
             },
         }));
     }
 
-    /**
-     * Returns a per-round view of `body` with tools filtered based on session state.
-     * Strips all tools if context budget is exhausted.
-     */
-    filterToolsForRound(body: proto.CompletionRequest, session: ToolSession): proto.CompletionRequest {
-        // Context exhausted — strip tools entirely to force a final text response
-        if (
-            session.contextLimit !== undefined &&
-            session.contextBudget !== undefined &&
-            session.contextBudget <= 0
-        ) {
-            return { ...body, tools: undefined };
-        }
-
-        return body;
+    find(name: string): McpTool | undefined {
+        return this.tools().find(t => t.name === name);
     }
 
     async call(
@@ -95,36 +51,52 @@ export class ToolRegistry {
         args: string,
         session: ToolSession,
         signal: AbortSignal,
-        onProgress?: (toolCallId: string, event: ToolProgress) => void,
-        toolCallId?: string,
+        onProgress?: (event: ToolProgress) => void,
     ): Promise<ToolCallResult> {
-        const tool = this.tools.get(name);
+        const tool = this.find(name);
         if (!tool) return { ok: false, error: `Unknown tool: ${name}` };
 
+        if (session.disabledServers.has(tool.serverId)) {
+            return {
+                ok: false,
+                error: `The user has turned off the ${tool.serverName} tools for now. Don't call them; answer without them unless the user turns them back on.`,
+            };
+        }
+
+        if (session.contextBudget !== undefined && session.contextBudget <= 0) {
+            return { ok: false, error: 'The context window is nearly full. Answer now with what you have, without calling more tools.' };
+        }
+
         let parsed: unknown;
-        try { parsed = JSON.parse(args); }
+        try { parsed = args.trim() ? JSON.parse(args) : {}; }
         catch { return { ok: false, error: `Invalid JSON arguments for ${name}` }; }
 
-        const validated = tool.inputSchema().safeParse(parsed);
-        if (!validated.success) {
-            return { ok: false, error: `Validation failed: ${JSON.stringify(validated.error.issues)}` };
+        const result = await this.mcp.call(tool, parsed, {
+            signal,
+            onProgress: (p) => onProgress?.({ type: 'progress', ...p }),
+        });
+        const structured = result.structured ? { structured: result.structured } : {};
+
+        if (!result.ok) return { ok: false, error: result.text, ...structured };
+
+        // Keep results inside the context window: count, and refuse what doesn't fit.
+        if (session.contextBudget !== undefined) {
+            const tokens = await this.llama.tokenize(result.text, session.model, signal);
+            if (tokens > session.contextBudget) {
+                return {
+                    ok: false,
+                    error: `The result was ${tokens} tokens, but only ${Math.max(0, session.contextBudget)} tokens of context are left. Ask for less, or answer with what you have.`,
+                    ...structured,
+                };
+            }
+            session.contextBudget -= tokens;
         }
 
-        const emit: ToolEmit = (event) => {
-            if (onProgress && toolCallId) onProgress(toolCallId, event);
-        };
-
-        try {
-            const result = await tool.call(validated.data, session, signal, emit);
-            return { ok: true, output: JSON.stringify(result) };
-        } catch (err: any) {
-            return { ok: false, error: err?.message ?? String(err) };
-        }
+        return { ok: true, output: result.text, ...structured };
     }
 
     /**
-     * Runs all tool calls in a single round in parallel.
-     * Uses Promise.allSettled so one failure doesn't block the others.
+     * Runs all tool calls from one round in parallel. One failing doesn't stop the others.
      */
     async executeToolRound(
         toolCalls: proto.AssistantToolCall[],
@@ -132,21 +104,23 @@ export class ToolRegistry {
         signal: AbortSignal,
         onProgress?: (toolCallId: string, event: ToolProgress) => void,
     ): Promise<ToolRoundResult[]> {
-        const promiseResults = await Promise.allSettled(
-            toolCalls.map(tc => this.call(tc.function.name, tc.function.arguments, session, signal, onProgress, tc.id))
-        );
+        const settled = await Promise.allSettled(toolCalls.map(tc => this.call(
+            tc.function.name,
+            tc.function.arguments,
+            session,
+            signal,
+            onProgress ? (event) => onProgress(tc.id, event) : undefined,
+        )));
 
         return toolCalls.map((tc, i) => {
-            const promise = promiseResults[i]!;
-            const result: ToolCallResult = promise.status === 'fulfilled'
-                ? promise.value
-                : { ok: false, error: String(promise.reason) };
-
+            const outcome = settled[i]!;
+            const server = this.find(tc.function.name)?.serverName;
             return {
                 id: tc.id,
                 name: tc.function.name,
                 arguments: tc.function.arguments,
-                result,
+                ...(server ? { server } : {}),
+                result: outcome.status === 'fulfilled' ? outcome.value : { ok: false, error: String(outcome.reason) },
             };
         });
     }

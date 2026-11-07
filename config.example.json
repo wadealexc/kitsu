@@ -1,9 +1,4 @@
 {
-    "web": {
-        "enable": false,
-        "braveAPIKey": "",
-        "blacklistHosts": ["grokipedia.com"]
-    },
     "ports": {
         "backend": {
             "port": 8071,

@@ -4,7 +4,7 @@ kitsu is a self-hosted chat application for local models. It provides a web fron
 
 **Features:**
 - **Wake-on-keystroke** — when a user starts typing, the backend asks llama-manager to start loading the selected model. llama-manager handles loading, swapping and sleeping models.
-- **Web search and page loading** — uses Brave search + Playwright to give models access to the web
+- **Tools from MCP servers** — admins add MCP servers (for example [si-web-extract](https://github.com/wadealexc/si-web-extract) for web search and page loading); users turn each server's tools on or off per chat
 - **File uploads** — supports PDF, JSON, text, and image uploads in chat
 
 ### Important
@@ -105,21 +105,8 @@ kitsu is configured via `config.json` at the repo root. Copy `config.example.jso
 }
 ```
 
-#### Web
+#### Tools
 
-**`web`** — enable web search and page loading (requires a [Brave API key](https://api-dashboard.search.brave.com/app/plans)):
-```json
-"web": {
-    "enable": true,
-    "braveAPIKey": "YOUR_API_KEY",
-    "blacklistHosts": ["grokipedia.com"]
-}
-```
+Models get their tools from MCP servers (Streamable HTTP). An admin adds them in **Admin → Tools** with a name, URL and optional bearer token; the token is stored in the database and never sent back to the browser.
 
-`blacklistHosts` is an optional list of hostnames to exclude from web search results. Blacklisted hosts are never fetched. Defaults to `[]`.
-
-After setting `enable: true`, install the Firefox browser for Playwright (one-time setup, run from the `backend/` directory):
-
-```sh
-cd backend && npx playwright install firefox
-```
+Every tool of every enabled server is offered on every request, and users turn servers on or off per chat. Turning a server off doesn't change the tool list or system prompt, which would make the model process the whole conversation again. Instead kitsu adds a note for the model to the end of the next message, inside `<kitsu-note>` tags that the system prompt explains, and answers any call to a turned-off tool with an error.

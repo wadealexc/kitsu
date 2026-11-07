@@ -7,6 +7,7 @@ export * as Chats from './operations/chats.js';
 export * as Configs from './operations/config.js';
 export * as Folders from './operations/folders.js';
 export * as Models from './operations/models.js';
+export * as McpServers from './operations/mcpServers.js';
 export * as Users from './operations/users.js';
 
 // Schema (tables + constants)
@@ -24,4 +25,5 @@ export type { Chat } from './operations/chats.js';
 export type { Config } from './operations/config.js';
 export type { Folder } from './operations/folders.js';
 export type { Model } from './operations/models.js';
+export type { McpServer } from './operations/mcpServers.js';
 export type { User } from './operations/users.js';

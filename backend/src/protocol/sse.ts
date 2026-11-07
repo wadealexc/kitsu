@@ -42,6 +42,19 @@ export type SseModelLoadingPayload = {
     data?: never,
 };
 
+/**
+ * Emitted before generation with the notes kitsu keeps on each message (by
+ * message id), so the frontend saves them with the chat.
+ */
+export type SseNotesPayload = {
+    type: 'chat:notes';
+    data: Record<string, {
+        kind: 'tools';
+        text: string;
+        disabledServers: string[];
+    }[]>;
+};
+
 /** Emitted when the LLM requests a tool call */
 export type SseToolCallStartPayload = {
     type: 'tool_call:start';
@@ -49,6 +62,8 @@ export type SseToolCallStartPayload = {
         id: string;
         name: string;
         arguments: string;
+        /** MCP server the tool belongs to */
+        server?: string;
     };
 };
 
@@ -61,6 +76,9 @@ export type SseToolCallResultPayload = {
         arguments: string;
         result: string;
         failed: boolean;
+        server?: string;
+        /** Machine-readable result (MCP structuredContent), for display */
+        structured?: Record<string, unknown>;
     };
 };
 
@@ -69,10 +87,14 @@ export type SseToolCallProgressPayload = {
     type: 'tool_call:progress';
     data: {
         id: string;       // tool call ID
-        name: string;     // tool name (e.g. 'webSearch')
-        progress: {       // tool-specific payload
-            type: string;
-            [key: string]: unknown;
+        name: string;     // tool name (e.g. 'web_fetch')
+        progress: {
+            type: 'progress';
+            message?: string;
+            progress: number;
+            total?: number;
+            /** Status of one page, from tools that load web pages */
+            page?: { url: string; status: string; outcome?: string };
         };
     };
 };
@@ -82,6 +104,7 @@ export type SseToolCallProgressPayload = {
 export type SseEventPayload =
     | SseCompletionPayload
     | SseTitlePayload
+    | SseNotesPayload
     | SseModelQueuedPayload
     | SseModelLoadingPayload
     | SseToolCallStartPayload

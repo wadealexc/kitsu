@@ -4,32 +4,6 @@ import path from 'path';
 
 import { z } from 'zod';
 
-const WebEnabledSchema = z.object({
-    enable: z.literal(true),
-    braveAPIKey: z.string().min(1, { message: "Brave API key is required if web is enabled" }),
-    blacklistHosts: z.array(z.string()).default([]),
-});
-
-/// `looseObject` used here in case of including `WebEnabledSchema` keys when not enabled
-const WebDisabledSchema = z.looseObject({
-    enable: z.literal(false),
-});
-
-const WebSchema = z.union([WebDisabledSchema, WebEnabledSchema]);
-
-/**
- * web search / webpage loader settings:
- *
- * ```json
- * "web": {
- *     "enable": boolean,                            // default: false
- *     "braveAPIKey": "your api key here",           // required if web.enable
- *     "blacklistHosts": string[],                   // default: []
- * }
- * ```
- */
-export type WebConfig = z.infer<typeof WebSchema>;
-
 const PortSchema = z.object({
     backend: z.object({
         port: z.coerce.number().default(8081),
@@ -111,7 +85,6 @@ export type LlamaManagerConfig = z.infer<typeof LlamaManagerSchema>;
 
 // Main config schema with strict mode (rejects extra fields)
 const ConfigSchema = z.object({
-    web: WebSchema,
     ports: PortSchema,
     logs: LogSchema,
     models: ModelSchema,

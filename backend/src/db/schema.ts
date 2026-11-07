@@ -225,3 +225,22 @@ export function validateUsername(username: string): string {
     // Normalize to lowercase for case-insensitive uniqueness  
     return trimmed.toLowerCase();  
 }  
+
+/* -------------------- MCP SERVER TABLE -------------------- */
+
+/**
+ * MCP servers an admin has added. Their tools are offered to every chat; users
+ * turn each server on or off per chat.
+ */
+export const mcpServers = sqliteTable('mcp_server', {
+    id: text('id').primaryKey().notNull(),
+    name: text('name').notNull().unique(),
+    url: text('url').notNull(),
+    // Sent as `Authorization: Bearer <token>`. Never returned by the API.
+    token: text('token'),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+
+    // Timestamps (unix seconds)
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+});

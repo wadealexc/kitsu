@@ -10,6 +10,9 @@ export class MockLlama {
 
     models: string[] = ['test model'];
 
+    /** Context size reported for every model; undefined turns off budget tracking. */
+    contextLength: number | undefined = undefined;
+
     /** All calls to completions(), in order. Reset with resetQueue(). */
     requests: LlamaRequest[] = [];
 
@@ -138,8 +141,14 @@ export class MockLlama {
             return {
                 name: name,
                 params: {},
+                contextLength: this.contextLength,
             }
         }
+    }
+
+    /** Roughly four characters per token. */
+    async tokenize(content: string, _model: string, _signal: AbortSignal): Promise<number> {
+        return Math.ceil(content.length / 4);
     }
 
     getAllModelNames(): string[] {

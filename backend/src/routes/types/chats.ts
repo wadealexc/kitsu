@@ -79,6 +79,10 @@ export const ToolCallBlockSchema = z.object({
     failed: z.boolean().default(false),
     done: z.boolean(),
     duration: z.number().optional(),
+    // MCP server the tool came from
+    server: z.string().optional(),
+    // Machine-readable result (MCP structuredContent), for display
+    structured: z.record(z.string(), z.unknown()).optional(),
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 
@@ -95,6 +99,19 @@ export const MessageBlockSchema = z.discriminatedUnion('type', [
     ContentBlockSchema,
 ]);
 export type MessageBlock = z.infer<typeof MessageBlockSchema>;
+
+/**
+ * A note kitsu adds to a user message for the model, which the user doesn't see,
+ * e.g. that tools were turned off. Saved with the message so later requests
+ * send exactly the same text and the prompt cache stays valid.
+ */
+export const MessageNoteSchema = z.object({
+    kind: z.literal('tools'),
+    text: z.string(),
+    // MCP server ids turned off when the note was written
+    disabledServers: z.array(z.string()),
+});
+export type MessageNote = z.infer<typeof MessageNoteSchema>;
 
 // Individual chat message in history
 export const ChatMessageSchema = z.object({
@@ -113,6 +130,7 @@ export const ChatMessageSchema = z.object({
     done: z.boolean().default(false),
     blocks: z.array(MessageBlockSchema).optional(),
     error: z.union([z.boolean(), z.object({ content: z.string() })]).optional(),
+    notes: z.array(MessageNoteSchema).optional(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
@@ -127,7 +145,10 @@ export type ChatHistory = z.infer<typeof ChatHistorySchema>;
 export interface ChatObject {
     title: string;
     model: string;
+    /** @deprecated replaced by disabledToolServers */
     webSearchEnabled?: boolean;
+    /** MCP server ids the user turned off for this chat */
+    disabledToolServers?: string[];
     systemPrompt?: string;
     history: ChatHistory;
     timestamp: number;
@@ -139,6 +160,7 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     history: ChatHistorySchema,
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
+    disabledToolServers: z.array(z.string()).optional(),
     systemPrompt: z.string().optional(),
 }).passthrough();
 
@@ -148,6 +170,7 @@ export const ChatObjectUpdateSchema = z.object({
     history: ChatHistorySchema,
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
+    disabledToolServers: z.array(z.string()),
     systemPrompt: z.string(),
 }).partial();
 

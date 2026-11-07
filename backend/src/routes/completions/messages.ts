@@ -2,6 +2,7 @@ import type { Model } from '../../db/index.js';
 import { db, Folders } from '../../db/index.js';
 import * as proto from '../../protocol/index.js';
 import type * as Types from '../types/index.js';
+import { renderNotes } from './notes.js';
 
 /* -------------------- SYSTEM PROMPT -------------------- */
 
@@ -131,7 +132,7 @@ export function getLastUserMessage(history: Types.ChatHistory): Types.ChatMessag
  * Walks the parentId chain from messageId back to the root,
  * returning messages in order from root to messageId.
  */
-function createMessagesList(
+export function createMessagesList(
     history: Types.ChatHistory,
     messageId: string | null | undefined,
 ): Types.ChatMessage[] {
@@ -217,6 +218,8 @@ function expandMessageBlocks(
  * Images use dataUrl directly; text files use content directly.
  */
 function buildUserMessage(message: Types.ChatMessage): proto.UserMessage[] {
+    const text = message.content + renderNotes(message.notes);
+
     const imageParts: proto.ContentPart[] = message.files
         .filter((f): f is Extract<Types.ChatMessageFile, { kind: 'image' }> => f.kind === 'image')
         .map(f => ({ type: 'image_url', image_url: { url: f.dataUrl } }));
@@ -226,11 +229,11 @@ function buildUserMessage(message: Types.ChatMessage): proto.UserMessage[] {
         .map(f => ({ type: 'text', text: `[File: ${f.name}]\n${f.content}` }));
 
     if (imageParts.length === 0 && textParts.length === 0) {
-        return [{ role: 'user', content: message.content }];
+        return [{ role: 'user', content: text }];
     }
 
     return [{
         role: 'user',
-        content: [{ type: 'text', text: message.content }, ...imageParts, ...textParts],
+        content: [{ type: 'text', text }, ...imageParts, ...textParts],
     }];
 }

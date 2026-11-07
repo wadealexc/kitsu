@@ -33,7 +33,7 @@ const router = Router();
 
 const MAX_TOOL_ROUNDS = 100;
 
-// Context budget threshold: stop offering tools when conversation reaches this fraction of context
+// Context budget threshold: tool calls are refused once the conversation reaches this fraction of context
 const CONTEXT_THRESHOLD_PCT = 0.9;
 
 /**
@@ -100,9 +100,15 @@ router.post('/custom-completions', requireAuth, async (
     const blocks: Types.MessageBlock[] = [];
     const roundLogs: RoundLog[] = [];
 
-    // Create a per-request session for context budget tracking and webSearch state
+    // Send the notes on each message back, so the frontend keeps them with the chat
+    const notes = Object.fromEntries(Object.values(ctx.chat.history.messages)
+        .filter(m => m.notes?.length)
+        .map(m => [m.id, m.notes!]));
+    emitSseEvent(res, ctx.chatId, { type: 'chat:notes', data: notes });
+
+    // Per-request session for context budget tracking and tools turned off
     const modelInfo = await llama.getModelInfo(ctx.resolvedModel);
-    const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, body.messages);
+    const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, ctx.disabledServers);
 
     try {
         let prevToolExec: ToolExecResult | undefined;
@@ -110,11 +116,8 @@ router.post('/custom-completions', requireAuth, async (
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
-            // Filter tools based on session state (e.g. budget exhausted)
-            const roundBody = toolRegistry.filterToolsForRound(body, session);
-
             const stream = (await llama.completions({
-                body: roundBody,
+                body,
                 signal: ctrl.signal,
                 emit: {
                     onQueue: emitCallback(res, ctx.chatId, { type: 'model:queued' }),
@@ -147,8 +150,8 @@ router.post('/custom-completions', requireAuth, async (
 
             totalUsage = accumulateUsage(totalUsage, result.value);
 
-            // Update context budget from llama-server timings so the next round
-            // can decide whether to strip tools
+            // Update context budget from llama-server timings. Tools stay listed when it
+            // runs out (removing them would break the prompt cache); calls get an error instead.
             const timings = result.value.timings;
             if (timings && session.contextLimit !== undefined) {
                 const conversationTokens = timings.cache_n + timings.prompt_n + timings.predicted_n;

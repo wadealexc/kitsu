@@ -9,7 +9,9 @@ import { readConfig } from './config.js';
 import * as middleware from './server/middleware.js';
 import { LlamaManagerAdapter } from './llama/llamaManagerAdapter.js';
 import type { Llama } from './llama/types.js';
-import * as Browser from './browser/browser.js';
+import { McpManager } from './mcp/manager.js';
+import { migrate } from 'drizzle-orm/libsql/migrator';
+import { db, McpServers } from './db/index.js';
 import { ToolRegistry } from './tools/registry.js';
 import authsRouter from './routes/auths.js';
 import configsRouter from './routes/configs.js';
@@ -21,11 +23,15 @@ import foldersRouter from './routes/folders.js';
 import filesRouter from './routes/files.js';
 import versionRouter from './routes/version.js';
 import healthRouter from './routes/health.js';
+import mcpServersRouter from './routes/mcpServers.js';
 
 /* -------------------- CONFIG -------------------- */
 
-const CONFIG_PATH = '../config.json';
+const CONFIG_PATH = process.env.KITSU_CONFIG ?? '../config.json';
 const cfg = await readConfig(CONFIG_PATH);
+
+// Bring the database schema up to date (migrations in ./drizzle)
+await migrate(db, { migrationsFolder: './drizzle' });
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const logFilePrefix = `llama-${timestamp}`
@@ -50,30 +56,24 @@ app.use(cookieParser());
 app.use(express.json({ type: 'application/json', limit: '50mb' }));
 app.use('/static', express.static(path.resolve('static')));
 
-/* -------------------- LLAMA, BROWSER, TOOL SERVER -------------------- */
-
-// If enabled, start web browser and web browser API
-let browser: Browser.Browser | undefined = undefined;
-if (cfg.web.enable) {
-    browser = await Browser.init(
-        cfg.web.braveAPIKey,
-        cfg.web.blacklistHosts,
-    );
-}
+/* -------------------- LLAMA, MCP SERVERS, TOOLS -------------------- */
 
 const llama: Llama = new LlamaManagerAdapter({
     managerUrl: cfg.llamaManager.url,
     models: cfg.models,
 });
 
-// Initialize tool registry
-const tools = new ToolRegistry({ browser, llama });
+// Connect to the MCP servers an admin has added; their tools are what models can call
+const mcp = new McpManager();
+await mcp.sync(await McpServers.listServers(db));
+const tools = new ToolRegistry(mcp, llama);
 
 /* -------------------- APP STATE -------------------- */
 
 // Store application state in app.locals for access in routers
 app.locals.llama = llama;
 app.locals.tools = tools;
+app.locals.mcp = mcp;
 
 /* -------------------- ROUTES - API -------------------- */
 
@@ -85,6 +85,7 @@ app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/chats', chatsRouter);
 app.use('/api/v1/folders', foldersRouter);
 app.use('/api/v1/files', filesRouter);
+app.use('/api/v1/mcp', mcpServersRouter);
 app.use('/api/version', versionRouter);
 app.use('/health', healthRouter);
 
@@ -128,12 +129,8 @@ async function shutdown(signal: string) {
     console.log(`received shutdown signal: ${signal}`);
 
     await Promise.allSettled([
-        // 1. Close browser if it's running
-        new Promise<void>(async (resolve) => {
-            try { if (browser) await browser.shutdown() }
-            catch (err) { console.error(`shutdown: browser.shutdown failed: `, err) }
-            finally { resolve() }
-        }),
+        // 1. Close MCP connections
+        mcp.close().catch(err => console.error(`shutdown: mcp.close failed: `, err)),
         // 2. Write chat logs to file
         new Promise<void>(async (resolve) => {
             if (!logger) {
