@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { uuid } from '$lib/utils/uuid';
     import { decodeHtmlEntities as decode } from '$lib/utils';
 
     import dayjs from '$lib/dayjs';
@@ -49,7 +50,7 @@
 
     $: onChange(open);
 
-    const collapsibleId = crypto.randomUUID();
+    const collapsibleId = uuid();
 
     function parseJSONString(str: string): any {
         try {

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { uuid } from '$lib/utils/uuid';
     import { toast } from 'svelte-sonner';
 
     import { onDestroy, onMount, tick } from 'svelte';
@@ -553,7 +554,7 @@
             );
         } else if (target === 'new-model' && $selectedModel) {
             const newModel = await createNewModel(localStorage.token, {
-                id: crypto.randomUUID(),
+                id: uuid(),
                 baseModelId: $selectedModel.baseModelId,
                 name: `${$selectedModel.name} (Custom)`,
                 meta: $selectedModel.meta,
@@ -638,9 +639,9 @@
         // First message in a new conversation - allocate a chat ID
         if (!$chatId) {
             if ($temporaryChatEnabled) {
-                chatId.set(`local:${crypto.randomUUID()}`);
+                chatId.set(`local:${uuid()}`);
             } else {
-                const newId = crypto.randomUUID();
+                const newId = uuid();
                 chatId.set(newId);
                 window.history.replaceState(null, '', `/c/${newId}`);
 

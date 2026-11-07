@@ -92,6 +92,8 @@ router.post('/custom-completions', requireAuth, async (
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    // Stream through reverse proxies (nginx) instead of buffering
+    res.setHeader('X-Accel-Buffering', 'no');
     res.status(200);
     res.flushHeaders();
 
@@ -293,6 +295,9 @@ router.post('/completions', async (
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+    // Stream through reverse proxies (nginx) instead of buffering
+    res.setHeader('X-Accel-Buffering', 'no');
         res.status(200);
         res.flushHeaders();
         stream.pipe(res);

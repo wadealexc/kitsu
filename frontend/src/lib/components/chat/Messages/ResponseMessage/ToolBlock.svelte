@@ -15,13 +15,13 @@
     import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
     import Spinner from '$lib/components/common/Spinner.svelte';
     import Modal from '$lib/components/common/Modal.svelte';
+    import Tooltip from '$lib/components/common/Tooltip.svelte';
 
     export let block: ToolCallBlock;
     export let progress: ToolProgressState | undefined = undefined;
 
     // Open while running; closed when reloaded from history.
     let open: boolean = !block.done;
-    let showResult = false;
 
     $: isLive = !block.done;
 
@@ -65,20 +65,33 @@
               ? args.query
               : undefined;
 
-    // Pages: live from progress; afterwards from the result, falling back to the order they started
-    let pages: UrlStatus[] = [];
+    // A page pill. `range` is where the page's text sits in the result, if the server says.
+    type Page = UrlStatus & { title?: string; range?: [number, number] };
+
+    // Pages: from the result once it's in, live from progress until then
+    let pages: Page[] = [];
     $: {
         const finished = (Array.isArray(structured.pages) ? structured.pages : []).map(record);
-        if (isLive && progress && progress.pages.length > 0) {
-            pages = progress.pages;
-        } else if (finished.length > 0) {
+        if (finished.length > 0) {
             pages = finished
                 .filter((p) => typeof p.url === 'string')
-                .map((p): UrlStatus => {
+                .map((p): Page => {
                     const url = (typeof p.finalUrl === 'string' ? p.finalUrl : p.url) as string;
                     const ok = p.outcome === 'ok' || p.outcome === 'low_quality';
-                    return { url, hostname: hostnameOf(url), status: ok ? 'loaded' : 'failed' };
+                    const range = Array.isArray(p.textRange) && p.textRange.length === 2 &&
+                        p.textRange.every((n) => typeof n === 'number')
+                        ? (p.textRange as [number, number])
+                        : undefined;
+                    return {
+                        url,
+                        hostname: hostnameOf(url),
+                        status: ok ? 'loaded' : 'failed',
+                        ...(typeof p.title === 'string' && p.title ? { title: p.title } : {}),
+                        ...(range ? { range } : {})
+                    };
                 });
+        } else if (isLive && progress && progress.pages.length > 0) {
+            pages = progress.pages;
         } else if (!isLive && Array.isArray(args.urls)) {
             pages = args.urls
                 .filter((u): u is string => typeof u === 'string')
@@ -116,6 +129,22 @@
           )
         : 0;
 
+    // The page whose text is open, or 'raw' for the whole result
+    let viewing: Page | 'raw' | null = null;
+    let showViewer = false;
+    const view = (what: Page | 'raw') => {
+        viewing = what;
+        showViewer = true;
+    };
+
+    /** One page's text: its slice of the result, or all of it for a single page. */
+    const pageContent = (page: Page): string => {
+        const result = block.result ?? '';
+        if (page.range) return result.slice(page.range[0], page.range[1]).trim();
+        return pages.length === 1 ? result : '';
+    };
+    const canOpen = (page: Page) => !!block.result && !!pageContent(page);
+
     const pillClass: Record<UrlStatus['status'], string> = {
         loaded: 'bg-green-100 dark:bg-green-900/40 !text-green-700 dark:!text-green-300 hover:bg-green-200 dark:hover:bg-green-900/70',
         loading: 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 animate-pulse',
@@ -123,8 +152,9 @@
     };
 </script>
 
+<div class="group flex items-center gap-1.5 max-w-full">
 <div
-    class="w-fit max-w-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
+    class="w-fit min-w-0 max-w-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
     role="button"
     tabindex="0"
     on:pointerup={() => (open = !open)}
@@ -147,6 +177,24 @@
             {/if}
         </div>
     </div>
+</div>
+{#if block.result && !isLive}
+    <!-- Shown on hover; on touch screens (no hover), while the block is open -->
+    <Tooltip content="View raw" placement="top">
+        <button
+            type="button"
+            aria-label="View raw"
+            class="shrink-0 p-0.5 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 {open
+                ? '[@media(hover:none)]:opacity-100'
+                : '[@media(hover:none)]:hidden'}"
+            on:click|stopPropagation={() => view('raw')}
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="size-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+            </svg>
+        </button>
+    </Tooltip>
+{/if}
 </div>
 
 {#if open}
@@ -174,20 +222,19 @@
         {#if pages.length > 0}
             <div class="flex flex-wrap gap-1 items-center">
                 {#each pages as page (page.url)}
-                    {#if page.status === 'loading'}
-                        <span class="text-xs rounded px-1.5 py-0.5 font-medium {pillClass.loading}">
+                    {#if page.status === 'loading' || !canOpen(page)}
+                        <span class="text-xs rounded px-1.5 py-0.5 font-medium {pillClass[page.status]}">
                             {hostnameOf(page.url)}
                         </span>
                     {:else}
-                        <a
-                            href={page.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={page.status === 'failed' ? `Couldn't load ${page.url}` : page.url}
-                            class="text-xs rounded px-1.5 py-0.5 font-medium !no-underline transition-colors duration-300 {pillClass[page.status]}"
+                        <button
+                            type="button"
+                            title={page.title ?? page.url}
+                            class="text-xs rounded px-1.5 py-0.5 font-medium transition-colors duration-300 cursor-pointer {pillClass[page.status]}"
+                            on:click={() => view(page)}
                         >
                             {hostnameOf(page.url)}
-                        </a>
+                        </button>
                     {/if}
                 {/each}
             </div>
@@ -211,32 +258,37 @@
             </div>
         {/if}
 
-        {#if block.result && !isLive}
-            <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-                {#if block.server}<span>{block.server}</span><span aria-hidden="true">·</span>{/if}
-                <button
-                    type="button"
-                    class="hover:text-gray-700 dark:hover:text-gray-300 hover:underline"
-                    on:click={() => (showResult = true)}>What the model got</button
-                >
-            </div>
-        {/if}
     </div>
 {/if}
 
-{#if showResult}
-    <Modal size="lg" bind:show={showResult}>
+{#if showViewer && viewing}
+    <Modal size="lg" bind:show={showViewer}>
         <div class="flex flex-col">
             <div
                 class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800"
             >
-                <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
-                    {block.name}{block.server ? ` · ${block.server}` : ''}
-                </div>
+                {#if viewing === 'raw'}
+                    <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+                        {block.name}{block.server ? ` · ${block.server}` : ''}
+                    </div>
+                {:else}
+                    <a
+                        href={viewing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline min-w-0"
+                    >
+                        <span class="truncate">{viewing.url}</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-3.5 shrink-0">
+                            <path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5z" clip-rule="evenodd" />
+                            <path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 001.06.053L16.5 4.44v2.81a.75.75 0 001.5 0v-4.5a.75.75 0 00-.75-.75h-4.5a.75.75 0 000 1.5h2.553l-9.056 8.194a.75.75 0 00-.053 1.06z" clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                {/if}
                 <button
                     aria-label="Close"
                     class="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-                    on:click={() => (showResult = false)}
+                    on:click={() => (showViewer = false)}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-4">
                         <path
@@ -246,12 +298,12 @@
                 </button>
             </div>
             <div class="max-h-[70vh] overflow-y-auto px-5 py-4 flex flex-col gap-3">
-                {#if block.arguments && block.arguments !== '{}'}
+                {#if viewing === 'raw' && block.arguments && block.arguments !== '{}'}
                     <pre
                         class="whitespace-pre-wrap break-words text-xs text-gray-500 dark:text-gray-400 font-mono">{block.arguments}</pre>
                 {/if}
                 <pre
-                    class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300 font-sans">{block.result}</pre>
+                    class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300 font-sans">{viewing === 'raw' ? block.result : pageContent(viewing)}</pre>
             </div>
         </div>
     </Modal>

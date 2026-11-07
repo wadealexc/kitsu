@@ -69,7 +69,10 @@
 
         clearChatInputStorage();
         models.set(await getModels(localStorage.token));
-        toolServers.set(await getToolServers(localStorage.token).catch(() => []));
+        // Tool servers load in the background; the page doesn't wait for them
+        getToolServers(localStorage.token)
+            .then((servers) => toolServers.set(servers))
+            .catch((err) => console.error(`failed to load tool servers: ${err}`));
 
         if ($page.url.searchParams.get('temporary-chat') === 'true') {
             temporaryChatEnabled.set(true);

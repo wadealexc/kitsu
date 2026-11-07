@@ -1,3 +1,4 @@
+import { uuid } from '$lib/utils/uuid';
 import type { ChatHistory, ChatMessage } from '@backend/routes/types';
 
 /**
@@ -11,7 +12,7 @@ export function appendMessage(
     history: ChatHistory,
     message: Omit<ChatMessage, 'id' | 'childrenIds' | 'timestamp'>
 ): ChatMessage {
-    const id = crypto.randomUUID();
+    const id = uuid();
     const fullMessage: ChatMessage = {
         ...message,
         id,

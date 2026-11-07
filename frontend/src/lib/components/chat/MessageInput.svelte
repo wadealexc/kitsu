@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { uuid } from '$lib/utils/uuid';
     import { toast } from 'svelte-sonner';
 
     import { onMount, tick, createEventDispatcher, onDestroy } from 'svelte';
@@ -162,7 +163,7 @@
                 continue;
             }
 
-            const pendingId = crypto.randomUUID();
+            const pendingId = uuid();
             pendingFiles = [...pendingFiles, { id: pendingId, name: file.name, size: file.size }];
 
             try {

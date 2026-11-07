@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { uuid } from '$lib/utils/uuid';
     import { toast } from 'svelte-sonner';
 
     import { goto } from '$app/navigation';
@@ -135,7 +136,7 @@
             validName = `${validName} ${i}`;
         }
         // Add a dummy folder to the list to show the user that the folder is being created
-        const tempId = crypto.randomUUID();
+        const tempId = uuid();
         folders = {
             ...folders,
             [tempId]: {
