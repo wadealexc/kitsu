@@ -30,3 +30,5 @@ StandardInput=null
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=llama-manager
+[Install]
+WantedBy=multi-user.target
