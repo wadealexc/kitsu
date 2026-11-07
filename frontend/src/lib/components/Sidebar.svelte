@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { get } from 'svelte/store';
     import { uuid } from '$lib/utils/uuid';
     import { toast } from 'svelte-sonner';
 
@@ -168,13 +169,16 @@
     const initChatList = async (): Promise<void> => {
         // Reset pagination variables
         console.log('initChatList');
-        currentChatPage.set(1);
+        // Use the page number directly: this runs inside store subscriptions (e.g. opening
+        // the sidebar), where $currentChatPage still holds the old page until they finish.
+        const page = 1;
+        currentChatPage.set(page);
         allChatsLoaded = false;
         scrollPaginationEnabled.set(false);
 
         initFolders();
 
-        const _chats = await getChatList(localStorage.token, $currentChatPage);
+        const _chats = await getChatList(localStorage.token, page);
         await chats.set(_chats);
 
         // Enable pagination
@@ -184,11 +188,12 @@
     const loadMoreChats = async (): Promise<void> => {
         chatListLoading = true;
 
-        currentChatPage.set($currentChatPage + 1);
+        const page = get(currentChatPage) + 1;
+        currentChatPage.set(page);
 
         let newChatList = [];
 
-        newChatList = await getChatList(localStorage.token, $currentChatPage);
+        newChatList = await getChatList(localStorage.token, page);
 
         // once the bottom of the list has been reached (no results) there is no need to continue querying
         allChatsLoaded = newChatList.length === 0;

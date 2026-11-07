@@ -1059,7 +1059,7 @@
 
             if (res) {
                 currentChatPage.set(1);
-                chats.set(await getChatList(localStorage.token, $currentChatPage));
+                chats.set(await getChatList(localStorage.token, 1));
 
                 toast.success('Chat moved successfully');
             }
@@ -1248,7 +1248,7 @@
                                                 chats.set(
                                                     await getChatList(
                                                         localStorage.token,
-                                                        $currentChatPage
+                                                        1
                                                     )
                                                 );
                                             }}
@@ -1257,7 +1257,7 @@
                                                 chats.set(
                                                     await getChatList(
                                                         localStorage.token,
-                                                        $currentChatPage
+                                                        1
                                                     )
                                                 );
                                                 selectedFolder.set(null);
