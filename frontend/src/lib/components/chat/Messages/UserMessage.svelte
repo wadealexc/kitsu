@@ -1,7 +1,8 @@
 <script lang="ts">
     import dayjs from 'dayjs';
     import { toast } from 'svelte-sonner';
-    import { tick } from 'svelte';
+    import { onMount, tick } from 'svelte';
+    import { takeEditDraft } from '$lib/utils/editDraft';
     import { user as _user, editScrollPosition } from '$lib/stores';
     import { copyToClipboard as _copyToClipboard, dataUrlToBlobUrl, formatDate } from '$lib/utils';
     import type { ChatMessage, ChatMessageFile } from '@backend/routes/types';
@@ -47,6 +48,16 @@
             toast.success('Copying to clipboard was successful!');
         }
     };
+
+    // Reopen an edit that was in progress when iOS discarded the app (editDraft.ts)
+    onMount(async () => {
+        const saved = takeEditDraft(message.id);
+        if (saved === null) return;
+        edit = true;
+        editedFiles = [...message.files];
+        await tick();
+        editorRef?.activate(saved, { focus: false });
+    });
 
     const editMessageHandler = async () => {
         const container = document.getElementById('messages-container');
@@ -126,6 +137,7 @@
             {#if edit === true}
                 <MessageEditor
                     bind:this={editorRef}
+                    messageId={message.id}
                     content={message.content}
                     primaryLabel="Send"
                     secondaryLabel="Save"

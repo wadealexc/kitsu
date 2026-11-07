@@ -13,6 +13,7 @@
     } from '@backend/routes/types';
 
     import { copyToClipboard as _copyToClipboard, dataUrlToBlobUrl, sanitizeResponseContent } from '$lib/utils';
+    import { takeEditDraft } from '$lib/utils/editDraft';
     import type { ToolProgressState } from '$lib/apis/completions';
 
     import Name from './ResponseMessage/Name.svelte';
@@ -97,6 +98,15 @@
             toast.success('Copying to clipboard was successful!');
         }
     };
+
+    // Reopen an edit that was in progress when iOS discarded the app (editDraft.ts)
+    onMount(async () => {
+        const saved = takeEditDraft(message.id);
+        if (saved === null) return;
+        edit = true;
+        await tick();
+        editorRef?.activate(saved, { focus: false });
+    });
 
     const editMessageHandler = async () => {
         const container = document.getElementById('messages-container');
@@ -227,6 +237,7 @@
                         {#if edit === true}
                             <MessageEditor
                                 bind:this={editorRef}
+                                messageId={message.id}
                                 content={message.content}
                                 primaryLabel="Save"
                                 secondaryLabel="Save As Copy"

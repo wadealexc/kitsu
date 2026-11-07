@@ -2,8 +2,9 @@
     import { tick, createEventDispatcher, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
     import { isEditingMessage, mobile } from '$lib/stores';
-    import { expectedKeyboardViewportHeight, isIOS, keyboardOpen } from '$lib/utils/iosKeyboard';
+    import { expectedKeyboardViewportHeight, focusWithoutPan, isIOS, keyboardOpen } from '$lib/utils/iosKeyboard';
     import { portal } from '$lib/utils/portal';
+    import { clearEditDraft, saveEditDraft } from '$lib/utils/editDraft';
 
     export let content: string = '';
     export let primaryLabel: string = 'Save';
@@ -11,6 +12,8 @@
     export let containerClass: string = 'bg-gray-50 dark:bg-gray-800 rounded-3xl px-5 py-3 my-2';
     export let scrollContainer: boolean = false;
     export let textareaClass: string = '';
+    /** The message being edited: lets the edit survive iOS discarding the app. */
+    export let messageId: string | null = null;
 
     const dispatch = createEventDispatcher<{
         confirm: { content: string };
@@ -22,6 +25,7 @@
     let textAreaElement: HTMLTextAreaElement;
     let buttonBarElement: HTMLDivElement;
     let containerElement: HTMLDivElement;
+    let sheetElement: HTMLDivElement;
 
     /**
      * On phones the editor is a full-screen sheet rather than part of the message
@@ -31,7 +35,20 @@
      */
     const sheet = get(mobile);
 
-    const endEdit = () => isEditingMessage.set(false);
+    // If the app is hidden mid-edit, keep the edit so it can reopen after a restart
+    const onVisibilityChange = () => {
+        if (document.visibilityState === 'hidden' && messageId && get(isEditingMessage)) {
+            saveEditDraft(messageId, editedContent);
+        }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // Closing the editor (save, cancel, leaving the chat) ends the edit for good
+    const endEdit = () => {
+        isEditingMessage.set(false);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        if (messageId && document.visibilityState === 'visible') clearEditDraft(messageId);
+    };
     onDestroy(endEdit);
 
     $: isDirty = editedContent !== content;
@@ -105,19 +122,27 @@
         textAreaElement.scrollTop = textAreaElement.scrollHeight;
     }
 
-    export async function activate(initialContent?: string) {
+    /**
+     * Opens the editor. `focus: false` shows it without focusing, e.g. when
+     * reopening an edit after a restart, where iOS wouldn't open a keyboard anyway.
+     */
+    export async function activate(initialContent?: string, options: { focus?: boolean } = {}) {
         isEditingMessage.set(true);
         editedContent = initialContent ?? content;
 
         if (sheet) {
-            // The cursor at the start, near the top of the sheet: above where the
-            // keyboard will be, so iOS doesn't slide anything to reveal it.
+            // The cursor at the end. That's below where the keyboard will be, so the
+            // sheet is moved aside while it opens (iosKeyboard.ts); nothing around
+            // the sheet scrolls, so that's safe here.
             await tick();
-            if (textAreaElement) {
-                textAreaElement.setSelectionRange(0, 0);
-                textAreaElement.scrollTop = 0;
-                textAreaElement.focus({ preventScroll: true });
-            }
+            if (!textAreaElement) return;
+            const end = textAreaElement.value.length;
+            textAreaElement.setSelectionRange(end, end);
+            textAreaElement.scrollTop = textAreaElement.scrollHeight;
+            if (options.focus === false) return;
+            await focusWithoutPan(textAreaElement, { moved: sheetElement });
+            textAreaElement.setSelectionRange(end, end);
+            textAreaElement.scrollTop = textAreaElement.scrollHeight;
             return;
         }
 
@@ -180,6 +205,7 @@
 {#if sheet}
     <div
         use:portal
+        bind:this={sheetElement}
         class="fixed inset-x-0 top-0 z-[60] flex flex-col bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
         style="height: var(--app-height, 100dvh); padding-top: env(safe-area-inset-top);"
         role="dialog"

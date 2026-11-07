@@ -1,6 +1,7 @@
 <script lang="ts">
     import { reloadChatList } from '$lib/utils/chatList';
     import { uuid } from '$lib/utils/uuid';
+    import { applyResumePosition, saveResumePosition, takeResumePosition } from '$lib/utils/resumePosition';
     import { toast } from 'svelte-sonner';
 
     import { onDestroy, onMount, tick } from 'svelte';
@@ -181,11 +182,23 @@
             return;
         }
 
-        const storageChatInput = sessionStorage.getItem(`chat-input-${chatIdProp}`);
+        const storageChatInput = localStorage.getItem(`chat-input-${chatIdProp}`);
 
         await tick();
         loading = false;
-        window.setTimeout(() => scrollToBottom(), 0);
+
+        // Back after iOS discarded the app? Return to where you were, not the bottom.
+        const resume = takeResumePosition();
+        if (resume) {
+            suppressScrollToBottom = true;
+            const restore = () => messagesContainerElement && applyResumePosition(messagesContainerElement, resume);
+            window.setTimeout(restore, 0);
+            // Again as messages finish rendering (code highlighting, images) and shift
+            for (const ms of [300, 1000]) window.setTimeout(restore, ms);
+            window.setTimeout(() => (suppressScrollToBottom = false), 1500);
+        } else {
+            window.setTimeout(() => scrollToBottom(), 0);
+        }
 
         await tick();
 
@@ -269,7 +282,7 @@
             }
         });
 
-        const storageChatInput = sessionStorage.getItem(
+        const storageChatInput = localStorage.getItem(
             `chat-input${chatIdProp ? `-${chatIdProp}` : ''}`
         );
 
@@ -309,10 +322,22 @@
         chatInput?.focus();
 
         window.visualViewport?.addEventListener('resize', onViewportResize);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('pagehide', onPageHide);
     });
+
+    // Note where the chat is when the app goes to the background (see resumePosition.ts)
+    const onVisibilityChange = () => {
+        if (document.visibilityState !== 'hidden') return;
+        flushDraft();
+        if (messagesContainerElement && $chatId) saveResumePosition(messagesContainerElement);
+    };
+    const onPageHide = () => onVisibilityChange();
 
     onDestroy(() => {
         window.visualViewport?.removeEventListener('resize', onViewportResize);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('pagehide', onPageHide);
         try {
             pageUnsubscribe();
             selectedFolderUnsubscribe();
@@ -344,7 +369,7 @@
                 candidateId = $selectedFolder.data.modelId;
             } else if (sessionStorage.selectedModel) {
                 candidateId = sessionStorage.selectedModel;
-                sessionStorage.removeItem('selectedModel');
+                localStorage.removeItem('selectedModel');
             } else if ($settings.model) {
                 candidateId = $settings.model;
             }
@@ -1022,6 +1047,21 @@
         disabledToolServers: string[];
     };
 
+    // Drafts live in localStorage, which survives iOS discarding the app (session
+    // storage doesn't), and are written at once when the app is hidden.
+    let pendingDraft: { key: string; draft: Draft } | null = null;
+    const flushDraft = () => {
+        if (saveDraftTimeout) clearTimeout(saveDraftTimeout);
+        saveDraftTimeout = null;
+        if (!pendingDraft) return;
+        try {
+            localStorage.setItem(pendingDraft.key, JSON.stringify({ ...pendingDraft.draft, savedAt: Date.now() }));
+        } catch {
+            /* storage full: the draft is lost, as before */
+        }
+        pendingDraft = null;
+    };
+
     const saveDraft = async (draft: Draft, chatId: string | null = null) => {
         if (saveDraftTimeout) {
             clearTimeout(saveDraftTimeout);
@@ -1032,14 +1072,11 @@
             draft.prompt.length > 0 &&
             draft.prompt.length < MAX_DRAFT_LENGTH
         ) {
-            saveDraftTimeout = setTimeout(async () => {
-                sessionStorage.setItem(
-                    `chat-input${chatId ? `-${chatId}` : ''}`,
-                    JSON.stringify(draft)
-                );
-            }, 500);
+            pendingDraft = { key: `chat-input${chatId ? `-${chatId}` : ''}`, draft };
+            saveDraftTimeout = setTimeout(flushDraft, 500);
         } else {
-            sessionStorage.removeItem(`chat-input${chatId ? `-${chatId}` : ''}`);
+            pendingDraft = null;
+            localStorage.removeItem(`chat-input${chatId ? `-${chatId}` : ''}`);
         }
     };
 
@@ -1047,7 +1084,7 @@
         if (saveDraftTimeout) {
             clearTimeout(saveDraftTimeout);
         }
-        sessionStorage.removeItem(`chat-input${chatId ? `-${chatId}` : ''}`);
+        localStorage.removeItem(`chat-input${chatId ? `-${chatId}` : ''}`);
     };
 
     const moveChatHandler = async (chatId: string, folderId: string) => {

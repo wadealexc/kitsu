@@ -14,11 +14,19 @@
 
     let loaded = false;
 
+    /** Drops drafts (Chat.svelte keeps them in localStorage) untouched for a week. */
+    const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
     const clearChatInputStorage = () => {
-        const chatInputKeys = Object.keys(localStorage).filter((key) =>
-            key.startsWith('chat-input')
-        );
-        chatInputKeys.forEach((key) => localStorage.removeItem(key));
+        for (const key of Object.keys(localStorage).filter((k) => k.startsWith('chat-input'))) {
+            try {
+                const savedAt = JSON.parse(localStorage.getItem(key) ?? '{}').savedAt;
+                if (typeof savedAt !== 'number' || Date.now() - savedAt > DRAFT_MAX_AGE_MS) {
+                    localStorage.removeItem(key);
+                }
+            } catch {
+                localStorage.removeItem(key);
+            }
+        }
     };
 
     // CSS 100dvh does NOT account for the virtual keyboard on iOS.

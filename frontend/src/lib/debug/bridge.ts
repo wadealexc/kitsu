@@ -253,14 +253,19 @@ export function startDebugBridge(): void {
     window.addEventListener('error', (e) => record('error', { message: e.message, source: e.filename, line: e.lineno, error: e.error }));
     window.addEventListener('unhandledrejection', (e) => record('unhandledrejection', e.reason));
 
-    // App lifecycle: the iOS suspend/resume story
+    // App lifecycle: the iOS suspend/resume story. Each event also notes where the
+    // chat was scrolled, to see what a resume keeps.
+    const where = () => {
+        const list = document.getElementById('messages-container');
+        return { path: location.pathname, scrollTop: list ? Math.round(list.scrollTop) : null, scrollHeight: list?.scrollHeight ?? null };
+    };
     document.addEventListener('visibilitychange', () => {
-        record('visibilitychange', document.visibilityState);
+        record('visibilitychange', { state: document.visibilityState, ...where() });
         if (document.visibilityState === 'visible') connect();
     });
-    window.addEventListener('pagehide', (e) => record('pagehide', { persisted: e.persisted }));
+    window.addEventListener('pagehide', (e) => record('pagehide', { persisted: e.persisted, ...where() }));
     window.addEventListener('pageshow', (e) => {
-        record('pageshow', { persisted: e.persisted });
+        record('pageshow', { persisted: e.persisted, ...where() });
         connect();
     });
     document.addEventListener('freeze', () => record('freeze'));
@@ -297,5 +302,7 @@ export function startDebugBridge(): void {
     document.addEventListener('focusout', (e) => record('focusout', e.target));
 
     record('start', { url: location.href });
+    // Where the chat ends up once it has loaded after a (re)start
+    setTimeout(() => record('settled', where()), 3000);
     connect();
 }

@@ -141,6 +141,14 @@ export function focusWithoutPan(
 /** A non-interactive copy of `el`, drawn at `rect` above the page. */
 function drawGhost(el: HTMLElement, rect: DOMRect): HTMLElement {
     const ghost = el.cloneNode(true) as HTMLElement;
+    // Clones keep a field's initial value, not what's been typed, and not its scroll
+    const fields = el.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>('textarea, input');
+    ghost.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>('textarea, input').forEach((field, i) => {
+        const source = fields[i];
+        if (!source) return;
+        field.value = source.value;
+        requestAnimationFrame(() => (field.scrollTop = source.scrollTop));
+    });
     ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
     ghost.removeAttribute('id');
     ghost.setAttribute('aria-hidden', 'true');
