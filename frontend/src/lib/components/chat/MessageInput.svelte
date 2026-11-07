@@ -10,7 +10,8 @@
         showSidebar,
         streamContext,
         user as _user,
-        temporaryChatEnabled
+        temporaryChatEnabled,
+        toolServers
     } from '$lib/stores';
 
     import { convertHeicToJpeg, dataUrlToBlobUrl } from '$lib/utils';
@@ -26,6 +27,7 @@
     import ChevronDown from '../icons/ChevronDown.svelte';
 
     import GlobeAlt from '../icons/GlobeAlt.svelte';
+    import Wrench from '../icons/Wrench.svelte';
     import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
     import Clip from '../icons/Clip.svelte';
 
@@ -34,7 +36,7 @@
     export let onChange: (data: {
         prompt: string;
         files: ChatMessageFile[];
-        webSearchEnabled: boolean;
+        disabledToolServers: string[];
     }) => void = () => {};
 
     export let stopResponse: () => void;
@@ -48,7 +50,17 @@
     export let prompt = '';
     export let files: ChatMessageFile[] = [];
 
-    export let webSearchEnabled = false;
+    /** MCP servers whose tools are turned off for this chat */
+    export let disabledToolServers: string[] = [];
+
+    // Servers that offer tools, each with its own switch
+    $: switchableServers = $toolServers.filter((s) => s.enabled && s.tools.length > 0);
+    const toggleServer = (id: string) => {
+        disabledToolServers = disabledToolServers.includes(id)
+            ? disabledToolServers.filter((s) => s !== id)
+            : [...disabledToolServers, id];
+    };
+    const isWebServer = (name: string) => /web|search|browse/i.test(name);
     export let systemPromptVisible = false;
 
     type PendingFile = { id: string; name: string; size: number };
@@ -59,7 +71,7 @@
     $: onChange({
         prompt,
         files: files.filter((file) => file.kind !== 'image'),
-        webSearchEnabled
+        disabledToolServers
     });
 
     $: submitDisabled = (prompt === '' && files.length === 0) || extractingFiles;
@@ -522,21 +534,34 @@
                                 <div class="flex self-center w-[1px] h-4 ml-1"></div>
 
                                 <div class="flex items-center gap-1">
-                                    <button
-                                        on:click|preventDefault={() =>
-                                            (webSearchEnabled = !webSearchEnabled)}
-                                        type="button"
-                                        class="rounded-md flex items-center {$mobile
-                                            ? 'p-1.5'
-                                            : 'gap-1.5 pl-2 pr-2.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {webSearchEnabled
-                                            ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
-                                            : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
-                                    >
-                                        <GlobeAlt className="size-4.5" strokeWidth="1.5" />
-                                        {#if !$mobile}
-                                            <span>{'Search'}</span>
-                                        {/if}
-                                    </button>
+                                    {#each switchableServers as server (server.id)}
+                                        {@const on = !disabledToolServers.includes(server.id)}
+                                        <Tooltip
+                                            content={`${server.name}: ${server.tools.map((t) => t.name).join(', ')}${server.state === 'error' ? ' (unreachable)' : ''}`}
+                                            placement="top"
+                                        >
+                                            <button
+                                                on:click|preventDefault={() => toggleServer(server.id)}
+                                                type="button"
+                                                aria-pressed={on}
+                                                aria-label={`${server.name} tools ${on ? 'on' : 'off'}`}
+                                                class="rounded-md flex items-center {$mobile
+                                                    ? 'p-1.5'
+                                                    : 'gap-1.5 pl-2 pr-2.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {on
+                                                    ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
+                                                    : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
+                                            >
+                                                {#if isWebServer(server.name)}
+                                                    <GlobeAlt className="size-4.5" strokeWidth="1.5" />
+                                                {:else}
+                                                    <Wrench className="size-4" strokeWidth="1.5" />
+                                                {/if}
+                                                {#if !$mobile}
+                                                    <span>{server.name}</span>
+                                                {/if}
+                                            </button>
+                                        </Tooltip>
+                                    {/each}
                                 </div>
                             </div>
 

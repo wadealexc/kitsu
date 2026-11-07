@@ -1,6 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher, onMount } from 'svelte';
-    import { settings } from '$lib/stores';
+    import { settings, toolServers } from '$lib/stores';
 
     import Switch from '$lib/components/common/Switch.svelte';
 
@@ -9,7 +9,15 @@
     export let saveSettings: Function;
 
     // Local state for form fields
-    let webSearch: boolean = false;
+    // Tool servers on in new chats (stored as the ones turned off)
+    let disabledToolServers: string[] = [];
+    $: switchableServers = $toolServers.filter((s) => s.enabled && s.tools.length > 0);
+    const toggleDefault = (id: string, on: boolean) => {
+        disabledToolServers = on
+            ? disabledToolServers.filter((s) => s !== id)
+            : [...new Set([...disabledToolServers, id])];
+        saveSettings({ disabledToolServers });
+    };
     let userLocation: boolean = false;
     let userLocationString: string = '';
 
@@ -17,7 +25,7 @@
     let savedUserLocationString: string = '';
 
     onMount(async () => {
-        webSearch = $settings.webSearch;
+        disabledToolServers = [...($settings.disabledToolServers ?? [])];
         userLocation = $settings.userLocation;
         userLocationString = $settings.userLocationString ?? '';
         savedUserLocationString = userLocationString;
@@ -42,23 +50,23 @@
     <div class="overflow-y-scroll max-h-full">
         <h1 class="mb-2 text-sm font-medium">{'Chat'}</h1>
 
-        <!-- Enable web search by default -->
-        <div class="py-0.5 flex w-full justify-between">
-            <div id="web-search-default-label" class="self-center text-xs">
-                {'Enable web search by default'}
-            </div>
+        <!-- Tools on in new chats -->
+        {#each switchableServers as server (server.id)}
+            <div class="py-0.5 flex w-full justify-between">
+                <div id={`tool-default-${server.id}`} class="self-center text-xs">
+                    {`${server.name} tools on in new chats`}
+                </div>
 
-            <div class="flex items-center gap-2 p-1">
-                <Switch
-                    ariaLabelledbyId="web-search-default-label"
-                    tooltip={true}
-                    bind:state={webSearch}
-                    on:change={() => {
-                        saveSettings({ webSearch });
-                    }}
-                />
+                <div class="flex items-center gap-2 p-1">
+                    <Switch
+                        ariaLabelledbyId={`tool-default-${server.id}`}
+                        tooltip={true}
+                        state={!disabledToolServers.includes(server.id)}
+                        on:change={(e) => toggleDefault(server.id, e.detail)}
+                    />
+                </div>
             </div>
-        </div>
+        {/each}
 
         <!-- Enable user location -->
         <div class="py-0.5 flex w-full justify-between">

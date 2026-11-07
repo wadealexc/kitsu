@@ -23,8 +23,8 @@ export type PromptProgress = {
 };
 
 export type UrlStatus = { url: string; hostname: string; status: 'loading' | 'loaded' | 'failed' };
-export type WebSearchProgress = { queries: string[]; urls: UrlStatus[] };
-export type LoadWebpageProgress = { urls: UrlStatus[] };
+/** Live progress of one tool call: the latest message, and pages in the order they started */
+export type ToolProgressState = { message?: string; pages: UrlStatus[] };
 
 type TextStreamUpdate = {
     done: boolean;

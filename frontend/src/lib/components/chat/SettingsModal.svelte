@@ -19,6 +19,8 @@
 
     import UserList from '$lib/components/admin/Users/UserList.svelte';
     import General from '$lib/components/admin/Settings/General.svelte';
+    import ToolServers from '$lib/components/admin/Settings/ToolServers.svelte';
+    import Bolt from '../icons/Bolt.svelte';
 
     export let show = false;
 
@@ -192,6 +194,23 @@
                         </div>
                         <div class=" self-center">{'Config'}</div>
                     </button>
+                    <button
+                        role="tab"
+                        aria-controls="tab-tools"
+                        aria-selected={selectedTab === 'tools'}
+                        class="px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition {selectedTab ===
+                        'tools'
+                            ? ''
+                            : 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+                        on:click={() => {
+                            selectedTab = 'tools';
+                        }}
+                    >
+                        <div class=" self-center mr-2">
+                            <Bolt className="size-4" strokeWidth="1.5" />
+                        </div>
+                        <div class=" self-center">{'Tools'}</div>
+                    </button>
                 {/if}
             </div>
             <div
@@ -220,6 +239,8 @@
                     />
                 {:else if selectedTab === 'users'}
                     <UserList />
+                {:else if selectedTab === 'tools'}
+                    <ToolServers />
                 {:else if selectedTab === 'config'}
                     <General
                         saveHandler={async () => {

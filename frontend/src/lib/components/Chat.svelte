@@ -21,6 +21,7 @@
     } from '@backend/routes/types';
     import type {
         SseEvent,
+        SseToolCallProgressPayload,
         SseToolCallResultPayload,
         SseToolCallStartPayload
     } from '@backend/protocol/sse.js';
@@ -41,7 +42,8 @@
         streamContext,
         selectedModel,
         isEditingMessage,
-        editScrollPosition
+        editScrollPosition,
+        toolServers
     } from '$lib/stores';
     import { wakeModel } from '$lib/apis/models';
 
@@ -58,8 +60,8 @@
         chatCompletion,
         type StreamTimings,
         type PromptProgress,
-        type WebSearchProgress,
-        type LoadWebpageProgress
+        type ToolProgressState,
+        type UrlStatus
     } from '$lib/apis/completions';
     import { getFolderById, updateFolderById } from '$lib/apis/folders';
 
@@ -107,10 +109,18 @@
     let generating: boolean = false;
     let generationController: AbortController | null = null;
 
-    let toolProgress: Map<string, WebSearchProgress | LoadWebpageProgress> | undefined = undefined;
+    let toolProgress: Map<string, ToolProgressState> | undefined = undefined;
     let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined = undefined;
 
     let chat: Chat | null = null;
+
+    const hostnameOf = (url: string): string => {
+        try {
+            return new URL(url).hostname;
+        } catch {
+            return url;
+        }
+    };
 
     let history: ChatHistory = {
         messages: {},
@@ -124,7 +134,7 @@
     let files: ChatMessageFile[] = [];
 
     let lastSelectedModelId: string | undefined;
-    let webSearchEnabled: boolean = false;
+    let disabledToolServers: string[] = [];
 
     function triggerWake(model: Model): void {
         if (model.id !== lastSelectedModelId) {
@@ -156,7 +166,7 @@
         messageInput?.setText('');
 
         files = [];
-        webSearchEnabled = $settings.webSearch;
+        disabledToolServers = [...($settings.disabledToolServers ?? [])];
         systemPromptVisible = false;
         pendingChatSystemPrompt = '';
         selectedFolder.set(null);
@@ -186,7 +196,7 @@
                 if (!$temporaryChatEnabled) {
                     messageInput?.setText(input.prompt);
                     files = input.files;
-                    webSearchEnabled = input.webSearchEnabled;
+                    disabledToolServers = input.disabledToolServers ?? disabledToolServers;
                 }
             } catch (e) {}
         }
@@ -265,7 +275,7 @@
             await tick();
         }
 
-        webSearchEnabled = $settings.webSearch;
+        disabledToolServers = [...($settings.disabledToolServers ?? [])];
 
         if (storageChatInput) {
             prompt = '';
@@ -279,7 +289,7 @@
                 if (!$temporaryChatEnabled) {
                     messageInput?.setText(input.prompt);
                     files = input.files;
-                    webSearchEnabled = input.webSearchEnabled;
+                    disabledToolServers = input.disabledToolServers ?? disabledToolServers;
                 }
             } catch (e) {}
         }
@@ -390,7 +400,14 @@
             selectedFolder.set(null);
         }
 
-        webSearchEnabled = chatContent.webSearchEnabled ?? $settings.webSearch;
+        // Older chats had one web search switch instead of a list of servers turned off
+        disabledToolServers =
+            chatContent.disabledToolServers ??
+            (chatContent.webSearchEnabled === false
+                ? $toolServers.map((s) => s.id)
+                : chatContent.webSearchEnabled === true
+                  ? []
+                  : [...($settings.disabledToolServers ?? [])]);
 
         history = chatContent.history;
         await tick();
@@ -690,7 +707,7 @@
                     model: model.id,
                     history: history,
                     timestamp: Date.now(),
-                    webSearchEnabled: webSearchEnabled,
+                    disabledToolServers,
                     ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
                         ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
                         : {})
@@ -702,7 +719,7 @@
             // 3. Stream state setup
             generating = true;
             const contextTotal = model.contextLength ?? 0;
-            toolProgress = new Map<string, WebSearchProgress | LoadWebpageProgress>();
+            toolProgress = new Map<string, ToolProgressState>();
             modelStatus = undefined;
 
             let reasoningStartTime = 0;
@@ -786,7 +803,8 @@
                     name: data.name,
                     arguments: data.arguments,
                     failed: false,
-                    done: false
+                    done: false,
+                    ...(data.server ? { server: data.server } : {})
                 });
                 // Track when this round of tool calls started (overwritten for each call;
                 // all calls in a round are emitted back-to-back so timestamps are near-identical)
@@ -802,40 +820,24 @@
                 if (block) {
                     block.result = data.result;
                     block.failed = data.failed;
+                    if (data.structured) block.structured = data.structured;
                 }
             };
 
-            // TODO - untangle typing
-            const handleToolCallProgress = (data: { id: string; name: string; progress: any }) => {
+            const handleToolCallProgress = (data: SseToolCallProgressPayload['data']) => {
                 const p = data.progress;
+                const state = toolProgress!.get(data.id) ?? { pages: [] };
+                if (p.message) state.message = p.message;
 
-                if (data.name === 'webSearch') {
-                    if (p.type === 'search_results') {
-                        toolProgress!.set(data.id, {
-                            queries: p.data.queries,
-                            urls: p.data.urls.map((u: any) => ({ ...u, status: 'loading' as const }))
-                        });
-                    } else if (p.type === 'page_loaded' || p.type === 'page_failed') {
-                        const state = toolProgress!.get(data.id);
-                        if (state) {
-                            const entry = state.urls.find((u) => u.url === p.data.url);
-                            if (entry) entry.status = p.type === 'page_loaded' ? 'loaded' : 'failed';
-                        }
-                    }
-                } else if (data.name === 'loadWebpage') {
-                    if (p.type === 'pages') {
-                        toolProgress!.set(data.id, {
-                            urls: p.data.urls.map((u: any) => ({ ...u, status: 'loading' as const }))
-                        });
-                    } else if (p.type === 'page_loaded' || p.type === 'page_failed') {
-                        const state = toolProgress!.get(data.id);
-                        if (state) {
-                            const entry = state.urls.find((u) => u.url === p.data.url);
-                            if (entry) entry.status = p.type === 'page_loaded' ? 'loaded' : 'failed';
-                        }
-                    }
+                if (p.page) {
+                    const status: UrlStatus['status'] =
+                        p.page.status === 'loaded' ? 'loaded' : p.page.status === 'failed' ? 'failed' : 'loading';
+                    const entry = state.pages.find((u) => u.url === p.page!.url);
+                    if (entry) entry.status = status;
+                    else state.pages.push({ url: p.page.url, hostname: hostnameOf(p.page.url), status });
                 }
 
+                toolProgress!.set(data.id, state);
                 // Trigger reactivity
                 toolProgress = toolProgress;
             };
@@ -847,15 +849,6 @@
                         // Only set duration if we have a meaningful start time and a result
                         if (toolCallStartTime > 0 && block.result !== undefined) {
                             block.duration = Math.round((Date.now() - toolCallStartTime) / 1000);
-                        }
-                    }
-                }
-                // Remove failed URL pills from webSearch progress only.
-                // loadWebpage keeps failed pills (red) since URLs are user input.
-                if (toolProgress) {
-                    for (const [, state] of toolProgress) {
-                        if ('queries' in state) {
-                            state.urls = state.urls.filter((u) => u.status !== 'failed');
                         }
                     }
                 }
@@ -890,6 +883,12 @@
                 if (type === 'tool_call:start') handleToolCallStart(data);
                 else if (type === 'tool_call:result') handleToolCallResult(data);
                 else if (type === 'tool_call:progress') handleToolCallProgress(data);
+                else if (type === 'chat:notes') {
+                    // Notes kitsu added for the model; kept so the chat is saved with them
+                    for (const [id, notes] of Object.entries(data)) {
+                        if (history.messages[id]) history.messages[id].notes = notes;
+                    }
+                }
                 else if (type === 'model:queued')
                     modelStatus = { status: 'queued', modelName: model.name };
                 else if (type === 'model:loading')
@@ -1017,7 +1016,7 @@
     type Draft = {
         prompt: string;
         files: ChatMessageFile[];
-        webSearchEnabled: boolean;
+        disabledToolServers: string[];
     };
 
     const saveDraft = async (draft: Draft, chatId: string | null = null) => {
@@ -1313,7 +1312,7 @@
                                 isAtBottom = true;
                                 scrollToBottom();
                             }}
-                            bind:webSearchEnabled
+                            bind:disabledToolServers
                             bind:systemPromptVisible
                             {generating}
                             {stopResponse}

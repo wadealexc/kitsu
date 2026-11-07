@@ -4,8 +4,9 @@
     import { page } from '$app/stores';
 
     import { getModels } from '$lib/apis/models';
+    import { getToolServers } from '$lib/apis/mcp';
 
-    import { user, models, showSettings, temporaryChatEnabled, showSidebar } from '$lib/stores';
+    import { user, models, toolServers, showSettings, temporaryChatEnabled, showSidebar } from '$lib/stores';
 
     import Sidebar from '$lib/components/Sidebar.svelte';
     import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
@@ -68,6 +69,7 @@
 
         clearChatInputStorage();
         models.set(await getModels(localStorage.token));
+        toolServers.set(await getToolServers(localStorage.token).catch(() => []));
 
         if ($page.url.searchParams.get('temporary-chat') === 'true') {
             temporaryChatEnabled.set(true);

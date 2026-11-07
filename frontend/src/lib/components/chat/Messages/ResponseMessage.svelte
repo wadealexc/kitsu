@@ -13,11 +13,10 @@
     } from '@backend/routes/types';
 
     import { copyToClipboard as _copyToClipboard, dataUrlToBlobUrl, sanitizeResponseContent } from '$lib/utils';
-    import type { WebSearchProgress, LoadWebpageProgress } from '$lib/apis/completions';
+    import type { ToolProgressState } from '$lib/apis/completions';
 
     import Name from './ResponseMessage/Name.svelte';
-    import WebSearchBlock from './ResponseMessage/WebSearchBlock.svelte';
-    import LoadWebpageBlock from './ResponseMessage/LoadWebpageBlock.svelte';
+    import ToolBlock from './ResponseMessage/ToolBlock.svelte';
     import Image from '$lib/components/common/Image.svelte';
     import Tooltip from '$lib/components/common/Tooltip.svelte';
 
@@ -75,7 +74,7 @@
     export let isLastMessage: boolean = true;
     export let readOnly: boolean = false;
 
-    export let toolProgress: Map<string, WebSearchProgress | LoadWebpageProgress> | undefined = undefined;
+    export let toolProgress: Map<string, ToolProgressState> | undefined = undefined;
     export let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined =
         undefined;
     $: promptProcessing = $streamContext?.promptProcessing;
@@ -309,29 +308,8 @@
                                                 content={block.content}
                                                 done={block.done}
                                             />
-                                        {:else if block.type === 'tool_call' && block.name === 'webSearch'}
-                                            <WebSearchBlock
-                                                {block}
-                                                progress={toolProgress?.get(block.id) as WebSearchProgress | undefined}
-                                            />
-                                        {:else if block.type === 'tool_call' && block.name === 'loadWebpage'}
-                                            <LoadWebpageBlock
-                                                {block}
-                                                progress={toolProgress?.get(block.id) as LoadWebpageProgress | undefined}
-                                            />
                                         {:else if block.type === 'tool_call'}
-                                            <Collapsible
-                                                attributes={{
-                                                    type: 'tool_calls',
-                                                    id: block.id,
-                                                    name: block.name,
-                                                    done: block.done ? 'true' : 'false',
-                                                    failed: block.failed ? 'true' : 'false',
-                                                    arguments: block.arguments,
-                                                    result: block.result ?? ''
-                                                }}
-                                                open={false}
-                                            />
+                                            <ToolBlock {block} progress={toolProgress?.get(block.id)} />
                                         {/if}
                                     {/each}
                                 {/if}

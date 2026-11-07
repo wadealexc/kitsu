@@ -7,6 +7,7 @@ import type {
     Folder
 } from '@backend/routes/types';
 import type { ChatListItem } from '$lib/apis/chats';
+import type { ToolServer } from '$lib/apis/mcp';
 export type SessionUser = SessionUserResponse;
 export type Model = ModelResponse;
 
@@ -29,6 +30,9 @@ export const selectedFolder: Writable<Folder | null> = writable(null);
 
 export const models: Writable<Model[]> = writable([]);
 
+/** MCP servers whose tools chats can use */
+export const toolServers: Writable<ToolServer[]> = writable([]);
+
 export const selectedModel: Writable<Model | null> = writable(null);
 
 export type Config = {
@@ -50,7 +54,10 @@ export type Settings = {
     textScale: number;
     userLocation: boolean;
     userLocationString: string | undefined;
-    webSearch: boolean;
+    /** @deprecated replaced by disabledToolServers */
+    webSearch?: boolean;
+    /** MCP servers turned off in new chats */
+    disabledToolServers: string[];
     scrollOnBranchChange: boolean;
     model: string;
     ctrlEnterToSend: boolean;
@@ -63,7 +70,7 @@ const DEFAULT_SETTINGS: Settings = {
     textScale: 1,
     userLocation: false,
     userLocationString: undefined,
-    webSearch: false,
+    disabledToolServers: [],
     scrollOnBranchChange: true,
     model: '',
     ctrlEnterToSend: false,

@@ -217,7 +217,7 @@
                                 {#if attributes.duration < 1}
                                     {'Thought for less than a second'}
                                 {:else if attributes.duration < 60}
-                                    {`Thought for ${attributes.duration} seconds`}
+                                    {`Thought for ${attributes.duration} second${Number(attributes.duration) === 1 ? '' : 's'}`}
                                 {:else}
                                     {`Thought for ${dayjs.duration(attributes.duration, 'seconds').humanize()}`}
                                 {/if}

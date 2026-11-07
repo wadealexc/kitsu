@@ -8,7 +8,8 @@ export default defineConfig({
 		host: '0.0.0.0',  // Listen on all network interfaces
 		port: 5050,
 		allowedHosts: true,
-		hmr: false,
+		// Live reload for local development only (KITSU_HMR=1)
+		hmr: process.env.KITSU_HMR === '1',
 		proxy: {
 			'/api': {
 				target: BACKEND_URL,

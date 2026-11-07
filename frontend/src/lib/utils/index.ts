@@ -211,9 +211,9 @@ export const getPromptVariables = async (
     return {
         '{{USER_NAME}}': username,
         '{{USER_LOCATION}}': (userLocation && userLocationString) ? userLocationString : 'Unknown',
-        '{{CURRENT_DATETIME}}': getCurrentDateTime(),
+        // No time-of-day variables: the system prompt would change every message,
+        // and the model would have to process the whole conversation again.
         '{{CURRENT_DATE}}': getFormattedDate(),
-        '{{CURRENT_TIME}}': getFormattedTime(),
         '{{CURRENT_WEEKDAY}}': getWeekday(),
         '{{CURRENT_TIMEZONE}}': getUserTimezone(),
         '{{USER_LANGUAGE}}': localStorage.getItem('locale') || 'en-US'
@@ -258,17 +258,6 @@ const getFormattedDate = (): string => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-};
-
-// Get the time in the format HH:MM:SS
-const getFormattedTime = (): string => {
-    const date = new Date();
-    return date.toTimeString().split(' ')[0];
-};
-
-// Get the current date and time in the format YYYY-MM-DD HH:MM:SS
-const getCurrentDateTime = (): string => {
-    return `${getFormattedDate()} ${getFormattedTime()}`;
 };
 
 // Get the user's timezone

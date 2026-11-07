@@ -1,0 +1,258 @@
+<script lang="ts">
+    /**
+     * One tool call from an MCP server. What it shows depends on the result's
+     * shape rather than the tool's name, so any server's tools display sensibly:
+     * - search results (`structured.results`: url, title) as links
+     * - pages (progress `page` events, or `structured.pages`) as pills
+     * - anything else as a one-line summary, with the raw result on request
+     */
+    import { slide } from 'svelte/transition';
+    import { quintOut } from 'svelte/easing';
+    import { mobile, streamContext } from '$lib/stores';
+    import type { ToolCallBlock } from '@backend/routes/types';
+    import type { ToolProgressState, UrlStatus } from '$lib/apis/completions';
+    import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
+    import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
+    import Spinner from '$lib/components/common/Spinner.svelte';
+    import Modal from '$lib/components/common/Modal.svelte';
+
+    export let block: ToolCallBlock;
+    export let progress: ToolProgressState | undefined = undefined;
+
+    // Open while running; closed when reloaded from history.
+    let open: boolean = !block.done;
+    let showResult = false;
+
+    $: isLive = !block.done;
+
+    const hostnameOf = (url: string): string => {
+        try {
+            const host = new URL(url).hostname;
+            return host.startsWith('www.') ? host.slice(4) : host;
+        } catch {
+            return url;
+        }
+    };
+
+    const record = (value: unknown): Record<string, unknown> =>
+        value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+    let args: Record<string, unknown> = {};
+    $: {
+        try {
+            args = record(JSON.parse(block.arguments || '{}'));
+        } catch {
+            args = {};
+        }
+    }
+
+    $: structured = record(block.structured);
+
+    type Result = { url: string; title: string; snippet?: string };
+    $: results = (Array.isArray(structured.results) ? structured.results : [])
+        .map(record)
+        .filter((r) => typeof r.url === 'string')
+        .map((r): Result => ({
+            url: r.url as string,
+            title: typeof r.title === 'string' && r.title ? r.title : hostnameOf(r.url as string),
+            ...(typeof r.snippet === 'string' ? { snippet: r.snippet } : {})
+        }));
+
+    $: query =
+        typeof structured.query === 'string'
+            ? structured.query
+            : typeof args.query === 'string'
+              ? args.query
+              : undefined;
+
+    // Pages: live from progress; afterwards from the result, falling back to the order they started
+    let pages: UrlStatus[] = [];
+    $: {
+        const finished = (Array.isArray(structured.pages) ? structured.pages : []).map(record);
+        if (isLive && progress && progress.pages.length > 0) {
+            pages = progress.pages;
+        } else if (finished.length > 0) {
+            pages = finished
+                .filter((p) => typeof p.url === 'string')
+                .map((p): UrlStatus => {
+                    const url = (typeof p.finalUrl === 'string' ? p.finalUrl : p.url) as string;
+                    const ok = p.outcome === 'ok' || p.outcome === 'low_quality';
+                    return { url, hostname: hostnameOf(url), status: ok ? 'loaded' : 'failed' };
+                });
+        } else if (!isLive && Array.isArray(args.urls)) {
+            pages = args.urls
+                .filter((u): u is string => typeof u === 'string')
+                .map((url) => ({ url, hostname: hostnameOf(url), status: block.failed ? 'failed' : 'loaded' }));
+        } else {
+            pages = progress?.pages ?? [];
+        }
+    }
+
+    $: loadedCount = pages.filter((p) => p.status === 'loaded').length;
+    $: failedCount = pages.filter((p) => p.status === 'failed').length;
+    $: plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+    $: duration =
+        block.duration === undefined ? '' : $mobile ? ` (${block.duration}s)` : ` in ${block.duration}s`;
+
+    $: headerText = isLive
+        ? (progress?.message ?? (query ? `Searching for “${query}”` : `Running ${block.name}`))
+        : results.length > 0
+          ? `${plural(results.length, 'result')} for “${query ?? ''}”${duration}`
+          : pages.length > 0
+            ? loadedCount > 0
+                ? `Read ${plural(loadedCount, 'page')}${failedCount ? ` · ${failedCount} failed` : ''}${duration}`
+                : `Couldn't load ${plural(pages.length, 'page')}${duration}`
+            : block.failed
+              ? `${block.name} failed${duration}`
+              : `Used ${block.name}${duration}`;
+
+    // While the model reads a large result
+    $: showIngestion =
+        isLive && block.result !== undefined && $streamContext?.promptProcessing !== undefined;
+    $: ingestionPct = $streamContext?.promptProcessing
+        ? Math.round(
+              ($streamContext.promptProcessing.processed / $streamContext.promptProcessing.total) * 100
+          )
+        : 0;
+
+    const pillClass: Record<UrlStatus['status'], string> = {
+        loaded: 'bg-green-100 dark:bg-green-900/40 !text-green-700 dark:!text-green-300 hover:bg-green-200 dark:hover:bg-green-900/70',
+        loading: 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 animate-pulse',
+        failed: 'bg-red-100 dark:bg-red-900/30 !text-red-600 dark:!text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50'
+    };
+</script>
+
+<div
+    class="w-fit max-w-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
+    role="button"
+    tabindex="0"
+    on:pointerup={() => (open = !open)}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (open = !open)}
+>
+    <div class="w-full font-medium flex items-center gap-2 {isLive ? 'shimmer' : ''}">
+        {#if isLive}
+            <div class="shrink-0">
+                <Spinner className="size-4" />
+            </div>
+        {/if}
+
+        <div class="truncate">{headerText}</div>
+
+        <div class="flex self-center translate-y-[1px] shrink-0">
+            {#if open}
+                <ChevronUp strokeWidth="3.5" className="size-3.5" />
+            {:else}
+                <ChevronDown strokeWidth="3.5" className="size-3.5" />
+            {/if}
+        </div>
+    </div>
+</div>
+
+{#if open}
+    <div
+        class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3 flex flex-col gap-1.5 text-sm"
+        transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}
+    >
+        {#if results.length > 0}
+            <ol class="!list-none !pl-0 !my-0 flex flex-col gap-0.5 text-xs">
+                {#each results as r (r.url)}
+                    <li class="!pl-0 !my-0 flex items-baseline gap-1.5 min-w-0">
+                        <a
+                            href={r.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="truncate !no-underline !font-normal !text-gray-600 dark:!text-gray-400 hover:!text-gray-900 dark:hover:!text-gray-100"
+                            title={r.snippet ?? r.title}>{r.title}</a
+                        >
+                        <span class="shrink-0 text-gray-400 dark:text-gray-500">{hostnameOf(r.url)}</span>
+                    </li>
+                {/each}
+            </ol>
+        {/if}
+
+        {#if pages.length > 0}
+            <div class="flex flex-wrap gap-1 items-center">
+                {#each pages as page (page.url)}
+                    {#if page.status === 'loading'}
+                        <span class="text-xs rounded px-1.5 py-0.5 font-medium {pillClass.loading}">
+                            {hostnameOf(page.url)}
+                        </span>
+                    {:else}
+                        <a
+                            href={page.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={page.status === 'failed' ? `Couldn't load ${page.url}` : page.url}
+                            class="text-xs rounded px-1.5 py-0.5 font-medium !no-underline transition-colors duration-300 {pillClass[page.status]}"
+                        >
+                            {hostnameOf(page.url)}
+                        </a>
+                    {/if}
+                {/each}
+            </div>
+        {/if}
+
+        {#if block.failed && pages.length === 0 && block.result}
+            <div class="text-xs text-red-600 dark:text-red-300">{block.result}</div>
+        {/if}
+
+        {#if showIngestion}
+            <div class="flex flex-col gap-0.5">
+                <span class="text-xs text-gray-400 dark:text-gray-500">
+                    Reading {$streamContext?.promptProcessing?.total ?? 0} tokens… {ingestionPct}%
+                </span>
+                <div class="h-1 w-48 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div
+                        class="h-full bg-blue-400 dark:bg-blue-500 transition-all duration-200"
+                        style="width: {ingestionPct}%"
+                    ></div>
+                </div>
+            </div>
+        {/if}
+
+        {#if block.result && !isLive}
+            <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                {#if block.server}<span>{block.server}</span><span aria-hidden="true">·</span>{/if}
+                <button
+                    type="button"
+                    class="hover:text-gray-700 dark:hover:text-gray-300 hover:underline"
+                    on:click={() => (showResult = true)}>What the model got</button
+                >
+            </div>
+        {/if}
+    </div>
+{/if}
+
+{#if showResult}
+    <Modal size="lg" bind:show={showResult}>
+        <div class="flex flex-col">
+            <div
+                class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800"
+            >
+                <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+                    {block.name}{block.server ? ` · ${block.server}` : ''}
+                </div>
+                <button
+                    aria-label="Close"
+                    class="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+                    on:click={() => (showResult = false)}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-4">
+                        <path
+                            d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
+                        />
+                    </svg>
+                </button>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto px-5 py-4 flex flex-col gap-3">
+                {#if block.arguments && block.arguments !== '{}'}
+                    <pre
+                        class="whitespace-pre-wrap break-words text-xs text-gray-500 dark:text-gray-400 font-mono">{block.arguments}</pre>
+                {/if}
+                <pre
+                    class="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300 font-sans">{block.result}</pre>
+            </div>
+        </div>
+    </Modal>
+{/if}
