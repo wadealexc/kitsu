@@ -61,7 +61,10 @@ export class GenerationJob implements Sink {
      * the job finishes. Returns a function that stops following (the client left).
      */
     subscribe(subscriber: Subscriber): () => void {
-        for (const frame of this.frames) subscriber.write(frame);
+        // Replayed compacted: a long reply is thousands of one-token events, which
+        // a joining client would otherwise have to render one by one
+        const replay = compactReplay(this.frames.join(''));
+        if (replay) subscriber.write(replay);
         if (this.status !== 'running') {
             subscriber.end();
             return () => { };
@@ -86,6 +89,63 @@ export class GenerationJob implements Sink {
     onFinished(listener: () => void): void {
         this.finishedListeners.push(listener);
     }
+}
+
+type Delta = { content?: string; reasoning_content?: string };
+
+/**
+ * Merges runs of plain token events (content or reasoning deltas) into one event
+ * each, so a replay is a handful of events instead of one per token. Anything
+ * else (tool events, usage, the final chunk with timings) is kept as it is and
+ * in order. Prompt-progress events are dropped: they're stale by now.
+ * A trailing partial event (still being written) is kept as is.
+ */
+export function compactReplay(text: string): string {
+    const parts = text.split('\n\n');
+    const tail = parts.pop() ?? ''; // after the last separator: incomplete, or ''
+
+    const out: string[] = [];
+    let pending: { kind: keyof Delta; sample: any; text: string } | null = null;
+    const flush = () => {
+        if (!pending) return;
+        const chunk = structuredClone(pending.sample);
+        chunk.choices[0].delta = { ...(chunk.choices[0].delta.role ? { role: chunk.choices[0].delta.role } : {}), [pending.kind]: pending.text };
+        out.push(`data: ${JSON.stringify(chunk)}`);
+        pending = null;
+    };
+
+    for (const part of parts) {
+        if (!part.trim()) continue;
+        const match = /^data: (.*)$/s.exec(part);
+        let chunk: any;
+        try { chunk = match ? JSON.parse(match[1]!) : undefined; } catch { chunk = undefined; }
+
+        if (chunk && chunk.prompt_progress && !chunk.choices?.[0]?.delta?.content && !chunk.choices?.[0]?.delta?.reasoning_content) {
+            continue; // stale progress
+        }
+
+        const choice = chunk?.choices?.[0];
+        const delta = choice?.delta;
+        const kind: keyof Delta | undefined =
+            delta && !choice.finish_reason && !delta.tool_calls && !chunk.timings && !chunk.usage
+                ? (typeof delta.reasoning_content === 'string' && delta.reasoning_content && !delta.content ? 'reasoning_content'
+                    : typeof delta.content === 'string' && delta.content && !delta.reasoning_content ? 'content' : undefined)
+                : undefined;
+
+        if (kind) {
+            if (pending && pending.kind !== kind) flush();
+            if (!pending) pending = { kind, sample: chunk, text: '' };
+            pending.text += delta[kind];
+            continue;
+        }
+
+        flush();
+        out.push(part);
+    }
+    flush();
+
+    const body = out.length ? out.join('\n\n') + '\n\n' : '';
+    return body + tail;
 }
 
 /** Jobs by chat id: one reply at a time per chat. */

@@ -177,12 +177,6 @@ async function* streamToIterator(
             const timings: StreamTimings | undefined = parsedData.timings;
             const promptProgress: PromptProgress | undefined = parsedData.prompt_progress;
 
-            if (promptProgress) {
-                console.log(
-                    `progress: ${promptProgress.processed}, ${promptProgress.cache}, ${promptProgress.total} (p, c, t)`
-                );
-            }
-
             yield {
                 done: false,
                 value: content,

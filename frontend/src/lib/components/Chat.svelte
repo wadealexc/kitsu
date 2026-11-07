@@ -1015,7 +1015,6 @@
 
             const backendEventHandler = (event: SseEvent) => {
                 const { type, data } = event.data;
-                console.log(`backendEventHandler | type: ${type}`);
 
                 if (type === 'tool_call:start') handleToolCallStart(data);
                 else if (type === 'tool_call:result') handleToolCallResult(data);

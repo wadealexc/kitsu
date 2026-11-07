@@ -14,6 +14,7 @@ import chatRouter from '../../src/routes/completions/index.js';
 import { ToolRegistry } from '../../src/tools/registry.js';
 import { McpManager } from '../../src/mcp/manager.js';
 import LlamaStream from '../../src/llama/llamaStream.js';
+import { compactReplay } from '../../src/routes/completions/jobs.js';
 import { MockLlama } from '../mockLlama.js';
 import type * as Types from '../../src/routes/types/index.js';
 
@@ -185,5 +186,32 @@ describe('generation jobs', () => {
         assert.strictEqual((await fetch(`${base}/custom-completions/${chatId}/stream`, { headers })).status, 404);
         assert.strictEqual((await fetch(`${base}/custom-completions/${chatId}/stop`, { method: 'POST', headers })).status, 404);
         await res.text();
+    });
+});
+
+describe('compactReplay', () => {
+    const tok = (delta: object, extra: object = {}) =>
+        `data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, finish_reason: null, delta }], ...extra })}\n\n`;
+
+    test('merges token runs, keeps everything else in order, drops stale progress', () => {
+        const stream = [
+            tok({}, { prompt_progress: { total: 10, cache: 0, processed: 5 } }),
+            tok({ reasoning_content: 'Let ' }), tok({ reasoning_content: 'me ' }), tok({ reasoning_content: 'think' }),
+            tok({ content: 'Hel' }), tok({ content: 'lo ' }),
+            'event: chat-event\ndata: {"chatId":"c","data":{"type":"tool_call:start","data":{"id":"1","name":"t","arguments":"{}"}}}\n\n',
+            tok({ content: 'wor' }), tok({ content: 'ld' }),
+            `data: ${JSON.stringify({ choices: [{ index: 0, finish_reason: 'stop', delta: {} }], timings: { predicted_n: 9 } })}\n\n`,
+            'data: {"partial',
+        ].join('');
+
+        const out = compactReplay(stream);
+        const events = out.split('\n\n');
+        assert.strictEqual(events.length, 6, out);
+        assert.deepStrictEqual(JSON.parse(events[0]!.slice(6)).choices[0].delta, { reasoning_content: 'Let me think' });
+        assert.deepStrictEqual(JSON.parse(events[1]!.slice(6)).choices[0].delta, { content: 'Hello ' });
+        assert.ok(events[2]!.startsWith('event: chat-event'));
+        assert.deepStrictEqual(JSON.parse(events[3]!.slice(6)).choices[0].delta, { content: 'world' });
+        assert.strictEqual(JSON.parse(events[4]!.slice(6)).choices[0].finish_reason, 'stop');
+        assert.strictEqual(events[5], 'data: {"partial');
     });
 });
