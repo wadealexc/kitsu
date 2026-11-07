@@ -5,6 +5,7 @@
 # Config
 config.json
 docker-compose.yml
+config.yaml
 
 # Backend runtime dirs
 /models/*
@@ -27,3 +28,4 @@ docker-compose.yml
 
 .claude/
 .coutput/
+
