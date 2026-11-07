@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { z } from 'zod';
 
 import type { Llama, LlamaResponse } from '../../llama/types.js';
+import type LlamaStream from '../../llama/llamaStream.js';
 import * as Types from '../types/index.js';
 import { requireAuth } from '../middleware.js';
 import * as proto from '../../protocol/index.js';
@@ -179,6 +180,9 @@ async function runGeneration(
     // unfinished), so reopening it mid-reply finds the reply and follows it
     await persistChat(ctx, { content: '', blocks: [], usage: getFinalUsage(totalUsage), done: false });
 
+    // The round being streamed, so a stop can keep what it had written
+    let currentStream: LlamaStream | undefined;
+
     try {
         let prevToolExec: ToolExecResult | undefined;
 
@@ -193,6 +197,7 @@ async function runGeneration(
                     onLoading: emitCallback(job, ctx.chatId, { type: 'model:loading' }),
                 },
             })).stream;
+            currentStream = stream;
 
             // Pipe llama -> done filter -> job (kept open between rounds)
             stream.withDoneFilter().pipe(job.writable(), { end: false });
@@ -305,6 +310,9 @@ async function runGeneration(
             // Stopped by the user: keep what was written, without an error
             console.log(chalk.dim.yellow(`[custom-completions] stopped by the user (${ctx.chatId})`));
             emitSseEvent(job, ctx.chatId, { type: 'chat:completion', data: { done: true, usage } });
+            // Keep what the round in progress had written before the stop
+            const partial = currentStream?.partial();
+            if (partial) finalContent = accumulateBlocks(blocks, partial, undefined, currentStream?.reasoningDurationMs());
             await persistChat(ctx, { content: finalContent, blocks, usage, done: true });
             job.finish('stopped');
         } else {

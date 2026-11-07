@@ -25,6 +25,8 @@ export class GenerationJob implements Sink {
     readonly startedAt = Date.now();
     readonly controller = new AbortController();
     status: JobStatus = 'running';
+    /** Set once the job has saved its result and ended (a stopped job is still saving) */
+    ended = false;
 
     private frames: string[] = [];
     private subscribers = new Set<Subscriber>();
@@ -81,6 +83,7 @@ export class GenerationJob implements Sink {
 
     finish(status: Exclude<JobStatus, 'running'>): void {
         if (this.status === 'running') this.status = status;
+        this.ended = true;
         for (const s of this.subscribers) s.end();
         this.subscribers.clear();
         for (const listener of this.finishedListeners) listener();
@@ -178,7 +181,8 @@ export class JobRegistry {
     /** Chats this user has a reply running in. */
     running(userId: string): { chatId: string; messageId: string | null; startedAt: number }[] {
         return [...this.jobs.values()]
-            .filter(j => j.userId === userId && j.status === 'running')
+            // Until it has ended: a stopped reply is still saving what it wrote
+            .filter(j => j.userId === userId && !j.ended)
             .map(j => ({ chatId: j.chatId, messageId: j.messageId, startedAt: j.startedAt }));
     }
 

@@ -789,6 +789,13 @@
         if (!id || loading || generating || generationController || syncingFromServer || $isEditingMessage) return;
         if (nowRunning === wasRunning) return;
 
+        // Finished: only reload if this page wasn't following the reply (its copy
+        // is unfinished). One we streamed or stopped here is already up to date.
+        if (!nowRunning) {
+            const last = history.currentId ? history.messages[history.currentId] : undefined;
+            if (!last || last.done) return;
+        }
+
         syncingFromServer = true;
         try {
             const fresh = await getChatById(localStorage.token, id).catch(() => null);
@@ -1064,11 +1071,6 @@
                 else if (type === 'model:loading')
                     modelStatus = { status: 'loading', modelName: model?.name ?? responseMessage.modelName ?? '' };
                 else if (type === 'chat:completion') {
-                    generatingChats.update((set) => {
-                        const next = new Set(set);
-                        next.delete($chatId);
-                        return next;
-                    });
                     finalizeReasoning();
                     generating = false;
                     generationController = null;
@@ -1203,11 +1205,8 @@
             if ($chatId) void stopChatCompletion(localStorage.token, $chatId).catch(() => {});
             generationController?.abort();
             generationController = null;
-            generatingChats.update((set) => {
-                const next = new Set(set);
-                next.delete($chatId);
-                return next;
-            });
+            // The sidebar spinner clears when the poll sees the reply has ended,
+            // which is after the backend has saved what it wrote
         }
     };
 

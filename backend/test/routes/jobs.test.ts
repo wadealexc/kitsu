@@ -153,14 +153,15 @@ describe('generation jobs', () => {
 
         const res = await fetch(`${base}/custom-completions`, { method: 'POST', headers: auth(), body: JSON.stringify(chatBody(chatId)) });
         const reader = res.body!.getReader();
-        await reader.read();
+        const decoder = new TextDecoder();
+        let seen = '';
+        while (!seen.includes('"content":"a "')) seen += decoder.decode((await reader.read()).value);
 
         const stopped = await fetch(`${base}/custom-completions/${chatId}/stop`, { method: 'POST', headers: auth() });
         assert.deepStrictEqual(await stopped.json(), { stopped: true });
 
         // The stream ends with a completion event and no error
         let body = '';
-        const decoder = new TextDecoder();
         for (;;) {
             const { value, done } = await reader.read();
             if (done) break;
@@ -173,6 +174,9 @@ describe('generation jobs', () => {
         const reply = Object.values(saved!.chat.history.messages).find(m => m.role === 'assistant')!;
         assert.strictEqual(reply.done, true);
         assert.strictEqual(reply.error, undefined);
+        // What was written before the stop is kept (mid-round: there were no tool rounds)
+        assert.ok(reply.content.startsWith('a '), `saved: ${JSON.stringify(reply.content)}`);
+        assert.ok(reply.content.length < 'a b c d e f'.length, 'and nothing after it');
 
         const active = await (await fetch(`${base}/custom-completions/active`, { headers: auth() })).json();
         assert.deepStrictEqual(active, []);

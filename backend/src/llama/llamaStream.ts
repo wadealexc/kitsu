@@ -126,6 +126,18 @@ export default class LlamaStream extends PassThrough {
     }
 
     /**
+     * What the model has sent so far, as a response (complete events only), for
+     * keeping the text of a reply that was stopped mid-stream.
+     */
+    partial(): proto.CompletionResponse | undefined {
+        const text = Buffer.concat(this.chunks).toString('utf8');
+        const complete = text.slice(0, text.lastIndexOf('\n\n') + 2);
+        if (!complete.trim()) return undefined;
+        const result = handleStreamedResponse(complete);
+        return result.ok ? result.value : undefined;
+    }
+
+    /**
      * Promisifies the `stop` event. Resolves once the stream finishes.
      */
     finished(): Promise<proto.Result<proto.CompletionResponse, Error>> {
