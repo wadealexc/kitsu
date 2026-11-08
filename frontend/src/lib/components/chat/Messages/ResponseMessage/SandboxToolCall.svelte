@@ -144,7 +144,7 @@
                             <span class="normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300">Error</span>
                         {/if}
                     </div>
-                    <pre class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{running ? (progress?.output ?? '') : (block.result ?? '')}</pre>
+                    <pre class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{running ? (progress?.output ?? '') : (block.result ?? '')}</pre>
                 </section>
             </div>
         </div>

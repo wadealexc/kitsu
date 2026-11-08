@@ -19,6 +19,7 @@
     import Name from './ResponseMessage/Name.svelte';
     import ToolCall from './ResponseMessage/ToolCall.svelte';
     import ToolRun from './ResponseMessage/ToolRun.svelte';
+    import ReasoningTail from './ResponseMessage/ReasoningTail.svelte';
     import { groupBlocks } from './ResponseMessage/toolRuns';
     import Image from '$lib/components/common/Image.svelte';
     import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -353,6 +354,9 @@
                                                     />
                                                 </div>
                                             </Collapsible>
+                                            {#if !block.done && !message.done}
+                                                <ReasoningTail text={block.content} />
+                                            {/if}
                                         {:else if block.type === 'content'}
                                             <Markdown
                                                 id={`${chatId}-${message.id}-content-${i}`}

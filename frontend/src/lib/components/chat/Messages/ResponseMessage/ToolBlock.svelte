@@ -368,7 +368,7 @@
                             {/if}
                         </div>
                         <pre
-                            class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 font-sans">{block.result}</pre>
+                            class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{block.result}</pre>
                     </section>
                 {:else}
                     <pre

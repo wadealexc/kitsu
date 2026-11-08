@@ -36,3 +36,28 @@ export function groupBlocks(blocks: MessageBlock[], condensedServers: Set<string
     endRun();
     return groups;
 }
+
+/** A tool call in a few words, for the header of a run with only that call. */
+export function singleCallTitle(block: ToolCallBlock): string {
+    let args: Record<string, unknown> = {};
+    try {
+        args = JSON.parse(block.arguments || '{}') ?? {};
+    } catch {
+        // Falls through to the plain title
+    }
+    const path = typeof args.path === 'string' ? args.path : '';
+    const command = typeof args.command === 'string' ? (args.command.split('\n').find((l) => l.trim()) ?? '') : '';
+    const running = block.result === undefined && !block.done;
+
+    const seconds = !running && block.duration ? ` in ${block.duration} second${block.duration === 1 ? '' : 's'}` : '';
+    if (block.name === 'bash' && command) return `${running ? 'Running' : 'Ran'} $ ${command}${seconds}`;
+
+    const verbs: Record<string, [string, string, string]> = {
+        read: ['Reading', 'Read', 'read'],
+        write: ['Writing', 'Wrote', 'write'],
+        edit: ['Editing', 'Edited', 'edit'],
+    };
+    const verb = verbs[block.name];
+    if (verb && path) return running ? `${verb[0]} ${path}` : block.failed ? `Couldn't ${verb[2]} ${path}` : `${verb[1]} ${path}`;
+    return `${running ? 'Running' : 'Used'} ${block.name}`;
+}
