@@ -13,6 +13,7 @@
     } from '$lib/apis/mcp';
     import Switch from '$lib/components/common/Switch.svelte';
     import Spinner from '$lib/components/common/Spinner.svelte';
+    import ToolServerIcon, { TOOL_SERVER_ICONS } from '$lib/components/chat/ToolServerIcon.svelte';
 
     let servers: ToolServer[] = [];
     let loading = true;
@@ -138,6 +139,23 @@
 
                         <div class="text-xs text-gray-500 dark:text-gray-400 truncate" title={server.url}>
                             {server.url}
+                        </div>
+
+                        <div class="flex flex-wrap gap-0.5" role="group" aria-label={`Icon for ${server.name}`}>
+                            {#each TOOL_SERVER_ICONS as icon (icon)}
+                                <button
+                                    type="button"
+                                    aria-label={icon}
+                                    aria-pressed={server.icon === icon}
+                                    title={icon}
+                                    class="p-1.5 rounded-md {server.icon === icon
+                                        ? 'text-sky-500 dark:text-sky-300 bg-sky-50 dark:bg-sky-400/10'
+                                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+                                    on:click={() => run(server.id, () => updateToolServer(localStorage.token, server.id, { icon }))}
+                                >
+                                    <ToolServerIcon {icon} />
+                                </button>
+                            {/each}
                         </div>
 
                         {#if server.state === 'error' && server.error}

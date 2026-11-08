@@ -7,6 +7,7 @@ export type ToolServer = {
     id: string;
     name: string;
     enabled: boolean;
+    icon: string;
     state: ToolServerState;
     error?: string;
     tools: { name: string; title?: string; description: string }[];
@@ -20,6 +21,7 @@ export type ToolServerForm = {
     /** Omit to keep the current token; null or '' removes it. */
     token?: string | null;
     enabled?: boolean;
+    icon?: string;
 };
 
 const request = async <T>(token: string, method: string, route: string, body?: unknown): Promise<T> => {

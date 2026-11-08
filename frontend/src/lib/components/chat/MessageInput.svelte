@@ -28,8 +28,7 @@
     import TypingIndicator from './MessageInput/TypingIndicator.svelte';
     import ChevronDown from '../icons/ChevronDown.svelte';
 
-    import GlobeAlt from '../icons/GlobeAlt.svelte';
-    import Wrench from '../icons/Wrench.svelte';
+    import ToolServerIcon from './ToolServerIcon.svelte';
     import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
     import Clip from '../icons/Clip.svelte';
 
@@ -62,7 +61,6 @@
             ? disabledToolServers.filter((s) => s !== id)
             : [...disabledToolServers, id];
     };
-    const isWebServer = (name: string) => /web|search|browse/i.test(name);
     export let systemPromptVisible = false;
 
     type PendingFile = { id: string; name: string; size: number };
@@ -570,11 +568,7 @@
                                                     ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
                                                     : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
                                             >
-                                                {#if isWebServer(server.name)}
-                                                    <GlobeAlt className="size-4.5" strokeWidth="1.5" />
-                                                {:else}
-                                                    <Wrench className="size-4" strokeWidth="1.5" />
-                                                {/if}
+                                                <ToolServerIcon icon={server.icon} />
                                                 {#if !$mobile}
                                                     <span>{server.name}</span>
                                                 {/if}

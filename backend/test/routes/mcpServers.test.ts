@@ -54,6 +54,23 @@ describe('/api/v1/mcp/servers', () => {
         assert.strictEqual(stored[0]!.token, 'secret-token');
     });
 
+    test('has an icon that admins can change, shown to everyone, from a fixed set', async () => {
+        const [server] = await db.select().from(schema.mcpServers);
+        assert.strictEqual(server!.icon, 'wrench');
+
+        const changed = await request(app).post(`/api/v1/mcp/servers/${server!.id}`).set(as(admin)).send({ icon: 'database' });
+        assert.strictEqual(changed.status, 200);
+        assert.strictEqual(changed.body.icon, 'database');
+
+        const seen = await request(app).get('/api/v1/mcp/servers').set(as(user));
+        assert.strictEqual(seen.body[0].icon, 'database');
+
+        const bad = await request(app).post(`/api/v1/mcp/servers/${server!.id}`).set(as(admin)).send({ icon: '<svg>' });
+        assert.strictEqual(bad.status, 400);
+        const denied = await request(app).post(`/api/v1/mcp/servers/${server!.id}`).set(as(user)).send({ icon: 'bolt' });
+        assert.strictEqual(denied.status, 403);
+    });
+
     test('rejects a second server with the same name', async () => {
         const res = await request(app).post('/api/v1/mcp/servers').set(as(admin)).send({ name: 'web', url: 'http://other.local/mcp' });
         assert.strictEqual(res.status, 400);

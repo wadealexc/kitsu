@@ -35,6 +35,7 @@ export type McpServerStatus = {
     name: string;
     url: string;
     enabled: boolean;
+    icon: string;
     hasToken: boolean;
     state: McpServerState;
     error?: string;
@@ -164,6 +165,7 @@ export class McpManager {
                 name: c.server.name,
                 url: c.server.url,
                 enabled: c.server.enabled,
+                icon: c.server.icon,
                 hasToken: !!c.server.token,
                 state: c.state,
                 ...(c.error ? { error: c.error } : {}),

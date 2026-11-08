@@ -239,6 +239,8 @@ export const mcpServers = sqliteTable('mcp_server', {
     // Sent as `Authorization: Bearer <token>`. Never returned by the API.
     token: text('token'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    // Shown on the server's toggle in the chat input. One of TOOL_SERVER_ICONS.
+    icon: text('icon').notNull().default('wrench'),
 
     // Timestamps (unix seconds)
     createdAt: integer('created_at').notNull(),

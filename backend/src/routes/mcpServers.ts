@@ -17,12 +17,14 @@ const router = Router();
 const NameSchema = z.string().trim().min(1).max(60);
 const UrlSchema = z.url({ protocol: /^https?$/ }).max(2000);
 const TokenSchema = z.string().trim().max(2000);
+const IconSchema = z.enum(['wrench', 'globe', 'search', 'terminal', 'database', 'document', 'folder', 'link', 'bolt']);
 
 const CreateSchema = z.object({
     name: NameSchema,
     url: UrlSchema,
     token: TokenSchema.optional(),
     enabled: z.boolean().default(true),
+    icon: IconSchema.optional(),
 });
 
 const UpdateSchema = z.object({
@@ -31,6 +33,7 @@ const UpdateSchema = z.object({
     // Omit to keep the current token; null or "" removes it.
     token: TokenSchema.nullable().optional(),
     enabled: z.boolean().optional(),
+    icon: IconSchema.optional(),
 });
 
 /** What users see: enough to show and toggle a server's tools. */

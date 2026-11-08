@@ -57,6 +57,13 @@
       "when": 1794072444009,
       "tag": "0007_mcp_servers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794157667765,
+      "tag": "0008_mcp_server_icon",
+      "breakpoints": true
     }
   ]
 }
