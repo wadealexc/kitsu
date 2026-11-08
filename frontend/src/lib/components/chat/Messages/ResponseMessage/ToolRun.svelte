@@ -14,9 +14,8 @@
     import Modal from '$lib/components/common/Modal.svelte';
     import Tooltip from '$lib/components/common/Tooltip.svelte';
     import ToolCall from './ToolCall.svelte';
-    import ReasoningTail from './ReasoningTail.svelte';
     import { singleCallTitle, type RunBlock } from './toolRuns';
-    import type { ReasoningBlock, ToolCallBlock } from '@backend/routes/types';
+    import type { ToolCallBlock } from '@backend/routes/types';
 
     export let blocks: RunBlock[];
     export let toolProgress: Map<string, ToolProgressState> | undefined = undefined;
@@ -27,8 +26,6 @@
 
     $: tools = blocks.filter((b): b is ToolCallBlock => b.type === 'tool_call');
     $: count = `${tools.length} tool call${tools.length === 1 ? '' : 's'}`;
-    $: last = blocks.at(-1);
-    $: thinking = live && last?.type === 'reasoning' && !last.done ? (last as ReasoningBlock) : null;
 
     const reasoningSeconds = (list: RunBlock[]) =>
         list.reduce((sum, b) => sum + (b.type === 'reasoning' ? (b.duration ?? 0) : 0), 0);
@@ -159,10 +156,6 @@
             {/each}
         </div>
     </div>
-{/if}
-
-{#if thinking}
-    <ReasoningTail text={thinking.content} />
 {/if}
 
 {#if showTrace}
