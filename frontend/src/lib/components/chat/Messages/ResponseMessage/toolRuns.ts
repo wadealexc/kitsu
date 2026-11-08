@@ -42,7 +42,7 @@ export function displayPath(path: string): string {
     return path.replace(/^(\/workspace\/+|(\.\/+)+)/, '');
 }
 
-export type CallTitle = { verb: string; target: string; after: string };
+export type CallTitle = { verb: string; target: string };
 
 /** A tool call in a few words, for the header of a run with only that call. */
 export function singleCallTitle(block: ToolCallBlock): CallTitle {
@@ -57,8 +57,11 @@ export function singleCallTitle(block: ToolCallBlock): CallTitle {
     const running = block.result === undefined && !block.done;
 
     if (block.name === 'bash' && command) {
-        const after = !running && block.duration ? `in ${block.duration} second${block.duration === 1 ? '' : 's'}` : '';
-        return { verb: running ? 'Running' : 'Ran', target: command.trim(), after };
+        if (running) return { verb: 'Running', target: command.trim() };
+        // Everything but the command comes first, so the title ends on it.
+        const time = block.duration ? ` in ${block.duration} second${block.duration === 1 ? '' : 's'}` : '';
+        const failed = block.failed ? ' (failed)' : '';
+        return { verb: `Ran${time}${failed}${time || failed ? ':' : ''}`, target: command.trim() };
     }
 
     const verbs: Record<string, [string, string, string]> = {
@@ -68,7 +71,7 @@ export function singleCallTitle(block: ToolCallBlock): CallTitle {
     };
     const verb = verbs[block.name];
     if (verb && path) {
-        return { verb: running ? verb[0] : block.failed ? `Couldn't ${verb[2]}` : verb[1], target: path, after: '' };
+        return { verb: running ? verb[0] : block.failed ? `Couldn't ${verb[2]}` : verb[1], target: path };
     }
-    return { verb: running ? 'Running' : 'Used', target: block.name, after: '' };
+    return { verb: running ? 'Running' : 'Used', target: block.name };
 }

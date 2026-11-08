@@ -108,8 +108,7 @@
             {#if single}
                 <div class="flex items-baseline gap-1.5 min-w-0">
                     <span class="shrink-0">{single.verb}</span>
-                    <span class="truncate font-mono text-[0.85em] font-normal text-gray-700 dark:text-gray-300">{single.target}</span>
-                    {#if single.after}<span class="shrink-0">{single.after}</span>{/if}
+                    <span class="truncate font-mono text-[0.85em] font-normal">{single.target}</span>
                 </div>
             {:else}
                 <div class="truncate">{header}</div>
