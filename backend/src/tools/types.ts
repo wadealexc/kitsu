@@ -11,14 +11,17 @@ export type ToolSession = {
     contextBudget: number | undefined;
     /** Servers the user turned off for this chat */
     disabledServers: Set<string>;
+    /** Which chat and user a sandbox call belongs to */
+    identity?: { chat: string; user: string } | undefined;
 };
 
 export function createToolSession(
     model: string,
     contextLimit: number | undefined,
     disabledServers: Iterable<string> = [],
+    identity?: { chat: string; user: string },
 ): ToolSession {
-    return { model, contextLimit, contextBudget: undefined, disabledServers: new Set(disabledServers) };
+    return { model, contextLimit, contextBudget: undefined, disabledServers: new Set(disabledServers), identity };
 }
 
 /** Progress reported while a tool runs, forwarded to the frontend. */

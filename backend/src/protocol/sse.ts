@@ -53,11 +53,14 @@ export type SseModelLoadingPayload = {
  */
 export type SseNotesPayload = {
     type: 'chat:notes';
-    data: Record<string, {
+    data: Record<string, ({
         kind: 'tools';
         text: string;
         disabledServers: string[];
-    }[]>;
+    } | {
+        kind: 'files';
+        text: string;
+    })[]>;
 };
 
 /** Emitted when the LLM requests a tool call */

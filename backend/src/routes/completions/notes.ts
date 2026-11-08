@@ -27,6 +27,11 @@ export function renderNotes(notes: Types.MessageNote[] | undefined): string {
     return notes.map(n => `\n\n<${NOTE_TAG}>\n${n.text}\n</${NOTE_TAG}>`).join('');
 }
 
+/** Tells the model what the user just put in the sandbox. */
+export function filesNote(names: string[]): Types.MessageNote {
+    return { kind: 'files', text: `The user added these files to the sandbox workspace: ${names.join(', ')}` };
+}
+
 type ServerTools = { id: string; name: string; tools: string[] };
 
 function groupByServer(tools: McpTool[]): ServerTools[] {

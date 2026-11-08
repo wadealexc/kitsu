@@ -4,7 +4,7 @@ import type { Model } from '../../db/index.js';
 import * as proto from '../../protocol/index.js';
 import * as Types from '../types/index.js';
 import { getLastUserMessage, resolveSystemPrompt, applyPromptVariables, buildOAIMessages, createMessagesList } from './messages.js';
-import { SYSTEM_PROMPT_NOTES, toolsNote } from './notes.js';
+import { filesNote, SYSTEM_PROMPT_NOTES, toolsNote } from './notes.js';
 import type { ToolRegistry } from '../../tools/registry.js';
 
 /* -------------------- TYPES -------------------- */
@@ -42,7 +42,7 @@ export async function prepareRequest(
         throw new Error(`Invalid request body: ${parsed.error.issues.toString()}`);
 
     const userId = req.user!.id;
-    const { stream, chatId, chat, folderId, promptVariables } = parsed.data;
+    const { stream, chatId, chat, folderId, promptVariables, sandboxUploads } = parsed.data;
     const isLocalChat = chatId.startsWith('local:');
 
     // Resolve custom model -> base model and fetch params from DB
@@ -71,15 +71,27 @@ export async function prepareRequest(
             throw new Error(`Model not found: ${resolvedModel}`);
     }
 
-    const tools = toolRegistry.tools();
+    const existingChat = isLocalChat ? null : await Chats.getChatByIdAndUserId(chatId, userId, db);
+
+    // A sandbox is off unless turned on in this chat. Its tools join the list the
+    // first time it is, and stay, so turning it off later leaves the prompt the same.
+    const allTools = toolRegistry.tools();
+    const sandboxServers = new Set(allTools.filter(t => t.sandbox).map(t => t.serverId));
+    const sandboxOn = !isLocalChat && chat.sandboxEnabled === true;
+    const sandboxActivated = !isLocalChat
+        && (sandboxOn || chat.sandboxActivated === true || existingChat?.chat.sandboxActivated === true);
+    if (sandboxActivated) chat.sandboxActivated = true;
+    const tools = sandboxActivated ? allTools : allTools.filter(t => !t.sandbox);
 
     // Servers turned off for this chat. Older chats only had one web search switch.
-    const disabledServers = chat.disabledToolServers
-        ?? (chat.webSearchEnabled === false ? [...new Set(tools.map(t => t.serverId))] : []);
+    const disabledServers = [
+        ...(chat.disabledToolServers ?? (chat.webSearchEnabled === false ? [...new Set(allTools.map(t => t.serverId))] : []))
+            .filter(id => !sandboxServers.has(id)),
+        ...(sandboxOn ? [] : sandboxServers),
+    ];
 
     // Notes the frontend may not have: keep the saved copy so earlier messages
     // read exactly as before.
-    const existingChat = isLocalChat ? null : await Chats.getChatByIdAndUserId(chatId, userId, db);
     if (existingChat) {
         for (const [id, saved] of Object.entries(existingChat.chat.history.messages)) {
             const incoming = chat.history.messages[id];
@@ -92,7 +104,8 @@ export async function prepareRequest(
     const earlier = createMessagesList(chat.history, userMessage.parentId);
     const otherNotes = (userMessage.notes ?? []).filter(n => n.kind !== 'tools');
     const note = toolsNote(earlier, disabledServers, tools);
-    const notes = note ? [...otherNotes, note] : otherNotes;
+    const uploads = sandboxOn && sandboxUploads?.length && !otherNotes.some(n => n.kind === 'files') ? filesNote(sandboxUploads) : undefined;
+    const notes = [...otherNotes, ...(note ? [note] : []), ...(uploads ? [uploads] : [])];
     if (notes.length) userMessage.notes = notes;
     else delete userMessage.notes;
 
@@ -104,7 +117,7 @@ export async function prepareRequest(
     const oaiMessages = buildOAIMessages(chat.history, systemPrompt);
 
     // Every tool goes out on every request, whatever is turned off, so the prompt cache holds.
-    const toolDefinitions = toolRegistry.getToolDefinitions();
+    const toolDefinitions = toolRegistry.getToolDefinitions(sandboxActivated);
     const completionBody: proto.CompletionRequest = {
         model: resolvedModel,
         messages: oaiMessages,

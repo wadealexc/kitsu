@@ -174,7 +174,7 @@ async function runGeneration(
 
     // Per-request session for context budget tracking and tools turned off
     const modelInfo = await llama.getModelInfo(ctx.resolvedModel);
-    const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, ctx.disabledServers);
+    const session = createToolSession(ctx.resolvedModel, modelInfo?.contextLength, ctx.disabledServers, { chat: ctx.chatId, user: ctx.userId });
 
     // Save the chat as it is now (the new message or branch, with the reply
     // unfinished), so reopening it mid-reply finds the reply and follows it

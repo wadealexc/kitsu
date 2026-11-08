@@ -1,4 +1,5 @@
 import { Router, type Response, type NextFunction } from 'express';
+import { discardSandboxes } from './sandbox.js';
 
 import * as Types from './types/index.js';
 import { requireAuth, validateChatId, validateShareId, validateFolderId } from './middleware.js';
@@ -251,6 +252,7 @@ router.delete('/:id', validateChatId, requireAuth, async (
 
     try {
         await Chats.deleteChat(chatId, userId, db);
+        discardSandboxes(req.app.locals.mcp, userId, chatId);
         return res.json(true);
     } catch (error: unknown) {
         if (error instanceof HttpError) {
@@ -282,6 +284,7 @@ router.delete('/', requireAuth, async (
 
     try {
         await Chats.deleteAllChatsByUserId(userId, db);
+        discardSandboxes(req.app.locals.mcp, userId);
         return res.json(true);
     } catch (error: unknown) {
         if (error instanceof HttpError) {

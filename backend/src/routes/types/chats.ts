@@ -107,12 +107,15 @@ export type MessageBlock = z.infer<typeof MessageBlockSchema>;
  * e.g. that tools were turned off. Saved with the message so later requests
  * send exactly the same text and the prompt cache stays valid.
  */
-export const MessageNoteSchema = z.object({
-    kind: z.literal('tools'),
-    text: z.string(),
-    // MCP server ids turned off when the note was written
-    disabledServers: z.array(z.string()),
-});
+export const MessageNoteSchema = z.discriminatedUnion('kind', [
+    z.object({
+        kind: z.literal('tools'),
+        text: z.string(),
+        // MCP server ids turned off when the note was written
+        disabledServers: z.array(z.string()),
+    }),
+    z.object({ kind: z.literal('files'), text: z.string() }),
+]);
 export type MessageNote = z.infer<typeof MessageNoteSchema>;
 
 // Individual chat message in history
@@ -151,6 +154,10 @@ export interface ChatObject {
     webSearchEnabled?: boolean;
     /** MCP server ids the user turned off for this chat */
     disabledToolServers?: string[];
+    /** Whether the sandbox is on for this chat. Off unless the user turns it on. */
+    sandboxEnabled?: boolean;
+    /** Whether it has ever been on here, which keeps its tools in the list and its files reachable. */
+    sandboxActivated?: boolean;
     systemPrompt?: string;
     history: ChatHistory;
     timestamp: number;
@@ -163,6 +170,8 @@ export const ChatObjectSchema: z.ZodType<ChatObject> = z.object({
     timestamp: z.number(),
     webSearchEnabled: z.boolean().optional(),
     disabledToolServers: z.array(z.string()).optional(),
+    sandboxEnabled: z.boolean().optional(),
+    sandboxActivated: z.boolean().optional(),
     systemPrompt: z.string().optional(),
 }).passthrough();
 
@@ -330,5 +339,7 @@ export const ChatCompletionFormSchema = z.object({
     chat: ChatObjectSchema,
     folderId: FolderIdSchema.optional(),
     promptVariables: PromptVariablesSchema,
+    /** Files the user added to the sandbox since their last message */
+    sandboxUploads: z.array(z.string().max(4096)).max(200).optional(),
 });
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;

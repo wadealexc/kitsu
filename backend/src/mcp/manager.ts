@@ -26,7 +26,15 @@ export type McpTool = {
     title?: string;
     description: string;
     inputSchema: Record<string, unknown>;
+    /** From a sandbox server: off by default, and offered to a chat only once it's turned on there. */
+    sandbox: boolean;
 };
+
+/** The chat and user a sandbox call belongs to. Set by kitsu, so the model can't choose them. */
+export type SandboxIdentity = { chat: string; user: string };
+
+/** The capability a server announces to be treated as a sandbox, and the `_meta` key it reads the identity from. */
+const SANDBOX_KEY = 'kitsu/sandbox';
 
 export type McpServerState = 'connected' | 'connecting' | 'error' | 'disabled';
 
@@ -36,6 +44,7 @@ export type McpServerStatus = {
     url: string;
     enabled: boolean;
     icon: string;
+    sandbox: boolean;
     hasToken: boolean;
     state: McpServerState;
     error?: string;
@@ -74,6 +83,7 @@ type Connection = {
     state: McpServerState;
     error?: string;
     tools: McpToolDefinition[];
+    sandbox?: boolean;
     connecting?: Promise<void>;
 };
 
@@ -154,6 +164,7 @@ export class McpManager {
             ...(t.title ? { title: t.title } : {}),
             description: t.description ?? '',
             inputSchema: t.inputSchema as Record<string, unknown>,
+            sandbox: c.sandbox === true,
         })));
     }
 
@@ -166,6 +177,7 @@ export class McpManager {
                 url: c.server.url,
                 enabled: c.server.enabled,
                 icon: c.server.icon,
+                sandbox: c.sandbox === true,
                 hasToken: !!c.server.token,
                 state: c.state,
                 ...(c.error ? { error: c.error } : {}),
@@ -173,7 +185,12 @@ export class McpManager {
             }));
     }
 
-    async call(tool: McpTool, args: unknown, opts: { signal: AbortSignal; onProgress?: (p: McpProgress) => void }): Promise<McpCallResult> {
+    /** The enabled sandbox server, if there is one. */
+    sandboxServer(): McpServer | null {
+        return [...this.connections.values()].find(c => c.server.enabled && c.sandbox)?.server ?? null;
+    }
+
+    async call(tool: McpTool, args: unknown, opts: { signal: AbortSignal; onProgress?: (p: McpProgress) => void; identity?: SandboxIdentity | undefined }): Promise<McpCallResult> {
         const conn = this.connections.get(tool.serverId);
         if (!conn || !conn.server.enabled) return { ok: false, text: `The ${tool.serverName} tools are not available.` };
 
@@ -182,7 +199,11 @@ export class McpManager {
             if (!conn.client) throw new Error(conn.error ?? 'not connected');
 
             const result = await conn.client.callTool(
-                { name: tool.toolName, arguments: (args ?? {}) as Record<string, unknown> },
+                {
+                    name: tool.toolName,
+                    arguments: (args ?? {}) as Record<string, unknown>,
+                    ...(conn.sandbox && opts.identity ? { _meta: { [SANDBOX_KEY]: opts.identity } } : {}),
+                },
                 undefined,
                 {
                     signal: opts.signal,
@@ -238,6 +259,7 @@ export class McpManager {
 
                 conn.client = client;
                 conn.tools = tools;
+                conn.sandbox = client.getServerCapabilities?.()?.experimental?.[SANDBOX_KEY] !== undefined;
                 conn.state = 'connected';
                 delete conn.error;
             } catch (err) {

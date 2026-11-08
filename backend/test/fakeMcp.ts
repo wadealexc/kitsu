@@ -17,7 +17,14 @@ export function fakeConnector(calls: { server: string; tool: string; args: unkno
     return async (record) => {
         if (record.url.includes('down')) throw new Error('connection refused');
 
-        const server = new McpServer({ name: record.name, version: '1' });
+        const isSandbox = record.url.includes('sandbox');
+        const server = new McpServer({ name: record.name, version: '1' }, isSandbox ? { capabilities: { experimental: { 'kitsu/sandbox': {} } } } : undefined);
+        if (isSandbox) {
+            server.registerTool('sandbox_whoami', { description: 'Reports who is calling', inputSchema: { chat: z.string().optional() } }, async (args, extra) => {
+                calls.push({ server: record.name, tool: 'sandbox_whoami', args: { given: args, identity: extra._meta?.['kitsu/sandbox'] } });
+                return { content: [{ type: 'text', text: 'ok' }] };
+            });
+        }
         server.registerTool('echo', {
             description: 'Echo the text back',
             inputSchema: { text: z.string() },
