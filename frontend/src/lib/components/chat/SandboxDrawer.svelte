@@ -15,6 +15,7 @@
     } from '$lib/apis/sandbox';
 
     import Spinner from '../common/Spinner.svelte';
+    import PdfPreview from './PdfPreview.svelte';
     import ChevronLeft from '../icons/ChevronLeft.svelte';
     import Document from '../icons/Document.svelte';
     import Download from '../icons/Download.svelte';
@@ -55,6 +56,7 @@
 
     type Preview =
         | { kind: 'image'; entry: SandboxEntry; url: string }
+        | { kind: 'pdf'; entry: SandboxEntry; blob: Blob }
         | { kind: 'text'; entry: SandboxEntry; text: string; cut: boolean }
         | { kind: 'none'; entry: SandboxEntry }
         | { kind: 'loading'; entry: SandboxEntry };
@@ -138,6 +140,10 @@
             if (imageType) {
                 previewUrl = URL.createObjectURL(new Blob([blob], { type: imageType }));
                 preview = { kind: 'image', entry, url: previewUrl };
+                return;
+            }
+            if (ext === 'pdf') {
+                preview = { kind: 'pdf', entry, blob };
                 return;
             }
             // Text only, shown as text: an HTML file made in here must never be rendered.
@@ -291,6 +297,10 @@
                 <div class="flex justify-center py-8"><Spinner className="size-5" /></div>
             {:else if preview.kind === 'image'}
                 <img src={preview.url} alt={preview.entry.name} class="max-w-full h-auto rounded-lg" />
+            {:else if preview.kind === 'pdf'}
+                {#key preview.entry.name}
+                    <PdfPreview blob={preview.blob} />
+                {/key}
             {:else if preview.kind === 'text'}
                 <pre class="text-xs whitespace-pre-wrap break-words font-mono">{preview.text}</pre>
                 {#if preview.cut}
