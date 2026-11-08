@@ -32,4 +32,6 @@ export type ToolProgress = {
     total?: number;
     /** Status of one page, for tools that load web pages */
     page?: { url: string; status: string; outcome?: string };
+    /** The latest output of a command still running */
+    output?: string;
 };

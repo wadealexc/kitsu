@@ -158,6 +158,17 @@
                             {/each}
                         </div>
 
+                        <label class="flex items-center justify-between gap-3 text-xs text-gray-600 dark:text-gray-300">
+                            <span>Condensed view: group runs of tool calls into one box</span>
+                            <Switch
+                                state={server.condensed}
+                                on:change={(e) =>
+                                    run(server.id, () =>
+                                        updateToolServer(localStorage.token, server.id, { condensed: e.detail })
+                                    )}
+                            />
+                        </label>
+
                         {#if server.state === 'error' && server.error}
                             <div class="text-xs text-red-600 dark:text-red-300 break-words">{server.error}</div>
                         {/if}

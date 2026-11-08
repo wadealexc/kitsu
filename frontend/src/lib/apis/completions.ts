@@ -24,7 +24,7 @@ export type PromptProgress = {
 
 export type UrlStatus = { url: string; hostname: string; status: 'loading' | 'loaded' | 'failed' };
 /** Live progress of one tool call: the latest message, and pages in the order they started */
-export type ToolProgressState = { message?: string; pages: UrlStatus[] };
+export type ToolProgressState = { message?: string; output?: string; pages: UrlStatus[] };
 
 export type TextStreamUpdate = {
     done: boolean;

@@ -39,6 +39,8 @@ export type ToolExecResult = {
     results: ToolRoundResult[];
     elapsedMs: number;
     toolRoundStartMs: number;
+    /** When the round's tools started (unix ms) */
+    startedAt: number;
 };
 
 export async function emitEventsAndExecuteTools(
@@ -48,15 +50,17 @@ export async function emitEventsAndExecuteTools(
     toolCalls: proto.AssistantToolCall[],
     signal: AbortSignal,
     session: ToolSession,
+    round: number,
 ): Promise<ToolExecResult | undefined> {
     if (toolCalls.length === 0) return;
+    const startedAt = Date.now();
 
     // Emit SSE events for each tool call
     for (const tc of toolCalls) {
         const server = toolRegistry.find(tc.function.name)?.serverName;
         emitSseEvent(res, chatId, {
             type: 'tool_call:start',
-            data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments, ...(server ? { server } : {}) },
+            data: { id: tc.id, name: tc.function.name, arguments: tc.function.arguments, round, startedAt, ...(server ? { server } : {}) },
         });
     }
 
@@ -92,11 +96,12 @@ export async function emitEventsAndExecuteTools(
                 failed: !r.result.ok,
                 ...(r.server ? { server: r.server } : {}),
                 ...(r.result.structured ? { structured: r.result.structured } : {}),
+                ...(r.result.ok && r.result.images ? { images: r.result.images } : {}),
             },
         });
     }
 
-    return { results: roundResults, elapsedMs, toolRoundStartMs };
+    return { results: roundResults, elapsedMs, toolRoundStartMs, startedAt };
 }
 
 /* -------------------- BLOCK ACCUMULATION -------------------- */
@@ -104,15 +109,18 @@ export async function emitEventsAndExecuteTools(
 /**
  * Updates the blocks array for one completion round.
  *
- * Non-tool call rounds: Adds reasoning block and content block. Returns final text content.
+ * Non-tool call rounds: Adds reasoning block. Returns final text content.
  *
- * Tool round: Adds reasoning block (if present) and tool_call blocks. Returns empty string.
+ * Tool round: Adds reasoning and content blocks (if present) and tool_call blocks.
+ * Returns empty string. These blocks are what later requests rebuild this round
+ * from, so everything the model wrote or was told has to be in them.
  */
 export function accumulateBlocks(
     blocks: Types.MessageBlock[],
     response: proto.CompletionResponse,
     toolResults?: ToolRoundResult[],
     reasoningDurationMs?: number,
+    timing?: { round: number; startedAt: number },
 ): string {
     const message = response.choices[0]?.message;
 
@@ -124,6 +132,10 @@ export function accumulateBlocks(
     if (!toolResults) {
         return message?.content ?? '';
     }
+
+    // The same trim the frontend applies, so both copies of a reply match.
+    const said = message?.content?.trim();
+    if (said) blocks.push({ type: 'content', content: said, done: true });
 
     for (let i = 0; i < toolResults.length; i++) {
         const r = toolResults.at(i)!;
@@ -138,6 +150,8 @@ export function accumulateBlocks(
             failed: !r.result.ok,
             ...(r.server ? { server: r.server } : {}),
             ...(r.result.structured ? { structured: r.result.structured } : {}),
+            ...(timing ?? {}),
+            ...(r.result.ok && r.result.images ? { images: r.result.images } : {}),
         });
     }
 

@@ -154,18 +154,38 @@ export function createMessagesList(
  */
 function expandMessageBlocks(
     message: Types.ChatMessage,
-): (proto.AssistantMessage | proto.ToolMessage)[] {
+): proto.Message[] {
     if (!message.blocks?.length) {
         return [{ role: 'assistant', content: message.content }];
     }
 
-    const result: (proto.AssistantMessage | proto.ToolMessage)[] = [];
+    const { messages, reasoning } = toolRoundMessages(message.blocks);
+
+    // Final assistant message with content + any trailing reasoning
+    messages.push({
+        role: 'assistant',
+        content: message.content,
+        ...(reasoning ? { reasoning_content: reasoning } : {}),
+    });
+
+    return messages;
+}
+
+/**
+ * The model turns a reply's tool rounds are made of. The tool loop and every later
+ * request both build them here: if the two ever differ, llama.cpp has to process
+ * everything after the difference again.
+ */
+export function toolRoundMessages(
+    blocks: Types.MessageBlock[],
+): { messages: proto.Message[]; reasoning: string } {
+    const result: proto.Message[] = [];
     let currentReasoning = '';
     let currentContent = '';
     let pendingToolCalls: Types.ToolCallBlock[] = [];
 
-    for (let i = 0; i < message.blocks.length; i++) {
-        const block = message.blocks[i];
+    for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
         if (!block) continue;
 
         if (block.type === 'reasoning') {
@@ -177,8 +197,11 @@ function expandMessageBlocks(
         }
 
         // Flush tool calls when the next block is not a tool_call (or end of blocks)
-        const nextBlock = message.blocks[i + 1];
-        if (pendingToolCalls.length > 0 && nextBlock?.type !== 'tool_call') {
+        // or is from a later round: back-to-back rounds with nothing between them are
+        // still separate model turns.
+        const nextBlock = blocks[i + 1];
+        const sameRound = nextBlock?.type === 'tool_call' && nextBlock.round === pendingToolCalls[0]?.round;
+        if (pendingToolCalls.length > 0 && !sameRound) {
             const assistantMsg: proto.AssistantMessage = {
                 role: 'assistant',
                 content: currentContent,
@@ -194,7 +217,19 @@ function expandMessageBlocks(
                 result.push({
                     role: 'tool' as const,
                     tool_call_id: tc.id,
-                    content: tc.result ?? '',
+                    content: tc.failed ? `Error: ${tc.result ?? ''}` : (tc.result ?? ''),
+                });
+            }
+
+            // Tool messages can't hold images, so the model gets them in a user message.
+            const images = pendingToolCalls.flatMap(tc => tc.images ?? []);
+            if (images.length > 0) {
+                result.push({
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: images.length === 1 ? 'The image from the tool result above:' : 'The images from the tool results above:' },
+                        ...images.map((image): proto.ContentPart => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } })),
+                    ],
                 });
             }
             currentReasoning = '';
@@ -203,14 +238,7 @@ function expandMessageBlocks(
         }
     }
 
-    // Final assistant message with content + any trailing reasoning
-    result.push({
-        role: 'assistant',
-        content: message.content,
-        ...(currentReasoning ? { reasoning_content: currentReasoning } : {}),
-    });
-
-    return result;
+    return { messages: result, reasoning: currentReasoning };
 }
 
 /**

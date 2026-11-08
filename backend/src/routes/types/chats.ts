@@ -85,6 +85,12 @@ export const ToolCallBlockSchema = z.object({
     server: z.string().optional(),
     // Machine-readable result (MCP structuredContent), for display
     structured: z.record(z.string(), z.unknown()).optional(),
+    // Which model turn asked for it. Calls from one turn go back to the model together.
+    round: z.number().optional(),
+    // When it started (unix ms)
+    startedAt: z.number().optional(),
+    // Images the tool returned, for the model to look at
+    images: z.array(z.object({ mimeType: z.string(), data: z.string() })).optional(),
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 

@@ -32,6 +32,7 @@
     export let regenerateResponse: (message: ChatMessage) => void | Promise<void>;
 
     export let toolProgress: Map<string, ToolProgressState> | undefined = undefined;
+    export let quietSeconds = 0;
     export let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined =
         undefined;
 
@@ -294,6 +295,7 @@
                                         {deleteMessage}
                                         {regenerateResponse}
                                         {toolProgress}
+                                        {quietSeconds}
                                         {modelStatus}
                                         {readOnly}
                                     />

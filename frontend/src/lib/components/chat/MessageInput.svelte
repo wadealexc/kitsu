@@ -60,6 +60,8 @@
     /** Whether there's a workspace to open, and whether it's open. */
     export let sandboxVisible = false;
     export let sandboxOpen = false;
+    /** Takes files added here instead of the message, while the sandbox is on. */
+    export let onSandboxFiles: (files: File[]) => void = () => {};
 
     // Servers that offer tools, each with its own switch. A temporary chat isn't kept, so it can't have a sandbox.
     $: switchableServers = $toolServers
@@ -187,6 +189,11 @@
     };
 
     const inputFilesHandler = async (inputFiles: File[]): Promise<void> => {
+        if (sandboxEnabled && sandboxVisible) {
+            onSandboxFiles(inputFiles);
+            return;
+        }
+
         for (const file of inputFiles) {
             if (file.size === 0) {
                 toast.error('File is empty, skipping.');
@@ -590,21 +597,6 @@
                                             </button>
                                         </Tooltip>
                                     {/each}
-                                    {#if sandboxVisible}
-                                        <Tooltip content={sandboxOpen ? 'Hide workspace' : 'Show workspace'} placement="top">
-                                            <button
-                                                on:click|preventDefault={() => (sandboxOpen = !sandboxOpen)}
-                                                type="button"
-                                                aria-pressed={sandboxOpen}
-                                                aria-label="Workspace"
-                                                class="rounded-md p-1.5 outline-hidden focus:outline-hidden transition-colors {sandboxOpen
-                                                    ? 'text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800'
-                                                    : 'text-gray-500 dark:text-gray-400 md:hover:bg-gray-100 dark:md:hover:bg-gray-800'}"
-                                            >
-                                                <Folder className="size-4.5" strokeWidth="1.5" />
-                                            </button>
-                                        </Tooltip>
-                                    {/if}
                                 </div>
                             </div>
 
@@ -629,6 +621,24 @@
                             </div>
 
                             <div class="self-end flex items-center mr-[3px] gap-2">
+                                {#if sandboxVisible}
+                                    <button
+                                        on:click|preventDefault={() => (sandboxOpen = !sandboxOpen)}
+                                        type="button"
+                                        aria-pressed={sandboxOpen}
+                                        aria-label="Files"
+                                        class="rounded-md flex items-center {$mobile
+                                            ? 'p-1.5'
+                                            : 'gap-1.5 pl-2 pr-1.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {sandboxOpen
+                                            ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
+                                            : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
+                                    >
+                                        {#if !$mobile}
+                                            <span>{'Files'}</span>
+                                        {/if}
+                                        <Folder className="size-4.5" strokeWidth="1.5" />
+                                    </button>
+                                {/if}
                                 <button
                                     on:click|preventDefault={() =>
                                         (systemPromptVisible = !systemPromptVisible)}

@@ -1,0 +1,1 @@
+ALTER TABLE `mcp_server` ADD `condensed` integer DEFAULT false NOT NULL;

@@ -62,7 +62,12 @@
     let previewUrl: string | null = null;
 
     const join = (name: string) => (path === '.' ? name : `${path}/${name}`);
-    $: crumbs = path === '.' ? [] : path.split('/');
+    $: inFolder = path !== '.';
+    $: folderName = path.split('/').at(-1) ?? '';
+    const goUp = () => {
+        const parts = path.split('/');
+        path = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+    };
 
     const formatSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
@@ -244,8 +249,15 @@
                 {/if}
             </div>
         {:else}
-            <div class="font-medium text-sm">Workspace</div>
-            {#if status?.exists}
+            {#if inFolder}
+                <button class={iconButton} aria-label="Back" on:click={goUp}>
+                    <ChevronLeft className="size-4" />
+                </button>
+                <div class="font-medium text-sm truncate min-w-0">{folderName}</div>
+            {:else}
+                <div class="font-medium text-sm">Workspace</div>
+            {/if}
+            {#if status?.exists && !inFolder}
                 <div class="text-xs text-gray-500 dark:text-gray-400 ml-1 {status.overLimit ? 'text-red-500 dark:text-red-400' : ''}">
                     {formatSize(status.sizeBytes)} of {formatSize(status.limitBytes)}
                 </div>
@@ -289,31 +301,25 @@
             {/if}
         </div>
     {:else}
-        {#if crumbs.length > 0}
-            <div class="flex items-center flex-wrap gap-0.5 px-3 pb-1.5 text-xs text-gray-500 dark:text-gray-400">
-                <button class="hover:underline" on:click={() => (path = '.')}>workspace</button>
-                {#each crumbs as crumb, i}
-                    <span>/</span>
-                    <button class="hover:underline truncate max-w-32" on:click={() => (path = crumbs.slice(0, i + 1).join('/'))}>{crumb}</button>
-                {/each}
-            </div>
-        {/if}
-
         <div class="flex-1 min-h-0 overflow-y-auto px-1.5 pb-2">
             {#if entries.length === 0 && !loading}
                 <button
                     class="w-full text-sm text-gray-500 dark:text-gray-400 py-10 px-4 text-center"
                     on:click={() => fileInput.click()}
                 >
-                    {crumbs.length ? 'This folder is empty.' : 'No files yet. Tap to add some, or ask the model to make them.'}
+                    {inFolder ? 'This folder is empty.' : 'No files yet. Tap to add some, or ask the model to make them.'}
                 </button>
             {/if}
             {#each entries as entry (entry.name)}
                 <div class="group flex items-center rounded-lg hover:bg-gray-50 dark:hover:bg-gray-850">
                     <button class="flex-1 min-w-0 flex items-center gap-2 text-left px-1.5 py-2" on:click={() => open(entry)}>
-                        <span class="shrink-0 text-gray-500 dark:text-gray-400">
-                            {#if entry.type === 'dir'}<Folder className="size-4" />{:else}<Document className="size-4" />{/if}
-                        </span>
+                        {#if entry.type === 'dir'}
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="size-4.5 shrink-0 text-amber-400 dark:text-amber-300">
+                                <path d="M3 6.75A2.25 2.25 0 0 1 5.25 4.5h3.88c.6 0 1.17.24 1.59.66l1.06 1.06c.14.14.33.22.53.22h6.44A2.25 2.25 0 0 1 21 8.69v8.56a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 17.25V6.75Z" />
+                            </svg>
+                        {:else}
+                            <span class="shrink-0 text-gray-400 dark:text-gray-500"><Document className="size-4.5" /></span>
+                        {/if}
                         <span class="text-sm truncate min-w-0">{entry.name}</span>
                         {#if entry.type !== 'dir'}
                             <span class="ml-auto pl-2 text-xs text-gray-500 dark:text-gray-400 shrink-0">{formatSize(entry.size)}</span>

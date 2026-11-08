@@ -241,6 +241,8 @@ export const mcpServers = sqliteTable('mcp_server', {
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     // Shown on the server's toggle in the chat input. One of TOOL_SERVER_ICONS.
     icon: text('icon').notNull().default('wrench'),
+    // Runs of this server's tool calls show as one box in the chat, not one block each.
+    condensed: integer('condensed', { mode: 'boolean' }).notNull().default(false),
 
     // Timestamps (unix seconds)
     createdAt: integer('created_at').notNull(),

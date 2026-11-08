@@ -82,6 +82,7 @@ export function serverRecord(over: Partial<{ id: string; name: string; url: stri
         token: over.token ?? null,
         enabled: over.enabled ?? true,
         icon: 'wrench',
+        condensed: false,
         createdAt: over.createdAt ?? created,
         updatedAt: over.createdAt ?? created,
     };

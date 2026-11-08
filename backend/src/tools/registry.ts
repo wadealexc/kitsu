@@ -1,10 +1,10 @@
 import type { Llama } from '../llama/types.js';
-import type { McpManager, McpTool } from '../mcp/manager.js';
+import type { McpManager, McpTool, ToolImage } from '../mcp/manager.js';
 import * as proto from '../protocol/index.js';
 import type { ToolProgress, ToolSession } from './types.js';
 
 export type ToolCallResult =
-    | { ok: true; output: string; structured?: Record<string, unknown> }
+    | { ok: true; output: string; structured?: Record<string, unknown>; images?: ToolImage[] }
     | { ok: false; error: string; structured?: Record<string, unknown> };
 
 export type ToolRoundResult = {
@@ -81,9 +81,8 @@ export class ToolRegistry {
         });
         const structured = result.structured ? { structured: result.structured } : {};
 
-        if (!result.ok) return { ok: false, error: result.text, ...structured };
-
         // Keep results inside the context window: count, and refuse what doesn't fit.
+        // A command that failed can have as much output as one that worked.
         if (session.contextBudget !== undefined) {
             const tokens = await this.llama.tokenize(result.text, session.model, signal);
             if (tokens > session.contextBudget) {
@@ -96,7 +95,8 @@ export class ToolRegistry {
             session.contextBudget -= tokens;
         }
 
-        return { ok: true, output: result.text, ...structured };
+        if (!result.ok) return { ok: false, error: result.text, ...structured };
+        return { ok: true, output: result.text, ...structured, ...(result.images ? { images: result.images } : {}) };
     }
 
     /**

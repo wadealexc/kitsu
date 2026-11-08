@@ -25,6 +25,7 @@ import {
     type UsageInfo,
 } from './helpers.js';
 import { createToolSession } from '../../tools/types.js';
+import { toolRoundMessages } from './messages.js';
 import { doTasks } from './tasks.js';
 import { Chats, db } from '../../db/index.js';
 import { GenerationJob, JobConflict, jobs } from './jobs.js';
@@ -189,22 +190,33 @@ async function runGeneration(
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
-            const stream = (await llama.completions({
-                body,
-                signal,
-                emit: {
-                    onQueue: emitCallback(job, ctx.chatId, { type: 'model:queued' }),
-                    onLoading: emitCallback(job, ctx.chatId, { type: 'model:loading' }),
-                },
-            })).stream;
-            currentStream = stream;
+            let stream: LlamaStream;
+            let result: Awaited<ReturnType<LlamaStream['finished']>>;
+            try {
+                stream = (await llama.completions({
+                    body,
+                    signal,
+                    emit: {
+                        onQueue: emitCallback(job, ctx.chatId, { type: 'model:queued' }),
+                        onLoading: emitCallback(job, ctx.chatId, { type: 'model:loading' }),
+                    },
+                })).stream;
+                currentStream = stream;
 
-            // Pipe llama -> done filter -> job (kept open between rounds)
-            stream.withDoneFilter().pipe(job.writable(), { end: false });
+                // Pipe llama -> done filter -> job (kept open between rounds)
+                stream.withDoneFilter().pipe(job.writable(), { end: false });
 
-            // Wait until the model is done responding
-            const result = await stream.finished();
-            if (!result.ok) throw result.value;
+                // Wait until the model is done responding
+                result = await stream.finished();
+                if (!result.ok) throw result.value;
+            } catch (err) {
+                // kitsu can't tell which models take images, so a request with one may be
+                // refused. Leave them out, or every later message in this chat fails too.
+                if (signal.aborted || !omitImages(blocks)) throw err;
+                body = { ...body, messages: [...ctx.completionBody.messages, ...toolRoundMessages(blocks).messages] };
+                round--;
+                continue;
+            }
 
             // Retroactively set duration on previous round's tool call blocks now that
             // we have the first output timestamp from this round's stream.
@@ -234,9 +246,9 @@ async function runGeneration(
 
             // If model responds with tool calls, emit events and execute tools
             const toolCalls: proto.AssistantToolCall[] = result.value.choices.flatMap(c => c.message.tool_calls ?? []);
-            const toolExec = await emitEventsAndExecuteTools(job, ctx.chatId, toolRegistry, toolCalls, signal, session);
+            const toolExec = await emitEventsAndExecuteTools(job, ctx.chatId, toolRegistry, toolCalls, signal, session, round);
 
-            finalContent = accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs());
+            finalContent = accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs(), toolExec ? { round, startedAt: toolExec.startedAt } : undefined);
 
             // Build round log
             const roundLog: RoundLog = {
@@ -259,21 +271,8 @@ async function runGeneration(
             // Save progress so far: if the backend goes away mid-reply, this much is kept
             await persistChat(ctx, { content: finalContent, blocks, usage: getFinalUsage(totalUsage), done: false });
 
-            // Append assistant + tool messages to history for next round
-            const roundMessage = result.value.choices[0]?.message;
-            const assistantTurn: proto.Message = {
-                role: 'assistant',
-                content: roundMessage?.content ?? '',
-                reasoning_content: roundMessage?.reasoning_content || undefined,
-                tool_calls: [...toolCalls],
-            };
-            const toolMessages: proto.Message[] = toolExec.results.map(r => ({
-                role: 'tool' as const,
-                tool_call_id: r.id,
-                content: r.result.ok ? r.result.output : `Error: ${r.result.error}`,
-            }));
-
-            body = { ...body, messages: [...body.messages, assistantTurn, ...toolMessages] };
+            // The next round sees this reply's rounds exactly as later requests will
+            body = { ...body, messages: [...ctx.completionBody.messages, ...toolRoundMessages(blocks).messages] };
 
             // On the last allowed round, strip tools to force a final text response
             if (round === MAX_TOOL_ROUNDS - 1) {
@@ -430,6 +429,18 @@ router.post('/tokenize', async (
         return res.status(500).json({ detail: err?.message ?? String(err) });
     }
 });
+
+/** Takes tool images out of a reply, telling the model. False if there were none. */
+function omitImages(blocks: Types.MessageBlock[]): boolean {
+    let found = false;
+    for (const block of blocks) {
+        if (block.type !== 'tool_call' || !block.images?.length) continue;
+        delete block.images;
+        block.result = `${block.result ?? ''}\n[Current model does not support images. The image was omitted.]`;
+        found = true;
+    }
+    return found;
+}
 
 export type PersistData = {
     content: string;

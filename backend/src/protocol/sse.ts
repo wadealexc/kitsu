@@ -72,6 +72,10 @@ export type SseToolCallStartPayload = {
         arguments: string;
         /** MCP server the tool belongs to */
         server?: string;
+        /** Which model turn asked for it */
+        round: number;
+        /** When it started (unix ms) */
+        startedAt: number;
     };
 };
 
@@ -87,6 +91,8 @@ export type SseToolCallResultPayload = {
         server?: string;
         /** Machine-readable result (MCP structuredContent), for display */
         structured?: Record<string, unknown>;
+        /** Images for the model to look at */
+        images?: { mimeType: string; data: string }[];
     };
 };
 
@@ -103,6 +109,8 @@ export type SseToolCallProgressPayload = {
             total?: number;
             /** Status of one page, from tools that load web pages */
             page?: { url: string; status: string; outcome?: string };
+            /** The latest output of a command still running */
+            output?: string;
         };
     };
 };

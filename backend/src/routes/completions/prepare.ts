@@ -90,12 +90,18 @@ export async function prepareRequest(
         ...(sandboxOn ? [] : sandboxServers),
     ];
 
-    // Notes the frontend may not have: keep the saved copy so earlier messages
-    // read exactly as before.
+    // Earlier messages read exactly as they were saved: notes the frontend may not
+    // have, and finished replies unless the user has edited them.
     if (existingChat) {
         for (const [id, saved] of Object.entries(existingChat.chat.history.messages)) {
             const incoming = chat.history.messages[id];
-            if (incoming && !incoming.notes && saved.notes?.length) incoming.notes = saved.notes;
+            if (!incoming) continue;
+            if (!incoming.notes && saved.notes?.length) incoming.notes = saved.notes;
+            if (id !== chat.history.currentId && saved.role === 'assistant' && saved.done && saved.blocks?.length
+                && incoming.content.trim() === saved.content.trim()) {
+                incoming.content = saved.content;
+                incoming.blocks = saved.blocks;
+            }
         }
     }
 

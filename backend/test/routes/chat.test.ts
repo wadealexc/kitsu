@@ -281,7 +281,7 @@ describe('POST /custom-completions', () => {
         const frames = await complete(makeChatBody());
 
         const start = findChatEvent(frames, 'tool_call:start');
-        assert.deepStrictEqual((start!.event.data as any).data, { id: 'call_1', name: 'web_echo', arguments: '{"text":"hi"}', server: 'web' });
+        assert.deepStrictEqual((start!.event.data as any).data, { id: 'call_1', name: 'web_echo', arguments: '{"text":"hi"}', server: 'web', round: 0, startedAt: (start!.event.data as any).data.startedAt });
 
         const progress = frames.filter(f => f.kind === 'chat-event' && f.event.data.type === 'tool_call:progress') as ChatEventFrame[];
         assert.deepStrictEqual(progress.map(p => (p.event.data as any).data.progress.page.status), ['loading', 'loaded']);

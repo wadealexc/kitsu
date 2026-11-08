@@ -25,6 +25,7 @@ const CreateSchema = z.object({
     token: TokenSchema.optional(),
     enabled: z.boolean().default(true),
     icon: IconSchema.optional(),
+    condensed: z.boolean().optional(),
 });
 
 const UpdateSchema = z.object({
@@ -34,6 +35,7 @@ const UpdateSchema = z.object({
     token: TokenSchema.nullable().optional(),
     enabled: z.boolean().optional(),
     icon: IconSchema.optional(),
+    condensed: z.boolean().optional(),
 });
 
 /** What users see: enough to show and toggle a server's tools. */

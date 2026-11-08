@@ -77,6 +77,7 @@
     import Messages from '$lib/components/chat/Messages.svelte';
     import Navbar from '$lib/components/Navbar.svelte';
     import SandboxDrawer from '$lib/components/chat/SandboxDrawer.svelte';
+    import { uploadSandboxFile } from '$lib/apis/sandbox';
     import Spinner from './common/Spinner.svelte';
     import Tooltip from './common/Tooltip.svelte';
     import EyeSlash from './icons/EyeSlash.svelte';
@@ -169,6 +170,54 @@
         sandboxAutoOpened = sandboxActivated;
         sandboxUploads = [];
         chatIdWithoutMessages = false;
+    };
+
+    /**
+     * Seconds the model has been silent. A tool call only reaches us once it's complete,
+     * so a long one (writing a big file, say) would otherwise look like nothing happening.
+     */
+    let lastOutputAt = 0;
+    let quietSeconds = 0;
+    let quietTimer: ReturnType<typeof setInterval> | undefined;
+    const QUIET_AFTER_MS = 2000;
+    $: if (generating && !quietTimer) {
+        quietTimer = setInterval(() => {
+            const message = history.currentId ? history.messages[history.currentId] : undefined;
+            const toolRunning = message?.blocks?.some((b) => b.type === 'tool_call' && b.result === undefined);
+            const started = !!message?.content || (message?.blocks?.length ?? 0) > 0;
+            const silent = Date.now() - lastOutputAt;
+            quietSeconds = started && !toolRunning && !modelStatus && silent >= QUIET_AFTER_MS ? Math.floor(silent / 1000) : 0;
+        }, 500);
+    } else if (!generating && quietTimer) {
+        clearInterval(quietTimer);
+        quietTimer = undefined;
+        quietSeconds = 0;
+    }
+
+    /** With the sandbox on, files added from the input bar go to its workspace. */
+    const addFilesToSandbox = async (list: File[]) => {
+        const nonEmpty = list.filter((file) => file.size > 0);
+        if (nonEmpty.length === 0) return;
+
+        const id = ensureChatIdForSandbox();
+        if (!$mobile) sandboxOpen = true;
+        const added: string[] = [];
+        await Promise.all(
+            nonEmpty.map(async (file) => {
+                try {
+                    await uploadSandboxFile(localStorage.token, id, file.name, file);
+                    added.push(file.name);
+                } catch (err) {
+                    toast.error(`${file.name}: ${err}`);
+                }
+            })
+        );
+        if (added.length === 0) return;
+        sandboxUploads = [...sandboxUploads, ...added];
+        sandboxActivated = true;
+        sandboxAutoOpened = true;
+        sandboxRefresh += 1;
+        if ($mobile) toast.success(added.length === 1 ? `Added ${added[0]} to Files` : `Added ${added.length} files to Files`);
     };
 
     /** Files can be added before the first message, and they need a chat to belong to. */
@@ -945,6 +994,7 @@
 
             // 3. Stream state setup
             generating = true;
+            lastOutputAt = Date.now();
             const contextTotal = model?.contextLength ?? 0;
             toolProgress = new Map<string, ToolProgressState>();
             modelStatus = undefined;
@@ -1018,12 +1068,12 @@
                 if (contentTokens.trim() !== '') {
                     responseMessage.blocks!.push({
                         type: 'content',
-                        content: contentTokens,
+                        content: contentTokens.trim(),
                         done: true
                     } satisfies ContentBlock);
-                    contentTokens = '';
-                    responseMessage.content = '';
                 }
+                contentTokens = '';
+                responseMessage.content = '';
                 responseMessage.blocks!.push({
                     type: 'tool_call',
                     id: data.id,
@@ -1031,6 +1081,8 @@
                     arguments: data.arguments,
                     failed: false,
                     done: false,
+                    round: data.round,
+                    startedAt: data.startedAt,
                     ...(data.server ? { server: data.server } : {})
                 });
                 // Track when this round of tool calls started (overwritten for each call;
@@ -1048,6 +1100,7 @@
                     block.result = data.result;
                     block.failed = data.failed;
                     if (data.structured) block.structured = data.structured;
+                    if (data.images) block.images = data.images;
 
                     if (sandboxServer?.tools.some((t) => t.name === block.name) && !data.failed) {
                         sandboxActivated = true;
@@ -1063,6 +1116,7 @@
                 const p = data.progress;
                 const state = toolProgress!.get(data.id) ?? { pages: [] };
                 if (p.message) state.message = p.message;
+                if (p.output !== undefined) state.output = p.output;
 
                 if (p.page) {
                     const status: UrlStatus['status'] =
@@ -1090,6 +1144,7 @@
             };
 
             const handleReasoning = (text: string) => {
+                lastOutputAt = Date.now();
                 finalizeToolCalls();
                 if (activeReasoningIdx === null) {
                     reasoningStartTime = Date.now();
@@ -1101,6 +1156,7 @@
             };
 
             const handleContentToken = (value: string, usage?: ChatMessageUsage) => {
+                lastOutputAt = Date.now();
                 // TODO - maybe worth extracting these into like "finalizeLastBlock"
                 finalizeToolCalls();
                 finalizeReasoning();
@@ -1113,6 +1169,7 @@
 
             const backendEventHandler = (event: SseEvent) => {
                 const { type, data } = event.data;
+                lastOutputAt = Date.now();
 
                 if (type === 'tool_call:start') handleToolCallStart(data);
                 else if (type === 'tool_call:result') handleToolCallResult(data);
@@ -1486,6 +1543,7 @@
                                     {sendMessage}
                                     {regenerateResponse}
                                     {toolProgress}
+                                    {quietSeconds}
                                     {modelStatus}
                                     bottomPadding={files.length > 0}
                                     onBranchScroll={() => scrollToBottom()}
@@ -1601,6 +1659,7 @@
                             bind:sandboxEnabled
                             bind:sandboxOpen
                             {sandboxVisible}
+                            onSandboxFiles={addFilesToSandbox}
                             bind:systemPromptVisible
                             {generating}
                             {stopResponse}

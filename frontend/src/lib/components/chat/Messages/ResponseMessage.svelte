@@ -2,7 +2,7 @@
     import { toast } from 'svelte-sonner';
 
     import { onDestroy, onMount, tick } from 'svelte';
-    import { models, settings, streamContext, editScrollPosition, type Model } from '$lib/stores';
+    import { models, settings, streamContext, editScrollPosition, toolServers, type Model } from '$lib/stores';
     import type {
         ChatHistory,
         ChatMessage,
@@ -17,7 +17,9 @@
     import type { ToolProgressState } from '$lib/apis/completions';
 
     import Name from './ResponseMessage/Name.svelte';
-    import ToolBlock from './ResponseMessage/ToolBlock.svelte';
+    import ToolCall from './ResponseMessage/ToolCall.svelte';
+    import ToolRun from './ResponseMessage/ToolRun.svelte';
+    import { groupBlocks } from './ResponseMessage/toolRuns';
     import Image from '$lib/components/common/Image.svelte';
     import Tooltip from '$lib/components/common/Tooltip.svelte';
 
@@ -76,6 +78,11 @@
     export let readOnly: boolean = false;
 
     export let toolProgress: Map<string, ToolProgressState> | undefined = undefined;
+    /** How long the model has been silent while replying. */
+    export let quietSeconds = 0;
+
+    $: condensedServers = new Set($toolServers.filter((s) => s.condensed).map((s) => s.name));
+    $: groups = groupBlocks(message.blocks ?? [], condensedServers);
     export let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined =
         undefined;
     $: promptProcessing = $streamContext?.promptProcessing;
@@ -315,7 +322,16 @@
                                 {/if}
                             {:else}
                                 {#if message.blocks && message.blocks.length > 0}
-                                    {#each message.blocks as block, i (block.type === 'tool_call' ? block.id : `block-${i}`)}
+                                    {#each groups as group, g (group.key)}
+                                        {#if group.kind === 'run'}
+                                            <ToolRun
+                                                blocks={group.blocks}
+                                                {toolProgress}
+                                                live={!message.done && g === groups.length - 1 && !message.content}
+                                            />
+                                        {:else}
+                                        {@const block = group.block}
+                                        {@const i = group.index}
                                         {#if block.type === 'reasoning'}
                                             <Collapsible
                                                 attributes={{
@@ -344,7 +360,8 @@
                                                 done={block.done}
                                             />
                                         {:else if block.type === 'tool_call'}
-                                            <ToolBlock {block} progress={toolProgress?.get(block.id)} />
+                                            <ToolCall {block} progress={toolProgress?.get(block.id)} />
+                                        {/if}
                                         {/if}
                                     {/each}
                                 {/if}
@@ -355,6 +372,10 @@
                                         content={message.content}
                                         done={message.done}
                                     />
+                                {/if}
+
+                                {#if quietSeconds > 0 && !message.done && history.currentId === message.id}
+                                    <div class="shimmer w-fit font-medium text-gray-500">Working… {quietSeconds}s</div>
                                 {/if}
 
                                 {#if message.error}

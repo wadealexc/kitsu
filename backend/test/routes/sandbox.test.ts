@@ -39,7 +39,7 @@ const mock = new MockLlama();
 const calls: { server: string; tool: string; args: any }[] = [];
 const mcp = new McpManager(fakeConnector(calls));
 const web = serverRecord({ id: 'srv-web', name: 'web', url: 'http://web.local/mcp', createdAt: 1 });
-const box = { ...serverRecord({ id: 'srv-box', name: 'box', url: `http://127.0.0.1:${managerPort}/sandbox/mcp`, token: 'manager-token', createdAt: 2 }), icon: 'terminal' };
+const box = { ...serverRecord({ id: 'srv-box', name: 'box', url: `http://127.0.0.1:${managerPort}/sandbox/mcp`, token: 'manager-token', createdAt: 2 }), icon: 'terminal', condensed: false };
 await mcp.sync([web, box]);
 
 const app: Express = express();

@@ -44,6 +44,7 @@ export type McpServerStatus = {
     url: string;
     enabled: boolean;
     icon: string;
+    condensed: boolean;
     sandbox: boolean;
     hasToken: boolean;
     state: McpServerState;
@@ -57,7 +58,11 @@ export type McpProgress = {
     progress: number;
     total?: number;
     page?: { url: string; status: string; outcome?: string };
+    /** The latest output of a command still running. */
+    output?: string;
 };
+
+export type ToolImage = { mimeType: string; data: string };
 
 export type McpCallResult = {
     ok: boolean;
@@ -65,6 +70,8 @@ export type McpCallResult = {
     text: string;
     /** Machine-readable result, for the frontend. */
     structured?: Record<string, unknown>;
+    /** Images for the model to look at. */
+    images?: ToolImage[];
 };
 
 /** Opens a client for one server. Replaced in tests. */
@@ -177,6 +184,7 @@ export class McpManager {
                 url: c.server.url,
                 enabled: c.server.enabled,
                 icon: c.server.icon,
+                condensed: c.server.condensed,
                 sandbox: c.sandbox === true,
                 hasToken: !!c.server.token,
                 state: c.state,
@@ -213,10 +221,12 @@ export class McpManager {
                 },
             ) as CallToolResult;
 
+            const images = (result.content ?? []).flatMap(c => (c.type === 'image' ? [{ mimeType: c.mimeType, data: c.data }] : []));
             return {
                 ok: !result.isError,
                 text: resultText(result),
                 ...(result.structuredContent ? { structured: result.structuredContent } : {}),
+                ...(images.length ? { images } : {}),
             };
         };
 
@@ -310,11 +320,12 @@ function toProgress(p: Record<string, unknown>): McpProgress {
         ...(typeof p.total === 'number' ? { total: p.total } : {}),
         ...(typeof p.message === 'string' ? { message: p.message } : {}),
         ...(page && typeof page.url === 'string' && typeof page.status === 'string' ? { page } : {}),
+        ...(typeof meta?.output === 'string' ? { output: meta.output } : {}),
     };
 }
 
 function resultText(result: CallToolResult): string {
-    const parts = (result.content ?? []).map((c) => {
+    const parts = (result.content ?? []).filter(c => c.type !== 'image').map((c) => {
         if (c.type === 'text') return c.text;
         if (c.type === 'resource' && 'text' in c.resource) return String(c.resource.text);
         if (c.type === 'resource_link') return `[${c.name}](${c.uri})`;

@@ -8,6 +8,8 @@ export type ToolServer = {
     name: string;
     enabled: boolean;
     icon: string;
+    /** Runs of this server's calls show as one box in the chat. */
+    condensed: boolean;
     /** A sandbox: off by default in each chat, and it has a workspace. */
     sandbox: boolean;
     state: ToolServerState;
@@ -24,6 +26,7 @@ export type ToolServerForm = {
     token?: string | null;
     enabled?: boolean;
     icon?: string;
+    condensed?: boolean;
 };
 
 const request = async <T>(token: string, method: string, route: string, body?: unknown): Promise<T> => {
