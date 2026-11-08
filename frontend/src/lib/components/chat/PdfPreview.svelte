@@ -128,7 +128,11 @@
         </div>
     {:else}
         {#each pages as page (page.number)}
-            <div class="w-full bg-white rounded overflow-hidden" style="aspect-ratio: 1 / {page.ratio}">
+            <!-- Portrait pages at a readable width; landscape ones can use the whole window. -->
+            <div
+                class="w-full mx-auto bg-white rounded overflow-hidden"
+                style="aspect-ratio: 1 / {page.ratio}; max-width: {page.ratio >= 1 ? '56rem' : 'none'}"
+            >
                 <canvas use:watch data-page={page.number} aria-label={`Page ${page.number}`} class="w-full h-full block"></canvas>
             </div>
         {/each}

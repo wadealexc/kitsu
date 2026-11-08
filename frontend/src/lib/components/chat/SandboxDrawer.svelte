@@ -56,12 +56,13 @@
 
     type Preview =
         | { kind: 'image'; entry: SandboxEntry; url: string }
-        | { kind: 'pdf'; entry: SandboxEntry; blob: Blob }
         | { kind: 'text'; entry: SandboxEntry; text: string; cut: boolean }
         | { kind: 'none'; entry: SandboxEntry }
         | { kind: 'loading'; entry: SandboxEntry };
     let preview: Preview | null = null;
     let previewUrl: string | null = null;
+    /** PDFs open over the whole page: the panel is too narrow to read one. */
+    let fullPdf: { entry: SandboxEntry; blob: Blob } | null = null;
 
     const join = (name: string) => (path === '.' ? name : `${path}/${name}`);
     $: inFolder = path !== '.';
@@ -108,6 +109,7 @@
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         previewUrl = null;
         preview = null;
+        fullPdf = null;
     };
     onDestroy(clearPreview);
 
@@ -143,7 +145,8 @@
                 return;
             }
             if (ext === 'pdf') {
-                preview = { kind: 'pdf', entry, blob };
+                preview = null;
+                fullPdf = { entry, blob };
                 return;
             }
             // Text only, shown as text: an HTML file made in here must never be rendered.
@@ -221,6 +224,36 @@
         'p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200 transition';
 </script>
 
+<svelte:window on:keydown={(e) => e.key === 'Escape' && fullPdf && (fullPdf = null)} />
+
+{#if fullPdf}
+    {@const shown = fullPdf.entry}
+    <div
+        use:coverScreen={true}
+        role="dialog"
+        aria-modal="true"
+        aria-label={shown.name}
+        class="fixed inset-0 z-50 flex flex-col bg-gray-100 dark:bg-gray-950 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+    >
+        <div class="flex items-center gap-1 px-3 h-12 shrink-0">
+            <div class="font-medium text-sm truncate min-w-0 pl-1">{shown.name}</div>
+            <div class="ml-auto flex items-center shrink-0">
+                <button class={iconButton} aria-label="Download" on:click={() => download(shown)}>
+                    <Download className="size-4" />
+                </button>
+                <button class={iconButton} aria-label="Close PDF" on:click={() => (fullPdf = null)}>
+                    <XMark className="size-4" />
+                </button>
+            </div>
+        </div>
+        <div class="flex-1 min-h-0 overflow-auto px-2 pb-3">
+            {#key fullPdf.blob}
+                <PdfPreview blob={fullPdf.blob} />
+            {/key}
+        </div>
+    </div>
+{/if}
+
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <aside
     use:coverScreen={$mobile}
@@ -297,10 +330,6 @@
                 <div class="flex justify-center py-8"><Spinner className="size-5" /></div>
             {:else if preview.kind === 'image'}
                 <img src={preview.url} alt={preview.entry.name} class="max-w-full h-auto rounded-lg" />
-            {:else if preview.kind === 'pdf'}
-                {#key preview.entry.name}
-                    <PdfPreview blob={preview.blob} />
-                {/key}
             {:else if preview.kind === 'text'}
                 <pre class="text-xs whitespace-pre-wrap break-words font-mono">{preview.text}</pre>
                 {#if preview.cut}
