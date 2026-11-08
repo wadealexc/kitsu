@@ -59,12 +59,11 @@
     $: firstStart = tools[0]?.startedAt;
     $: liveSeconds = firstStart === undefined ? 0 : Math.max(0, Math.round((now - firstStart) / 1000));
     $: seconds = totalSeconds(blocks, tools);
+    $: single = tools.length === 1 ? singleCallTitle(tools[0]!) : null;
     $: header =
-        tools.length === 1
-            ? singleCallTitle(tools[0]!)
-            : live
-              ? `Working · ${count}${liveSeconds ? ` · ${liveSeconds}s` : ''}`
-              : `Ran ${count}${seconds ? ` in ${seconds} second${seconds === 1 ? '' : 's'}` : ''}`;
+        live
+            ? `Working · ${count}${liveSeconds ? ` · ${liveSeconds}s` : ''}`
+            : `Ran ${count}${seconds ? ` in ${seconds} second${seconds === 1 ? '' : 's'}` : ''}`;
 
     let box: HTMLDivElement | undefined;
     let following = true;
@@ -106,7 +105,15 @@
             {#if live}
                 <div class="shrink-0"><Spinner className="size-4" /></div>
             {/if}
-            <div class="truncate">{header}</div>
+            {#if single}
+                <div class="flex items-baseline gap-1.5 min-w-0">
+                    <span class="shrink-0">{single.verb}</span>
+                    <span class="truncate font-mono text-[0.85em] font-normal text-gray-700 dark:text-gray-300">{single.target}</span>
+                    {#if single.after}<span class="shrink-0">{single.after}</span>{/if}
+                </div>
+            {:else}
+                <div class="truncate">{header}</div>
+            {/if}
             <div class="flex self-center translate-y-[1px] shrink-0">
                 {#if open}
                     <ChevronUp strokeWidth="3.5" className="size-3.5" />

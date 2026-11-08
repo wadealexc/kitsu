@@ -4,6 +4,7 @@
     import type { ToolProgressState } from '$lib/apis/completions';
     import Spinner from '$lib/components/common/Spinner.svelte';
     import Modal from '$lib/components/common/Modal.svelte';
+    import { displayPath } from './toolRuns';
 
     export let block: ToolCallBlock;
     export let progress: ToolProgressState | undefined = undefined;
@@ -34,7 +35,7 @@
     const firstLines = (output: string) => cleanLines(output).filter((l) => l.trim()).slice(0, PREVIEW_LINES);
     const lastLines = (output: string) => cleanLines(output).filter((l) => l.trim()).slice(-PREVIEW_LINES);
 
-    $: path = text(args.path);
+    $: path = displayPath(text(args.path));
     $: command = text(args.command);
     $: commandLines = command.split('\n').filter((l) => l.trim());
     $: writtenLines = text(args.content).split('\n').length;
