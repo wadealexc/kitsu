@@ -86,7 +86,7 @@
             <div class="shrink-0"><Spinner className="size-4" /></div>
         {/if}
         <div class="truncate">
-            {header}{#if failed > 0}<span class="text-red-600 dark:text-red-400"> · {failed} failed</span>{/if}
+            {header}{#if failed > 0}<span class="text-red-600 dark:text-red-400">&nbsp;· {failed} failed</span>{/if}
         </div>
         <div class="flex self-center translate-y-[1px] shrink-0">
             {#if open}
