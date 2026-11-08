@@ -76,6 +76,7 @@
     import MessageInput from '$lib/components/chat/MessageInput.svelte';
     import Messages from '$lib/components/chat/Messages.svelte';
     import Navbar from '$lib/components/Navbar.svelte';
+    import SandboxDrawer from '$lib/components/chat/SandboxDrawer.svelte';
     import Spinner from './common/Spinner.svelte';
     import Tooltip from './common/Tooltip.svelte';
     import EyeSlash from './icons/EyeSlash.svelte';
@@ -144,6 +145,42 @@
     let lastSelectedModelId: string | undefined;
     let disabledToolServers: string[] = [];
 
+    // The sandbox. Off in every chat until turned on; `activated` means it has been on
+    // here, which keeps its files reachable after it's turned off.
+    let sandboxEnabled = false;
+    let sandboxActivated = false;
+    let sandboxOpen = false;
+    /** Opened by itself once per chat at most, the first time something happens in it. */
+    let sandboxAutoOpened = false;
+    let sandboxRefresh = 0;
+    /** Files added since the last message, for telling the model. */
+    let sandboxUploads: string[] = [];
+    /** The chat got its id for a file, before its first message. */
+    let chatIdWithoutMessages = false;
+
+    $: sandboxServer = $toolServers.find((s) => s.enabled && s.sandbox);
+    $: sandboxVisible = !!sandboxServer && !$temporaryChatEnabled && (sandboxEnabled || sandboxActivated);
+    $: if (!sandboxVisible) sandboxOpen = false;
+
+    const resetSandbox = (saved?: { sandboxEnabled?: boolean; sandboxActivated?: boolean }) => {
+        sandboxEnabled = saved?.sandboxEnabled === true;
+        sandboxActivated = saved?.sandboxActivated === true;
+        sandboxOpen = false;
+        sandboxAutoOpened = sandboxActivated;
+        sandboxUploads = [];
+        chatIdWithoutMessages = false;
+    };
+
+    /** Files can be added before the first message, and they need a chat to belong to. */
+    const ensureChatIdForSandbox = (): string => {
+        if ($chatId) return $chatId;
+        const newId = uuid();
+        chatId.set(newId);
+        chatIdWithoutMessages = true;
+        window.history.replaceState(null, '', `/c/${newId}`);
+        return newId;
+    };
+
     function triggerWake(model: Model): void {
         if (model.id !== lastSelectedModelId) {
             lastSelectedModelId = model.id;
@@ -184,6 +221,7 @@
 
         files = [];
         disabledToolServers = [...($settings.disabledToolServers ?? [])];
+        resetSandbox();
         systemPromptVisible = false;
         pendingChatSystemPrompt = '';
         selectedFolder.set(null);
@@ -405,6 +443,7 @@
         // Set start state
         chatId.set('');
         chatTitle.set('');
+        resetSandbox();
 
         history = {
             messages: {},
@@ -448,6 +487,8 @@
         } else {
             selectedFolder.set(null);
         }
+
+        resetSandbox(chatContent);
 
         // Older chats had one web search switch instead of a list of servers turned off
         disabledToolServers =
@@ -684,11 +725,12 @@
         }
 
         // First message in a new conversation - allocate a chat ID
-        if (!$chatId) {
+        if (!$chatId || chatIdWithoutMessages) {
             if ($temporaryChatEnabled) {
                 chatId.set(`local:${uuid()}`);
             } else {
-                const newId = uuid();
+                const newId = $chatId || uuid();
+                chatIdWithoutMessages = false;
                 chatId.set(newId);
                 window.history.replaceState(null, '', `/c/${newId}`);
 
@@ -743,6 +785,10 @@
                 .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
         );
 
+        if (sandboxEnabled) sandboxActivated = true;
+        const uploadsToAnnounce = sandboxEnabled ? sandboxUploads : [];
+        if (sandboxEnabled) sandboxUploads = [];
+
         await streamResponse(model, responseMessage, (controller) =>
             chatCompletion(localStorage.token, controller, {
                 stream: stream,
@@ -753,11 +799,14 @@
                     history: history,
                     timestamp: Date.now(),
                     disabledToolServers,
+                    sandboxEnabled,
+                    sandboxActivated: sandboxActivated || sandboxEnabled,
                     ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
                         ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
                         : {})
                 },
                 promptVariables,
+                ...(uploadsToAnnounce.length ? { sandboxUploads: uploadsToAnnounce } : {}),
                 ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {})
             })
         );
@@ -999,6 +1048,14 @@
                     block.result = data.result;
                     block.failed = data.failed;
                     if (data.structured) block.structured = data.structured;
+
+                    if (sandboxServer?.tools.some((t) => t.name === block.name) && !data.failed) {
+                        sandboxActivated = true;
+                        sandboxRefresh += 1;
+                        // Phones don't get a sheet over the reply they're reading.
+                        if (!sandboxAutoOpened && !$mobile) sandboxOpen = true;
+                        sandboxAutoOpened = true;
+                    }
                 }
             };
 
@@ -1316,7 +1373,8 @@
             </div>
         </div>
     {:else}
-        <div class="w-full h-full flex flex-col min-h-0">
+        <div class="w-full h-full flex min-h-0">
+        <div class="flex-1 min-w-0 h-full flex flex-col">
             <Navbar
                 chatId={$chatId}
                 chatTitle={$chatTitle || 'New Chat'}
@@ -1540,6 +1598,9 @@
                                 scrollToBottom();
                             }}
                             bind:disabledToolServers
+                            bind:sandboxEnabled
+                            bind:sandboxOpen
+                            {sandboxVisible}
                             bind:systemPromptVisible
                             {generating}
                             {stopResponse}
@@ -1565,6 +1626,20 @@
                     </div>
                 </div>
             </div>
+        </div>
+        {#if sandboxOpen}
+            <SandboxDrawer
+                chatId={$chatId}
+                refresh={sandboxRefresh}
+                onClose={() => (sandboxOpen = false)}
+                ensureChatId={ensureChatIdForSandbox}
+                onUploaded={(names) => {
+                    sandboxUploads = [...sandboxUploads, ...names];
+                    sandboxActivated = true;
+                    sandboxAutoOpened = true;
+                }}
+            />
+        {/if}
         </div>
     {/if}
 </div>

@@ -29,6 +29,8 @@
     import ChevronDown from '../icons/ChevronDown.svelte';
 
     import ToolServerIcon from './ToolServerIcon.svelte';
+    import Folder from '../icons/Folder.svelte';
+    import type { ToolServer } from '$lib/apis/mcp';
     import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
     import Clip from '../icons/Clip.svelte';
 
@@ -53,13 +55,26 @@
 
     /** MCP servers whose tools are turned off for this chat */
     export let disabledToolServers: string[] = [];
+    /** Whether the sandbox is on for this chat. Its own switch, because it starts off. */
+    export let sandboxEnabled = false;
+    /** Whether there's a workspace to open, and whether it's open. */
+    export let sandboxVisible = false;
+    export let sandboxOpen = false;
 
-    // Servers that offer tools, each with its own switch
-    $: switchableServers = $toolServers.filter((s) => s.enabled && s.tools.length > 0);
-    const toggleServer = (id: string) => {
-        disabledToolServers = disabledToolServers.includes(id)
-            ? disabledToolServers.filter((s) => s !== id)
-            : [...disabledToolServers, id];
+    // Servers that offer tools, each with its own switch. A temporary chat isn't kept, so it can't have a sandbox.
+    $: switchableServers = $toolServers
+        .filter((s) => s.enabled && s.tools.length > 0 && !(s.sandbox && $temporaryChatEnabled))
+        .sort((a, b) => Number(a.sandbox) - Number(b.sandbox));
+    const isOn = (server: ToolServer, disabled: string[], sandbox: boolean) =>
+        server.sandbox ? sandbox : !disabled.includes(server.id);
+    const toggleServer = (server: ToolServer) => {
+        if (server.sandbox) {
+            sandboxEnabled = !sandboxEnabled;
+            return;
+        }
+        disabledToolServers = disabledToolServers.includes(server.id)
+            ? disabledToolServers.filter((s) => s !== server.id)
+            : [...disabledToolServers, server.id];
     };
     export let systemPromptVisible = false;
 
@@ -552,13 +567,13 @@
 
                                 <div class="flex items-center gap-1">
                                     {#each switchableServers as server (server.id)}
-                                        {@const on = !disabledToolServers.includes(server.id)}
+                                        {@const on = isOn(server, disabledToolServers, sandboxEnabled)}
                                         <Tooltip
                                             content={`${server.name}: ${server.tools.map((t) => t.name).join(', ')}${server.state === 'error' ? ' (unreachable)' : ''}`}
                                             placement="top"
                                         >
                                             <button
-                                                on:click|preventDefault={() => toggleServer(server.id)}
+                                                on:click|preventDefault={() => toggleServer(server)}
                                                 type="button"
                                                 aria-pressed={on}
                                                 aria-label={`${server.name} tools ${on ? 'on' : 'off'}`}
@@ -575,6 +590,21 @@
                                             </button>
                                         </Tooltip>
                                     {/each}
+                                    {#if sandboxVisible}
+                                        <Tooltip content={sandboxOpen ? 'Hide workspace' : 'Show workspace'} placement="top">
+                                            <button
+                                                on:click|preventDefault={() => (sandboxOpen = !sandboxOpen)}
+                                                type="button"
+                                                aria-pressed={sandboxOpen}
+                                                aria-label="Workspace"
+                                                class="rounded-md p-1.5 outline-hidden focus:outline-hidden transition-colors {sandboxOpen
+                                                    ? 'text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800'
+                                                    : 'text-gray-500 dark:text-gray-400 md:hover:bg-gray-100 dark:md:hover:bg-gray-800'}"
+                                            >
+                                                <Folder className="size-4.5" strokeWidth="1.5" />
+                                            </button>
+                                        </Tooltip>
+                                    {/if}
                                 </div>
                             </div>
 

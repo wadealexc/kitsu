@@ -8,6 +8,8 @@ export type ToolServer = {
     name: string;
     enabled: boolean;
     icon: string;
+    /** A sandbox: off by default in each chat, and it has a workspace. */
+    sandbox: boolean;
     state: ToolServerState;
     error?: string;
     tools: { name: string; title?: string; description: string }[];
