@@ -41,7 +41,7 @@
     $: path = displayPath(text(args.path));
     $: command = text(args.command);
     $: commandLines = command.split('\n').filter((l) => l.trim());
-    $: writtenLines = text(args.content).split('\n').length;
+    $: writtenLines = text(args.content).replace(/\n$/, '').split('\n').length;
     $: diffLines = (typeof block.structured?.diff === 'string' ? block.structured.diff : '')
         .split('\n')
         .filter((l) => l.startsWith('+') || l.startsWith('-'));
