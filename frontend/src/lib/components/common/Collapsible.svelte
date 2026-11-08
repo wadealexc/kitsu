@@ -16,6 +16,8 @@
         done?: string;
         failed?: string;
         duration?: number;
+        /** Replaces "Thinking..." while it's still going. */
+        label?: string;
         arguments?: string;
         result?: string;
         files?: string;
@@ -223,7 +225,7 @@
                                     {`Thought for ${dayjs.duration(attributes.duration, 'seconds').humanize()}`}
                                 {/if}
                             {:else}
-                                {'Thinking...'}
+                                {attributes?.label ?? 'Thinking...'}
                             {/if}
                         {:else if attributes?.type === 'code_interpreter'}
                             {#if attributes?.done === 'true'}

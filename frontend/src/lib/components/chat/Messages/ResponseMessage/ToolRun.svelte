@@ -73,11 +73,14 @@
         following = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         scrolledDown = box.scrollTop > 4;
     };
+    // Asking the browser for heights is slow, so a finished run only does it once.
+    let placed = false;
+    $: if (!open) placed = false;
     afterUpdate(() => {
-        if (box && following) {
-            box.scrollTop = box.scrollHeight;
-            scrolledDown = box.scrollTop > 4;
-        }
+        if (!box || !following || (placed && !live)) return;
+        placed = true;
+        box.scrollTop = box.scrollHeight;
+        scrolledDown = box.scrollTop > 4;
     });
 
     let showTrace = false;
@@ -108,7 +111,8 @@
             {#if single}
                 <div class="flex items-baseline gap-1.5 min-w-0">
                     <span class="shrink-0">{single.verb}</span>
-                    <span class="truncate font-mono text-[0.85em] font-normal">{single.target}</span>
+                    <span class="truncate min-w-0 max-w-64 rounded px-1.5 py-px font-mono text-[0.8em] font-normal bg-black/5 dark:bg-black/25">{single.target}</span>
+                    {#if single.after}<span class="shrink-0">{single.after}</span>{/if}
                 </div>
             {:else}
                 <div class="truncate">{header}</div>

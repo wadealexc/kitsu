@@ -1,4 +1,3 @@
-import { EventSourceParserStream } from 'eventsource-parser/stream';
 import type { ParsedEvent } from 'eventsource-parser';
 
 import { API_BASE_URL } from '$lib/constants';
@@ -116,6 +115,47 @@ export const getActiveCompletions = async (token: string): Promise<ActiveComplet
 
 /* -------------------- STREAMING -------------------- */
 
+/** How much stream text to handle before letting the page draw. */
+const YIELD_EVERY_CHARS = 128 * 1024;
+
+function parseSseEvent(frame: string): ParsedEvent | null {
+    let event: string | undefined;
+    const data: string[] = [];
+    for (const line of frame.split('\n')) {
+        const value = line.slice(line.indexOf(':') + 1).replace(/^ /, '');
+        if (line.startsWith('data:')) data.push(value);
+        else if (line.startsWith('event:')) event = value;
+    }
+    return data.length ? { type: 'event', event, id: undefined, data: data.join('\n') } : null;
+}
+
+/**
+ * Splits stream text into events. llama-manager releases a held-back tool call all
+ * at once, and a parser that walks the text a character at a time froze the page
+ * for seconds on that burst.
+ */
+function sseEvents(): TransformStream<string, ParsedEvent> {
+    let buffer = '';
+    return new TransformStream({
+        async transform(chunk, controller) {
+            buffer += chunk.includes('\r') ? chunk.replace(/\r\n?/g, '\n') : chunk;
+            let start = 0;
+            let sinceYield = 0;
+            for (let end = buffer.indexOf('\n\n'); end !== -1; end = buffer.indexOf('\n\n', start)) {
+                const event = parseSseEvent(buffer.slice(start, end));
+                if (event) controller.enqueue(event);
+                sinceYield += end - start;
+                start = end + 2;
+                if (sinceYield >= YIELD_EVERY_CHARS) {
+                    sinceYield = 0;
+                    await new Promise((resolve) => setTimeout(resolve));
+                }
+            }
+            buffer = buffer.slice(start);
+        }
+    });
+}
+
 // createSSEStream takes a responseBody with a SSE response,
 // and returns an async generator that emits delta updates
 function createSSEStream(
@@ -123,7 +163,7 @@ function createSSEStream(
 ): AsyncGenerator<TextStreamUpdate> {
     const eventStream = responseBody
         .pipeThrough(new TextDecoderStream() as any)
-        .pipeThrough(new EventSourceParserStream())
+        .pipeThrough(sseEvents())
         .getReader();
 
     return streamToIterator(eventStream);

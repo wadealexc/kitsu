@@ -7,7 +7,7 @@
 </script>
 
 <div
-    class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3 h-[3.75rem] overflow-hidden flex flex-col justify-end [mask-image:linear-gradient(to_bottom,transparent,black_1.25rem)]"
+    class="mt-1.5 border-s-2 border-dotted border-s-gray-100 dark:border-gray-800 ps-3 h-[6.25rem] overflow-hidden flex flex-col justify-end [mask-image:linear-gradient(to_bottom,rgba(0,0,0,0.4),black_0.75rem)]"
 >
     <div class="text-xs leading-5 text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words">{tail}</div>
 </div>

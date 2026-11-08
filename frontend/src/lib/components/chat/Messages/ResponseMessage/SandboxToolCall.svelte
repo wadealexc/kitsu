@@ -11,10 +11,13 @@
 
     const PREVIEW_LINES = 4;
 
+    // Pulled out as strings so a large write is only parsed when it actually changes,
+    // not each time the message around it updates.
+    $: rawArguments = block.arguments;
     let args: Record<string, unknown> = {};
     $: {
         try {
-            const parsed = JSON.parse(block.arguments || '{}');
+            const parsed = JSON.parse(rawArguments || '{}');
             args = parsed && typeof parsed === 'object' ? parsed : {};
         } catch {
             args = {};
@@ -77,7 +80,6 @@
           : 'border-green-500/20 bg-green-500/[0.05]';
 
     let showRaw = false;
-    $: prettyArguments = JSON.stringify(args, null, 2);
 </script>
 
 <button
@@ -136,7 +138,7 @@
             <div class="max-h-[70vh] overflow-y-auto px-5 py-4 flex flex-col gap-3">
                 <section class="flex flex-col gap-1.5">
                     <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Input</div>
-                    <pre class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{block.name === 'bash' ? command : prettyArguments}</pre>
+                    <pre class="whitespace-pre-wrap break-words rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono">{block.name === 'bash' ? command : JSON.stringify(args, null, 2)}</pre>
                 </section>
                 <section class="flex flex-col gap-1.5">
                     <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">

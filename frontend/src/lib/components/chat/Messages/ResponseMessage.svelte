@@ -31,6 +31,7 @@
     import FileItem from './FileItem.svelte';
     import RegenerateMenu from './ResponseMessage/RegenerateMenu.svelte';
     import Collapsible from '$lib/components/common/Collapsible.svelte';
+    import Spinner from '$lib/components/common/Spinner.svelte';
     import BranchNavigator from './BranchNavigator.svelte';
     import MessageEditor from './MessageEditor.svelte';
     import ModelStatusPill from './ResponseMessage/ModelStatusPill.svelte';
@@ -40,17 +41,25 @@
     export let messageId: string;
 
     let message: ChatMessage = structuredClone(history.messages[messageId]);
+    let lastSeen = history.messages[messageId];
     $: if (history.messages) {
         const current = history.messages[messageId];
 
         if (current) {
-            if (
+            // Only the reply being written changes in ways that need a deep look.
+            // Comparing every message on every update got slow on long chats.
+            const changed =
+                current !== lastSeen ||
                 message.content !== current.content ||
                 message.done != current.done ||
-                message.error !== current.error
-            ) {
-                message = structuredClone(current);
-            } else if (JSON.stringify(message) !== JSON.stringify(current)) {
+                message.error !== current.error ||
+                message.files?.length !== current.files?.length ||
+                message.childrenIds?.length !== current.childrenIds?.length ||
+                message.blocks?.length !== current.blocks?.length;
+            const writing = !current.done;
+            const latest = history.currentId === messageId;
+            if (changed || writing || (latest && JSON.stringify(message) !== JSON.stringify(current))) {
+                lastSeen = current;
                 message = structuredClone(current);
             }
         }
@@ -84,6 +93,10 @@
 
     $: condensedServers = new Set($toolServers.filter((s) => s.condensed).map((s) => s.name));
     $: groups = groupBlocks(message.blocks ?? [], condensedServers);
+    $: lastGroup = groups.at(-1);
+    $: hasLiveIndicator =
+        !message.content &&
+        (lastGroup?.kind === 'run' || (lastGroup?.kind === 'single' && lastGroup.block.type === 'reasoning' && !lastGroup.block.done));
     export let modelStatus: { status: 'queued' | 'loading'; modelName: string } | undefined =
         undefined;
     $: promptProcessing = $streamContext?.promptProcessing;
@@ -338,7 +351,8 @@
                                                 attributes={{
                                                     type: 'reasoning',
                                                     done: block.done ? 'true' : 'false',
-                                                    duration: block.duration
+                                                    duration: block.duration,
+                                                    label: quietSeconds > 0 && !block.done ? `Working… ${quietSeconds}s` : undefined
                                                 }}
                                                 title=""
                                                 open={false}
@@ -378,8 +392,12 @@
                                     />
                                 {/if}
 
-                                {#if quietSeconds > 0 && !message.done && history.currentId === message.id}
-                                    <div class="shimmer w-fit font-medium text-gray-500">Working… {quietSeconds}s</div>
+                                <!-- Only where nothing else is already showing a spinner -->
+                                {#if quietSeconds > 0 && !message.done && history.currentId === message.id && !hasLiveIndicator}
+                                    <div class="shimmer w-fit font-medium text-gray-500 flex items-center gap-2">
+                                        <Spinner className="size-4" />
+                                        <span>Working… {quietSeconds}s</span>
+                                    </div>
                                 {/if}
 
                                 {#if message.error}
