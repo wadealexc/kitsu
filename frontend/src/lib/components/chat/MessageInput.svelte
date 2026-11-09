@@ -30,6 +30,7 @@
 
     import ToolServerIcon from './ToolServerIcon.svelte';
     import Folder from '../icons/Folder.svelte';
+    import ContextMeter from './ContextMeter.svelte';
     import type { ToolServer } from '$lib/apis/mcp';
     import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
     import Clip from '../icons/Clip.svelte';
@@ -446,7 +447,13 @@
                             </div>
                         {/if}
 
-                        <div class="px-2.5">
+                        <div class="px-2.5 relative">
+                            <!-- Above the send button. Gives way as soon as there's something typed. -->
+                            {#if prompt.trim() === ''}
+                                <div class="absolute top-2 right-3.5 z-10">
+                                    <ContextMeter {generating} />
+                                </div>
+                            {/if}
                             <div
                                 class="scrollbar-hidden text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-1 px-1 resize-none h-fit overflow-auto {files.length ===
                                 0
@@ -606,26 +613,6 @@
                                         </Tooltip>
                                     {/each}
                                 </div>
-                            </div>
-
-                            <div class="absolute left-1/2 -translate-x-1/2 bottom-1.5">
-                                {#if $streamContext && $streamContext.total > 0}
-                                    {@const ctxRatio = $streamContext.used / $streamContext.total}
-                                    {@const pillClass = `font-mono tabular-nums text-xs px-2 py-0.5 rounded-lg ${ctxRatio < 0.5 ? 'text-green-500 dark:text-green-400 bg-green-100 dark:bg-green-900/20' : ctxRatio < 0.8 ? 'text-yellow-500 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/20' : 'text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900/20'}`}
-                                    {#if generating}
-                                        <span class={pillClass}>
-                                            {$streamContext.tps.toFixed(1)} t/s
-                                        </span>
-                                    {:else}
-                                        <Tooltip content="Context" placement="top">
-                                            <span class={pillClass}>
-                                                {($streamContext.used / 1000).toFixed(
-                                                    1
-                                                )}K/{Math.round($streamContext.total / 1000)}K
-                                            </span>
-                                        </Tooltip>
-                                    {/if}
-                                {/if}
                             </div>
 
                             <div class="self-end flex items-center mr-[3px] gap-2">

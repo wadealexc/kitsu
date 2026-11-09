@@ -18,6 +18,7 @@
             : [...new Set([...disabledToolServers, id])];
         saveSettings({ disabledToolServers });
     };
+    let sandboxInNewChats = false;
     let userLocation: boolean = false;
     let userLocationString: string = '';
 
@@ -26,6 +27,7 @@
 
     onMount(async () => {
         disabledToolServers = [...($settings.disabledToolServers ?? [])];
+        sandboxInNewChats = $settings.sandboxInNewChats === true;
         userLocation = $settings.userLocation;
         userLocationString = $settings.userLocationString ?? '';
         savedUserLocationString = userLocationString;
@@ -61,8 +63,15 @@
                     <Switch
                         ariaLabelledbyId={`tool-default-${server.id}`}
                         tooltip={true}
-                        state={!disabledToolServers.includes(server.id)}
-                        on:change={(e) => toggleDefault(server.id, e.detail)}
+                        state={server.sandbox ? sandboxInNewChats : !disabledToolServers.includes(server.id)}
+                        on:change={(e) => {
+                            if (server.sandbox) {
+                                sandboxInNewChats = e.detail;
+                                saveSettings({ sandboxInNewChats });
+                            } else {
+                                toggleDefault(server.id, e.detail);
+                            }
+                        }}
                     />
                 </div>
             </div>

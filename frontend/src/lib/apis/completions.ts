@@ -1,7 +1,7 @@
 import type { ParsedEvent } from 'eventsource-parser';
 
 import { API_BASE_URL } from '$lib/constants';
-import type { ChatCompletionForm, ChatMessageUsage } from '@backend/routes/types';
+import type { ChatCompletionForm, ChatMessageUsage, CompletionPreview } from '@backend/routes/types';
 import type { SseEvent } from '@backend/protocol/sse.js';
 
 export type StreamTimings = {
@@ -92,6 +92,21 @@ export const resumeChatCompletion = async (
     if (res.status === 404) return null;
     if (!res.ok || !res.body) throw `Request failed: ${route}`;
     return createSSEStream(res.body);
+};
+
+/** Exactly what the next message in this chat would send to the inference server. */
+export const previewCompletion = async (token: string, body: ChatCompletionForm): Promise<CompletionPreview> => {
+    const route = '/chat/custom-completions/preview';
+    const res = await fetch(`${API_BASE_URL}${route}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw err.detail ?? `Couldn't build the preview (${res.status})`;
+    }
+    return await res.json();
 };
 
 /** Stops the reply being generated in a chat; what it wrote so far is kept. */

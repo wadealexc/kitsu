@@ -22,27 +22,30 @@ export type ChatRequestContext = {
     disabledServers: string[];
 };
 
-/* -------------------- PREPARE REQUEST -------------------- */
+/* -------------------- BUILD REQUEST -------------------- */
+
+type BuildInput = {
+    userId: string;
+    chatId: string;
+    chat: Types.ChatObject;
+    folderId: string | null | undefined;
+    promptVariables: Record<string, string>;
+    sandboxUploads: string[] | undefined;
+    stream: boolean;
+};
 
 /**
- * Validate request and model access
- * Resolve and apply system prompt + variables
- * Build OAI message array
- * Create chat in DB if needed
+ * Builds exactly what goes to the inference server for this chat: the system prompt
+ * with its variables and notes, the tool list, and the messages. Real requests and
+ * the raw view both come through here, so what the raw view shows is what gets sent.
+ *
+ * Writes nothing to the database. `chat` is updated in place with what a real
+ * request would save, such as the notes on the newest message.
  *
  * Throws on any validation or access error
  */
-export async function prepareRequest(
-    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
-    llama: Llama,
-    toolRegistry: ToolRegistry,
-): Promise<ChatRequestContext> {
-    const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
-    if (!parsed.success)
-        throw new Error(`Invalid request body: ${parsed.error.issues.toString()}`);
-
-    const userId = req.user!.id;
-    const { stream, chatId, chat, folderId, promptVariables, sandboxUploads } = parsed.data;
+async function buildCompletion(input: BuildInput, llama: Llama, toolRegistry: ToolRegistry) {
+    const { userId, chatId, chat, folderId, promptVariables, sandboxUploads, stream } = input;
     const isLocalChat = chatId.startsWith('local:');
 
     // Resolve custom model -> base model and fetch params from DB
@@ -73,19 +76,15 @@ export async function prepareRequest(
 
     const existingChat = isLocalChat ? null : await Chats.getChatByIdAndUserId(chatId, userId, db);
 
-    // A sandbox is off unless turned on in this chat. Its tools join the list the
-    // first time it is, and stay, so turning it off later leaves the prompt the same.
-    const allTools = toolRegistry.tools();
-    const sandboxServers = new Set(allTools.filter(t => t.sandbox).map(t => t.serverId));
+    // A sandbox is off unless turned on in this chat. Having been on keeps its files reachable.
+    const tools = toolRegistry.tools();
+    const sandboxServers = new Set(tools.filter(t => t.sandbox).map(t => t.serverId));
     const sandboxOn = !isLocalChat && chat.sandboxEnabled === true;
-    const sandboxActivated = !isLocalChat
-        && (sandboxOn || chat.sandboxActivated === true || existingChat?.chat.sandboxActivated === true);
-    if (sandboxActivated) chat.sandboxActivated = true;
-    const tools = sandboxActivated ? allTools : allTools.filter(t => !t.sandbox);
+    if (sandboxOn || existingChat?.chat.sandboxActivated === true) chat.sandboxActivated = true;
 
     // Servers turned off for this chat. Older chats only had one web search switch.
     const disabledServers = [
-        ...(chat.disabledToolServers ?? (chat.webSearchEnabled === false ? [...new Set(allTools.map(t => t.serverId))] : []))
+        ...(chat.disabledToolServers ?? (chat.webSearchEnabled === false ? [...new Set(tools.map(t => t.serverId))] : []))
             .filter(id => !sandboxServers.has(id)),
         ...(sandboxOn ? [] : sandboxServers),
     ];
@@ -123,7 +122,7 @@ export async function prepareRequest(
     const oaiMessages = buildOAIMessages(chat.history, systemPrompt);
 
     // Every tool goes out on every request, whatever is turned off, so the prompt cache holds.
-    const toolDefinitions = toolRegistry.getToolDefinitions(sandboxActivated);
+    const toolDefinitions = toolRegistry.getToolDefinitions();
     const completionBody: proto.CompletionRequest = {
         model: resolvedModel,
         messages: oaiMessages,
@@ -132,8 +131,33 @@ export async function prepareRequest(
         ...(toolDefinitions.length ? { tools: toolDefinitions } : {}),
     };
 
+    return { userMessage, resolvedModel, completionBody, isLocalChat, disabledServers, existingChat };
+}
+
+/* -------------------- PREPARE REQUEST -------------------- */
+
+/**
+ * Validates a completion request, builds what it will send, and creates the chat
+ * in the database if it's new.
+ *
+ * Throws on any validation or access error
+ */
+export async function prepareRequest(
+    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
+    llama: Llama,
+    toolRegistry: ToolRegistry,
+): Promise<ChatRequestContext> {
+    const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
+    if (!parsed.success)
+        throw new Error(`Invalid request body: ${parsed.error.issues.toString()}`);
+
+    const userId = req.user!.id;
+    const { stream, chatId, chat, folderId, promptVariables, sandboxUploads } = parsed.data;
+
+    const built = await buildCompletion({ userId, chatId, chat, folderId, promptVariables, sandboxUploads, stream }, llama, toolRegistry);
+
     // For non-local chats: create chat in DB if it doesn't exist
-    if (!isLocalChat && !existingChat) {
+    if (!built.isLocalChat && !built.existingChat) {
         await Chats.createChat(userId, {
             id: chatId,
             title: chat.title,
@@ -147,10 +171,46 @@ export async function prepareRequest(
         chatId,
         chat,
         folderId,
-        userMessage,
-        resolvedModel,
-        completionBody,
-        isLocalChat,
-        disabledServers,
+        userMessage: built.userMessage,
+        resolvedModel: built.resolvedModel,
+        completionBody: built.completionBody,
+        isLocalChat: built.isLocalChat,
+        disabledServers: built.disabledServers,
+    };
+}
+
+/* -------------------- PREVIEW -------------------- */
+
+/**
+ * What the next message in this chat would send, for the raw view. Saves nothing.
+ *
+ * It runs the same build as a real request, with a blank message standing in for
+ * the one the user hasn't written yet. That message is left out of the result, and
+ * any notes kitsu would attach to it come back separately.
+ */
+export async function previewRequest(
+    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
+    llama: Llama,
+    toolRegistry: ToolRegistry,
+): Promise<Types.CompletionPreview> {
+    const parsed = Types.ChatCompletionFormSchema.safeParse(req.body);
+    if (!parsed.success)
+        throw new Error(`Invalid request body: ${parsed.error.issues.toString()}`);
+
+    const { stream, chatId, chat, folderId, promptVariables, sandboxUploads } = parsed.data;
+
+    const nextId = 'preview-next-message';
+    const replyId = 'preview-next-reply';
+    const blank = { childrenIds: [], content: '', files: [], timestamp: Date.now(), done: false };
+    chat.history.messages[nextId] = { ...blank, id: nextId, parentId: chat.history.currentId ?? null, role: 'user' } as Types.ChatMessage;
+    chat.history.messages[replyId] = { ...blank, id: replyId, parentId: nextId, role: 'assistant' } as Types.ChatMessage;
+    chat.history.currentId = replyId;
+
+    const { completionBody } = await buildCompletion({ userId: req.user!.id, chatId, chat, folderId, promptVariables, sandboxUploads, stream }, llama, toolRegistry);
+
+    const next = completionBody.messages.at(-1);
+    return {
+        request: { ...completionBody, messages: completionBody.messages.slice(0, -1) },
+        nextMessageNotes: typeof next?.content === 'string' && next.content.trim() ? next.content.trim() : null,
     };
 }

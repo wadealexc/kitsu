@@ -17,6 +17,7 @@
         ChatMessage,
         ChatMessageFile,
         ChatMessageUsage,
+        CompletionPreview,
         ToolCallBlock,
         ContentBlock,
         ReasoningBlock,
@@ -63,6 +64,7 @@
     } from '$lib/apis/chats';
     import {
         chatCompletion,
+        previewCompletion,
         type StreamTimings,
         type PromptProgress,
         type ToolProgressState,
@@ -146,7 +148,7 @@
     let lastSelectedModelId: string | undefined;
     let disabledToolServers: string[] = [];
 
-    // The sandbox. Off in every chat until turned on; `activated` means it has been on
+    // The sandbox. Off in new chats unless the user's setting says otherwise; `activated` means it has been on
     // here, which keeps its files reachable after it's turned off.
     let sandboxEnabled = false;
     let sandboxActivated = false;
@@ -166,7 +168,7 @@
     $: if (!sandboxVisible) sandboxOpen = false;
 
     const resetSandbox = (saved?: { sandboxEnabled?: boolean; sandboxActivated?: boolean }) => {
-        sandboxEnabled = saved?.sandboxEnabled === true;
+        sandboxEnabled = saved ? saved.sandboxEnabled === true : $settings.sandboxInNewChats === true;
         sandboxActivated = saved?.sandboxActivated === true;
         sandboxOpen = false;
         sandboxAutoOpened = sandboxActivated;
@@ -820,6 +822,74 @@
         await sendMessageSSE(model, userMessage);
     };
 
+    /** System prompt variables with client-side info. */
+    const currentPromptVariables = async (): Promise<Record<string, string>> => {
+        const rawVars = await getPromptVariables($user!.username, $settings.userLocation, $settings.userLocationString);
+        return Object.fromEntries(
+            Object.entries(rawVars)
+                .filter(([, v]) => v !== undefined && v !== null)
+                .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
+        );
+    };
+
+    /** The chat as a request sends it. The raw view sends the same. */
+    const chatForRequest = (model: Model) => ({
+        title: $chatTitle,
+        model: model.id,
+        history: history,
+        timestamp: Date.now(),
+        disabledToolServers,
+        sandboxEnabled,
+        sandboxActivated: sandboxActivated || sandboxEnabled,
+        ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
+            ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
+            : {})
+    });
+
+    // The raw view: what the next message would send, built by the backend.
+    let rawPreview: CompletionPreview | null = null;
+    let rawError = '';
+    let rawSeq = 0;
+    const loadRawPreview = async () => {
+        const mine = ++rawSeq;
+        const model = $selectedModel;
+        if (!model) {
+            rawPreview = null;
+            rawError = 'Choose a model to see what would be sent.';
+            return;
+        }
+        try {
+            const preview = await previewCompletion(localStorage.token, {
+                stream: true,
+                chatId: $temporaryChatEnabled ? 'local:preview' : $chatId || uuid(),
+                chat: structuredClone(chatForRequest(model)),
+                promptVariables: await currentPromptVariables(),
+                ...(sandboxEnabled && sandboxUploads.length ? { sandboxUploads } : {}),
+                ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {})
+            });
+            if (mine !== rawSeq) return;
+            rawPreview = preview;
+            rawError = '';
+        } catch (err) {
+            if (mine !== rawSeq) return;
+            rawPreview = null;
+            rawError = `${err}`;
+        }
+    };
+    // Not on every streamed token: when it opens, and when something that changes the request does.
+    $: rawChanges = JSON.stringify([history.currentId, generating, sandboxEnabled, disabledToolServers, resolvedSystemPrompt, $selectedModel?.id, sandboxUploads]);
+    $: if (systemPromptVisible && rawChanges) void loadRawPreview();
+
+    /** The context meter between replies: this chat's size, not the last chat's. */
+    const showIdleContext = (messages: ChatHistory, busy: boolean, model: Model | null | undefined) => {
+        if (busy) return;
+        const total = model?.contextLength ?? 0;
+        const usage = messages.currentId ? messages.messages[messages.currentId]?.usage : undefined;
+        const used = Math.min(usage?.context_tokens ?? usage?.total_tokens ?? 0, total);
+        streamContext.set(total > 0 ? { used, total, tps: 0 } : null);
+    };
+    $: showIdleContext(history, generating, $selectedModel);
+
     const sendMessageSSE = async (model: Model, userMessage: ChatMessage) => {
         console.log(`sendMessageSSE | model: ${model.name}`);
 
@@ -846,13 +916,7 @@
         await tick();
         scrollToBottom();
 
-        // Compute system prompt variables with client-side info
-        const rawVars = await getPromptVariables($user!.username, $settings.userLocation, $settings.userLocationString);
-        const promptVariables: Record<string, string> = Object.fromEntries(
-            Object.entries(rawVars)
-                .filter(([, v]) => v !== undefined && v !== null)
-                .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
-        );
+        const promptVariables = await currentPromptVariables();
 
         if (sandboxEnabled) sandboxActivated = true;
         const uploadsToAnnounce = sandboxEnabled ? sandboxUploads : [];
@@ -862,18 +926,7 @@
             chatCompletion(localStorage.token, controller, {
                 stream: stream,
                 chatId: $chatId,
-                chat: {
-                    title: $chatTitle,
-                    model: model.id,
-                    history: history,
-                    timestamp: Date.now(),
-                    disabledToolServers,
-                    sandboxEnabled,
-                    sandboxActivated: sandboxActivated || sandboxEnabled,
-                    ...(pendingChatSystemPrompt || chat?.chat?.systemPrompt
-                        ? { systemPrompt: pendingChatSystemPrompt || chat!.chat.systemPrompt }
-                        : {})
-                },
+                chat: chatForRequest(model),
                 promptVariables,
                 ...(uploadsToAnnounce.length ? { sandboxUploads: uploadsToAnnounce } : {}),
                 ...($selectedFolder?.id ? { folderId: $selectedFolder.id } : {})
@@ -1070,13 +1123,17 @@
 
                 if (promptProgress) {
                     const current = $streamContext;
+                    // Tokens read from the cache cost nothing, so they don't count towards the speed.
+                    const newTokens = Math.max(0, promptProgress.processed - promptProgress.cache);
+                    const pps = promptProgress.time_ms ? (newTokens / promptProgress.time_ms) * 1000 : undefined;
                     streamContext.set({
                         used: current?.used ?? 0,
                         total: current?.total ?? contextTotal,
                         tps: current?.tps ?? 0,
                         promptProcessing: {
                             processed: promptProgress.processed,
-                            total: promptProgress.total
+                            total: promptProgress.total,
+                            ...(pps !== undefined ? { pps } : {})
                         }
                     });
                 }
@@ -1549,6 +1606,8 @@
                                 {/if}
                                 <SystemPromptMessage
                                     systemPrompt={resolvedSystemPrompt}
+                                    preview={rawPreview}
+                                    error={rawError}
                                     onSave={(content) => {
                                         pendingSystemPromptEdit = content;
                                         showSystemPromptSaveModal = true;
@@ -1557,6 +1616,8 @@
                             {/if}
 
                             {#if hasMessages}
+                                <!-- Hidden rather than removed, so closing the raw view restores the scroll position -->
+                                <div class={systemPromptVisible ? 'hidden' : ''}>
                                 <Messages
                                     chatId={$chatId}
                                     bind:history
@@ -1568,6 +1629,7 @@
                                     bottomPadding={files.length > 0}
                                     onBranchScroll={() => scrollToBottom()}
                                 />
+                                </div>
                             {/if}
                         </div>
                     </div>

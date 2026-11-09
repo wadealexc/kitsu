@@ -1,3 +1,4 @@
+import type * as proto from '../../protocol/index.js';
 import { z } from 'zod';
 
 import { ChatIdSchema, FolderIdSchema } from './common.js';
@@ -162,7 +163,7 @@ export interface ChatObject {
     disabledToolServers?: string[];
     /** Whether the sandbox is on for this chat. Off unless the user turns it on. */
     sandboxEnabled?: boolean;
-    /** Whether it has ever been on here, which keeps its tools in the list and its files reachable. */
+    /** Whether it has ever been on here, which keeps its files reachable. */
     sandboxActivated?: boolean;
     systemPrompt?: string;
     history: ChatHistory;
@@ -350,3 +351,10 @@ export const ChatCompletionFormSchema = z.object({
     sandboxUploads: z.array(z.string().max(4096)).max(200).optional(),
 });
 export type ChatCompletionForm = z.infer<typeof ChatCompletionFormSchema>;
+
+/** What the next message in a chat would send to the inference server. */
+export type CompletionPreview = {
+    request: proto.CompletionRequest;
+    /** Hidden notes kitsu would add to the next message, if any. */
+    nextMessageNotes: string | null;
+};

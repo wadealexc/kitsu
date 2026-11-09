@@ -95,12 +95,50 @@ describe('sandbox in chats', () => {
     });
     afterEach(() => { mock.resetQueue(); managerCalls.length = 0; calls.length = 0; });
 
-    test('a chat that never turned it on never sees its tools, and gets no note', async () => {
+    test('a chat that never turned it on still lists its tools, with a note that they are off', async () => {
         replyWith(text('ok'), stop());
         await send(body(crypto.randomUUID()));
         assert.ok(toolNames().includes('web_search'));
-        assert.ok(!toolNames().includes('sandbox_whoami'));
-        assert.ok(!lastUser().includes('kitsu-note'));
+        assert.ok(toolNames().includes('sandbox_whoami'));
+        assert.match(lastUser(), /turned off these tools for now: .*sandbox_whoami/);
+    });
+
+    test('the tool list is the same with the sandbox on or off', async () => {
+        replyWith(text('ok'), stop());
+        replyWith(text('ok'), stop());
+        await send(body(crypto.randomUUID()));
+        const off = toolNames();
+        await send(body(crypto.randomUUID(), { sandboxEnabled: true }));
+        assert.deepStrictEqual(toolNames(1), off);
+    });
+
+    test('the preview is what the next message sends, and saves nothing', async () => {
+        const chatId = crypto.randomUUID();
+        const form = body(chatId, { systemPrompt: 'Today is {{CURRENT_DATE}}.' }, { promptVariables: { '{{CURRENT_DATE}}': 'Monday' } });
+        const replyId = form.chat.history.currentId!;
+        form.chat.history.messages[replyId]!.content = 'Hello.';
+        form.chat.history.messages[replyId]!.done = true;
+
+        const res = await request(app).post('/api/v1/chat/custom-completions/preview').set('Authorization', `Bearer ${token}`).send(form);
+        assert.strictEqual(res.status, 200);
+        const preview = res.body as Types.CompletionPreview;
+        assert.match(preview.request.messages[0]!.content as string, /^Today is Monday\./);
+        assert.match(preview.nextMessageNotes!, /turned off these tools for now: .*sandbox_whoami/);
+        assert.ok((await db.select().from(schema.chats)).every(c => c.id !== chatId));
+
+        const nextId = crypto.randomUUID();
+        const nextReply = crypto.randomUUID();
+        const real = structuredClone(form);
+        real.chat.history.messages[nextId] = { id: nextId, parentId: replyId, childrenIds: [nextReply], role: 'user', content: 'More', files: [], timestamp: 0, done: true } as Types.ChatMessage;
+        real.chat.history.messages[nextReply] = { id: nextReply, parentId: nextId, childrenIds: [], role: 'assistant', content: '', files: [], timestamp: 0, done: false } as Types.ChatMessage;
+        real.chat.history.currentId = nextReply;
+        replyWith(text('ok'), stop());
+        await send(real);
+
+        const sent = mock.requests[0]!.body;
+        assert.deepStrictEqual(sent.tools, preview.request.tools);
+        assert.deepStrictEqual(sent.messages.slice(0, -1), preview.request.messages);
+        assert.strictEqual(sent.messages.at(-1)!.content, `More\n\n${preview.nextMessageNotes}`);
     });
 
     test('turned on, the tools appear and the call carries the real chat and user, whatever the model passes', async () => {
@@ -143,7 +181,7 @@ describe('sandbox in chats', () => {
         replyWith(callTool('sandbox_whoami', '{}'), toolFinish());
         replyWith(text('fine'), stop());
         await send(body('local:temp', { sandboxEnabled: true }));
-        assert.ok(!toolNames().includes('sandbox_whoami'));
+        assert.match(lastUser(), /turned off these tools for now: .*sandbox_whoami/);
         assert.strictEqual(calls.filter(c => c.tool === 'sandbox_whoami').length, 0);
     });
 

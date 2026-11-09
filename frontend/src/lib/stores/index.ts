@@ -64,6 +64,8 @@ export type Settings = {
     webSearch?: boolean;
     /** MCP servers turned off in new chats */
     disabledToolServers: string[];
+    /** A sandbox starts off unless the user asks for it, so it has its own setting. */
+    sandboxInNewChats?: boolean;
     scrollOnBranchChange: boolean;
     model: string;
     ctrlEnterToSend: boolean;
@@ -121,7 +123,7 @@ export type StreamContext = {
     used: number;
     total: number;
     tps: number;
-    promptProcessing?: { processed: number; total: number };
+    promptProcessing?: { processed: number; total: number; pps?: number };
 } | null;
 
 export const streamContext: Writable<StreamContext> = writable(null);

@@ -21,9 +21,7 @@ export type ToolRoundResult = {
  *
  * The same definitions go out on every request, whatever the user has turned
  * off, so the start of the prompt (and llama.cpp's cache of it) stays the same.
- * Calls to tools the user turned off are answered with an error instead. The one
- * exception is a sandbox, which is off by default: most chats never use it, so its
- * tools join the list the first time it's turned on in a chat, and stay.
+ * Calls to tools the user turned off are answered with an error instead.
  */
 export class ToolRegistry {
 
@@ -33,9 +31,8 @@ export class ToolRegistry {
         return this.mcp.tools();
     }
 
-    /** `includeSandbox` is false for a chat that has never turned its sandbox on. */
-    getToolDefinitions(includeSandbox = true): proto.ToolDefinition[] {
-        return this.tools().filter(tool => includeSandbox || !tool.sandbox).map(tool => ({
+    getToolDefinitions(): proto.ToolDefinition[] {
+        return this.tools().map(tool => ({
             type: 'function' as const,
             function: {
                 name: tool.name,

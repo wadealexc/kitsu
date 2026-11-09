@@ -10,7 +10,7 @@ import * as proto from '../../protocol/index.js';
 import { ToolRegistry } from '../../tools/registry.js';
 import type { SseUsage } from '../../protocol/sse.js';
 
-import { prepareRequest, type ChatRequestContext } from './prepare.js';
+import { prepareRequest, previewRequest, type ChatRequestContext } from './prepare.js';
 import {
     emitSseEvent,
     emitCallback,
@@ -105,6 +105,24 @@ router.post('/custom-completions', requireAuth, async (
     startSse(res);
     follow(res, job);
     void runGeneration(job, ctx, llama, toolRegistry);
+});
+
+/**
+ * POST /api/v1/chat/custom-completions/preview
+ * Access Control: Any authenticated user
+ *
+ * Exactly what the next message in this chat would send to the inference server.
+ * Takes the same body as a completion, and saves nothing.
+ */
+router.post('/custom-completions/preview', requireAuth, async (
+    req: Types.TypedRequest<{}, Types.ChatCompletionForm>,
+    res: Response<Types.CompletionPreview | Types.ErrorResponse>,
+) => {
+    try {
+        res.json(await previewRequest(req, req.app.locals.llama as Llama, req.app.locals.tools as ToolRegistry));
+    } catch (err: any) {
+        res.status(400).json({ detail: err?.message ?? String(err) });
+    }
 });
 
 /**
