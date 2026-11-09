@@ -33,11 +33,12 @@
     $: renderedSystem = typeof first?.content === 'string' ? first.content : systemPrompt;
     $: conversation = (preview?.request.messages ?? []).slice(1);
     $: tools = (preview?.request.tools ?? []) as ToolDefinition[];
-    $: settings = (() => {
-        if (!preview) return '';
-        const { messages: _messages, tools: _tools, ...rest } = preview.request;
-        return Object.entries(rest).map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`).join('  ·  ');
+    $: modelSettings = (() => {
+        if (!preview) return [];
+        const { messages: _messages, tools: _tools, model: _model, ...rest } = preview.request;
+        return Object.entries(rest).map(([key, value]) => ({ key, value: typeof value === 'object' ? JSON.stringify(value) : String(value) }));
     })();
+    let modelOpen = false;
 
     const startEdit = async () => {
         edit = true;
@@ -147,9 +148,19 @@
     {:else if !preview}
         <div class="flex justify-center py-4"><Spinner className="size-4" /></div>
     {:else}
-        {#if settings}
-            <div class="px-1 font-mono text-[11px] text-gray-500 dark:text-gray-400 break-words">{settings}</div>
-        {/if}
+        <div class={bubble}>
+            <button class="{label} !mb-0 w-full" on:click={() => (modelOpen = !modelOpen)} aria-expanded={modelOpen}>
+                <span>model: <span class="font-mono">{preview.request.model}</span></span>
+                {#if modelOpen}<ChevronUp strokeWidth="3" className="size-3" />{:else}<ChevronDown strokeWidth="3" className="size-3" />{/if}
+            </button>
+            {#if modelOpen}
+                <div class="mt-2 flex flex-col gap-0.5">
+                    {#each modelSettings as setting (setting.key)}
+                        <div class="{body} flex gap-2"><span class="text-gray-500 dark:text-gray-400 shrink-0">{setting.key}</span><span class="min-w-0">{setting.value}</span></div>
+                    {/each}
+                </div>
+            {/if}
+        </div>
 
         <div class={bubble}>
             <button class="{label} !mb-0 w-full" on:click={() => (toolsOpen = !toolsOpen)} aria-expanded={toolsOpen}>
@@ -157,14 +168,21 @@
                 {#if toolsOpen}<ChevronUp strokeWidth="3" className="size-3" />{:else}<ChevronDown strokeWidth="3" className="size-3" />{/if}
             </button>
             {#if toolsOpen}
-                <div class="mt-2 flex flex-col gap-1.5">
+                <div class="mt-2 -mx-2 flex flex-col gap-0.5">
                     {#each tools as tool (tool.function.name)}
                         <div>
-                            <button class="font-mono text-xs text-gray-800 dark:text-gray-200 text-left" on:click={() => toggleTool(tool.function.name)}>
-                                {tool.function.name}
+                            <button
+                                class="w-full flex items-center justify-between gap-2 rounded-md px-2 py-1.5 font-mono text-xs text-gray-800 dark:text-gray-200 text-left bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.09] transition-colors"
+                                aria-expanded={openTools.has(tool.function.name)}
+                                on:click={() => toggleTool(tool.function.name)}
+                            >
+                                <span class="truncate min-w-0">{tool.function.name}</span>
+                                <span class="shrink-0 text-gray-500 dark:text-gray-400">
+                                    {#if openTools.has(tool.function.name)}<ChevronUp strokeWidth="3" className="size-3" />{:else}<ChevronDown strokeWidth="3" className="size-3" />{/if}
+                                </span>
                             </button>
                             {#if openTools.has(tool.function.name)}
-                                <div class="{body} mt-1 ps-3 border-s-2 border-dotted border-s-gray-200 dark:border-gray-700">{tool.function.description ?? ''}
+                                <div class="{body} mt-1 mb-1 mx-2 ps-3 border-s-2 border-dotted border-s-gray-200 dark:border-gray-700">{tool.function.description ?? ''}
 
 {JSON.stringify(tool.function.parameters ?? {}, null, 2)}</div>
                             {/if}

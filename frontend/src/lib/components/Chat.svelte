@@ -886,7 +886,8 @@
         const total = model?.contextLength ?? 0;
         const usage = messages.currentId ? messages.messages[messages.currentId]?.usage : undefined;
         const used = Math.min(usage?.context_tokens ?? usage?.total_tokens ?? 0, total);
-        streamContext.set(total > 0 ? { used, total, tps: 0 } : null);
+        // Nothing to show before the first reply: only tokenizing could count the system prompt.
+        streamContext.set(total > 0 && used > 0 ? { used, total, tps: 0 } : null);
     };
     $: showIdleContext(history, generating, $selectedModel);
 

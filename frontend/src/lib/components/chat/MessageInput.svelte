@@ -448,12 +448,6 @@
                         {/if}
 
                         <div class="px-2.5 relative">
-                            <!-- Above the send button. Gives way as soon as there's something typed. -->
-                            {#if prompt.trim() === ''}
-                                <div class="absolute top-2 right-3.5 z-10">
-                                    <ContextMeter {generating} />
-                                </div>
-                            {/if}
                             <div
                                 class="scrollbar-hidden text-left bg-transparent dark:text-gray-100 outline-hidden w-full pb-1 px-1 resize-none h-fit overflow-auto {files.length ===
                                 0
@@ -615,7 +609,13 @@
                                 </div>
                             </div>
 
-                            <div class="self-end flex items-center mr-[3px] gap-2">
+                            <div class="self-end flex items-center mr-[3px] gap-2 relative">
+                                <!-- Sits on the send button, at its width. Gives way once something's typed. -->
+                                {#if prompt.trim() === ''}
+                                    <div class="absolute right-0 bottom-full mb-1 w-[52px] flex justify-center">
+                                        <ContextMeter {generating} />
+                                    </div>
+                                {/if}
                                 {#if sandboxVisible}
                                     <button
                                         on:click|preventDefault={() => (sandboxOpen = !sandboxOpen)}
