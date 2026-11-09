@@ -190,6 +190,10 @@ async function runGeneration(
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const roundStartMs = performance.now();
 
+            // Stopped during the tools. Asking the model with a cancelled signal isn't
+            // just pointless: node-fetch throws an error nothing can catch.
+            signal.throwIfAborted();
+
             let stream: LlamaStream;
             let result: Awaited<ReturnType<LlamaStream['finished']>>;
             try {
@@ -249,6 +253,8 @@ async function runGeneration(
             const toolExec = await emitEventsAndExecuteTools(job, ctx.chatId, toolRegistry, toolCalls, signal, session, round);
 
             finalContent = accumulateBlocks(blocks, result.value, toolExec?.results, stream.reasoningDurationMs(), toolExec ? { round, startedAt: toolExec.startedAt } : undefined);
+            // Its blocks are saved now, so a stop mustn't add this round's partial text again.
+            currentStream = undefined;
 
             // Build round log
             const roundLog: RoundLog = {

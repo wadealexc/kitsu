@@ -10,6 +10,7 @@ import { db, schema } from '../../src/db/index.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import chatRouter from '../../src/routes/completions/index.js';
 import { ToolRegistry } from '../../src/tools/registry.js';
+import { jobs } from '../../src/routes/completions/jobs.js';
 import { McpManager } from '../../src/mcp/manager.js';
 import { SYSTEM_PROMPT_NOTES } from '../../src/routes/completions/notes.js';
 import { MockLlama } from '../mockLlama.js';
@@ -296,6 +297,28 @@ describe('POST /custom-completions', () => {
         const round2: any[] = mock.requests[1]!.body.messages;
         assert.ok(round2.find(m => m.role === 'assistant' && m.tool_calls?.length > 0));
         assert.strictEqual(round2.find(m => m.role === 'tool').content, 'echo: hi');
+    });
+
+    test('stopping during a tool ends the reply without asking the model again', async () => {
+        mock.enqueue(req => MockLlama.createSSEResponse([
+            toolCallChunk('web_echo', 'call_1', JSON.stringify({ text: 'hi' })),
+            toolCallFinishChunk(),
+        ], req.signal));
+
+        const body = makeChatBody();
+        const realRound = toolServer.executeToolRound;
+        toolServer.executeToolRound = (async (calls: any[]) => {
+            jobs.get(body.chatId)!.stop();
+            return calls.map(tc => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments, result: { ok: false, error: 'aborted' } }));
+        }) as typeof realRound;
+
+        try {
+            const frames = await complete(body);
+            assert.strictEqual(mock.requests.length, 1);
+            assert.ok(findChatEvent(frames, 'chat:completion'));
+        } finally {
+            toolServer.executeToolRound = realRound;
+        }
     });
 
     test('sends the same tools and system prompt whatever is turned off', async () => {

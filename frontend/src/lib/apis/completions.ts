@@ -60,8 +60,9 @@ export const chatCompletion = async (
     });
 
     if (!res.ok) {
-        const err = await res.json();
-        throw err.detail ?? `Request failed: ${route}`;
+        // Not always JSON: a proxy in front of a backend that's down answers in plain text.
+        const err = await res.json().catch(() => ({}));
+        throw err.detail ?? `The server couldn't take that request (${res.status}). Try again in a moment.`;
     }
 
     if (!res.body) {
