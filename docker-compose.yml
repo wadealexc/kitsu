@@ -21,3 +21,10 @@ services:
       - ./config.json:/app/config.json:ro
       - ./backend/data:/app/backend/data
       - ./backend/logs:/app/backend/logs
+    networks:
+      - default
+      - sandbox-mcp   # to reach the sandbox manager; start ~/sandbox-mcp first
+
+networks:
+  sandbox-mcp:
+    external: true
