@@ -5,11 +5,11 @@
     import { mobile } from '$lib/stores';
     import { saveAs } from '$lib/utils';
     import {
+        addSandboxFiles,
         deleteSandboxFile,
         fetchSandboxFile,
         getSandboxStatus,
         listSandboxFiles,
-        uploadSandboxFile,
         type SandboxEntry,
         type SandboxStatus
     } from '$lib/apis/sandbox';
@@ -26,6 +26,8 @@
 
     /** Empty until the chat has an id: see ensureChatId. */
     export let chatId: string;
+    /** The folder open here. */
+    export let path = '.';
     /** Goes up when something in the workspace may have changed. */
     export let refresh = 0;
     export let onClose: () => void;
@@ -46,7 +48,6 @@
     const MAX_TEXT_PREVIEW_BYTES = 200_000;
     const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
 
-    let path = '.';
     let entries: SandboxEntry[] = [];
     let status: SandboxStatus | null = null;
     let loading = false;
@@ -63,6 +64,7 @@
     let previewUrl: string | null = null;
     /** PDFs open over the whole page: the panel is too narrow to read one. */
     let fullPdf: { entry: SandboxEntry; blob: Blob } | null = null;
+    let pdfPosition = '';
 
     const join = (name: string) => (path === '.' ? name : `${path}/${name}`);
     $: inFolder = path !== '.';
@@ -121,7 +123,9 @@
         clearPreview();
     }
 
+    let openSeq = 0;
     const open = async (entry: SandboxEntry) => {
+        const mine = ++openSeq;
         if (entry.type === 'dir') {
             path = join(entry.name);
             return;
@@ -139,6 +143,8 @@
         preview = { kind: 'loading', entry };
         try {
             const blob = await fetchSandboxFile(localStorage.token, chatId, file);
+            // Something else was opened, or Back pressed, while this loaded.
+            if (mine !== openSeq) return;
             if (imageType) {
                 previewUrl = URL.createObjectURL(new Blob([blob], { type: imageType }));
                 preview = { kind: 'image', entry, url: previewUrl };
@@ -162,6 +168,7 @@
                 cut: blob.size > MAX_TEXT_PREVIEW_BYTES
             };
         } catch (err) {
+            if (mine !== openSeq) return;
             toast.error(`${err}`);
             preview = null;
         }
@@ -187,25 +194,15 @@
     };
 
     const upload = async (files: FileList | File[]) => {
-        const list = [...files];
+        const list = [...files].filter((file) => file.size > 0);
+        if (list.length < [...files].length) toast.error('File is empty, skipping.');
         if (list.length === 0) return;
 
         const id = ensureChatId();
         uploading += list.length;
-        const added: string[] = [];
-        await Promise.all(
-            list.map(async (file) => {
-                const target = join(file.name);
-                try {
-                    await uploadSandboxFile(localStorage.token, id, target, file);
-                    added.push(target);
-                } catch (err) {
-                    toast.error(`${file.name}: ${err}`);
-                } finally {
-                    uploading -= 1;
-                }
-            })
-        );
+        const { added, errors } = await addSandboxFiles(localStorage.token, id, path, list);
+        uploading -= list.length;
+        errors.forEach((error) => toast.error(error));
         if (added.length) onUploaded(added);
         await load(id, path);
     };
@@ -220,11 +217,23 @@
         };
     }
 
+    /** Escape goes back one step at a time, leaving other dialogs to close themselves. */
+    const onKeydown = (e: KeyboardEvent) => {
+        if (e.key !== 'Escape') return;
+        if (fullPdf) fullPdf = null;
+        else if (document.querySelector('[role="dialog"]')) return;
+        else if (preview) clearPreview();
+        else onClose();
+    };
+
+    // Decided once: a phone turned sideways gets wider, and the sheet should stay a sheet.
+    const sheet = $mobile;
+
     const iconButton =
         'p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200 transition';
 </script>
 
-<svelte:window on:keydown={(e) => e.key === 'Escape' && fullPdf && (fullPdf = null)} />
+<svelte:window on:keydown={onKeydown} />
 
 {#if fullPdf}
     {@const shown = fullPdf.entry}
@@ -237,6 +246,9 @@
     >
         <div class="flex items-center gap-1 px-3 h-12 shrink-0">
             <div class="font-medium text-sm truncate min-w-0 pl-1">{shown.name}</div>
+            {#if pdfPosition}
+                <div class="text-xs text-gray-500 dark:text-gray-400 shrink-0 ml-2 tabular-nums">{pdfPosition}</div>
+            {/if}
             <div class="ml-auto flex items-center shrink-0">
                 <button class={iconButton} aria-label="Download" on:click={() => download(shown)}>
                     <Download className="size-4" />
@@ -248,7 +260,7 @@
         </div>
         <div class="flex-1 min-h-0 overflow-auto px-2 pb-3">
             {#key fullPdf.blob}
-                <PdfPreview blob={fullPdf.blob} />
+                <PdfPreview blob={fullPdf.blob} bind:position={pdfPosition} />
             {/key}
         </div>
     </div>
@@ -256,9 +268,9 @@
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <aside
-    use:coverScreen={$mobile}
-    aria-label="Workspace"
-    class={$mobile
+    use:coverScreen={sheet}
+    aria-label="Files"
+    class={sheet
         ? 'fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]'
         : 'relative shrink-0 w-[380px] max-w-[45%] h-full flex flex-col border-l border-gray-100 dark:border-gray-850 bg-white dark:bg-gray-900'}
     on:dragover|preventDefault={() => (dragging = true)}
@@ -294,7 +306,7 @@
                 </button>
                 <div class="font-medium text-sm truncate min-w-0">{folderName}</div>
             {:else}
-                <div class="font-medium text-sm">Workspace</div>
+                <div class="font-medium text-sm">Files</div>
             {/if}
             {#if status?.exists && !inFolder}
                 <div class="text-xs text-gray-500 dark:text-gray-400 ml-1 {status.overLimit ? 'text-red-500 dark:text-red-400' : ''}">
@@ -308,7 +320,7 @@
                 </button>
             </div>
         {/if}
-        <button class={iconButton} aria-label="Close workspace" on:click={onClose}>
+        <button class={iconButton} aria-label="Close files" on:click={onClose}>
             <XMark className="size-4" />
         </button>
     </div>
@@ -367,6 +379,10 @@
                     {#if entry.type === 'file'}
                         <button class="{iconButton} shrink-0" aria-label={`Download ${entry.name}`} on:click={() => download(entry)}>
                             <Download className="size-4" />
+                        </button>
+                    {:else if entry.type === 'dir'}
+                        <button class="{iconButton} shrink-0" aria-label={`Delete ${entry.name}`} on:click={() => remove(entry)}>
+                            <GarbageBin className="size-4" />
                         </button>
                     {/if}
                 </div>

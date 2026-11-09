@@ -230,19 +230,35 @@ export class McpManager {
             };
         };
 
+        // MCP's cancel message doesn't reach a call on a stateless server, so a sandbox
+        // is told directly to stop what's running.
+        const stopSandbox = () => {
+            if (!conn.sandbox || !opts.identity) return;
+            const url = new URL(`sandboxes/${opts.identity.chat}/cancel`, new URL('.', conn.server.url));
+            url.searchParams.set('user', opts.identity.user);
+            const headers: Record<string, string> = conn.server.token ? { authorization: `Bearer ${conn.server.token}` } : {};
+            void fetch(url, { method: 'POST', headers }).catch(() => { /* it stops at its own time limit */ });
+        };
+        opts.signal.addEventListener('abort', stopSandbox, { once: true });
+
         try {
             return await attempt();
         } catch (err) {
             if (opts.signal.aborted) throw err;
 
-            // The server may have restarted: reconnect once and try again.
             await this.#close(conn);
+            // Not repeated: the command may have run, and running it twice can do damage.
+            if (conn.sandbox) return { ok: false, text: `The ${tool.serverName} server failed: ${errorText(err)}` };
+
+            // The server may have restarted: reconnect once and try again.
             try {
                 return await attempt();
             } catch (retryErr) {
                 if (opts.signal.aborted) throw retryErr;
                 return { ok: false, text: `The ${tool.serverName} server failed: ${errorText(retryErr)}` };
             }
+        } finally {
+            opts.signal.removeEventListener('abort', stopSandbox);
         }
     }
 

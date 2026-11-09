@@ -82,3 +82,42 @@ describe('McpManager', () => {
         await mcp.close();
     });
 });
+
+describe('sandbox calls', () => {
+    const sandboxClient = (callTool: () => Promise<unknown>) => ({
+        listTools: async () => ({ tools: [{ name: 'bash', description: '', inputSchema: { type: 'object' } }] }),
+        getServerCapabilities: () => ({ experimental: { 'kitsu/sandbox': {} } }),
+        callTool,
+        close: async () => {},
+    });
+    const identity = { chat: '00000000-0000-4000-8000-000000000000', user: 'u1' };
+    const box = serverRecord({ id: 'box', name: 'box', url: 'http://box.local/mcp', createdAt: 1 });
+
+    test('does not repeat a call that failed', async () => {
+        let calls = 0;
+        const mcp = new McpManager(async () => sandboxClient(async () => { calls++; throw new Error('boom'); }) as any);
+        await mcp.sync([box]);
+        const result = await mcp.call(mcp.tools()[0]!, {}, { signal: new AbortController().signal, identity });
+        assert.equal(calls, 1);
+        assert.equal(result.ok, false);
+    });
+
+    test('tells the manager to stop when the call is aborted', async () => {
+        const controller = new AbortController();
+        const seen: string[] = [];
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = (async (url: URL) => { seen.push(String(url)); return new Response(null, { status: 204 }); }) as typeof fetch;
+        try {
+            const mcp = new McpManager(async () => sandboxClient(() => new Promise((_, reject) => {
+                controller.signal.addEventListener('abort', () => reject(new Error('aborted')));
+            })) as any);
+            await mcp.sync([box]);
+            const call = mcp.call(mcp.tools()[0]!, {}, { signal: controller.signal, identity });
+            controller.abort();
+            await assert.rejects(call);
+            assert.deepEqual(seen, [`http://box.local/sandboxes/${identity.chat}/cancel?user=u1`]);
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+    });
+});

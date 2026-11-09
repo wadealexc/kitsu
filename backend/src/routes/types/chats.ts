@@ -188,6 +188,7 @@ export const ChatObjectUpdateSchema = z.object({
     timestamp: z.number(),
     webSearchEnabled: z.boolean(),
     disabledToolServers: z.array(z.string()),
+    sandboxEnabled: z.boolean(),
     systemPrompt: z.string(),
 }).partial();
 

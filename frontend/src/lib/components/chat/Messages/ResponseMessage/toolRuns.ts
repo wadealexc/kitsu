@@ -55,6 +55,9 @@ export function singleCallTitle(block: ToolCallBlock): CallTitle {
     const path = typeof args.path === 'string' ? displayPath(args.path) : '';
     const command = typeof args.command === 'string' ? (args.command.split('\n').find((l) => l.trim()) ?? '') : '';
     const running = block.result === undefined && !block.done;
+    const stopped = block.result === undefined && block.done;
+    const target = block.name === 'bash' ? command.trim() : path;
+    if (stopped && target) return { verb: 'Stopped', target, after: '' };
 
     if (block.name === 'bash' && command) {
         if (running) return { verb: 'Running', target: command.trim(), after: '' };

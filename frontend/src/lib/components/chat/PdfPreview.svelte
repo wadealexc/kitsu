@@ -8,10 +8,15 @@
     import Spinner from '../common/Spinner.svelte';
 
     export let blob: Blob;
+    /** Which page is on screen: "3 / 12". */
+    export let position = '';
 
     /** Sharper than this costs memory phones don't have. */
     const MAX_SCALE = 2;
     const MAX_PAGES = 300;
+    /** A page can ask for any size; browsers fail or run out of memory on huge canvases. */
+    const MAX_CANVAS_PIXELS = 16_000_000;
+    const MAX_IMAGE_PIXELS = 40_000_000;
 
     type Page = { number: number; ratio: number };
 
@@ -29,18 +34,22 @@
 
     const draw = async (canvas: HTMLCanvasElement, number: number) => {
         if (!doc || drawing.has(number) || canvas.dataset.drawn) return;
-        const page = await doc.getPage(number);
-        if (destroyed || !onScreen.has(number)) return;
-
-        const width = canvas.parentElement?.clientWidth || container.clientWidth;
-        const scale = (width / page.getViewport({ scale: 1 }).width) * Math.min(window.devicePixelRatio || 1, MAX_SCALE);
-        const viewport = page.getViewport({ scale });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        const task = page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport, annotationMode: 0 });
-        drawing.set(number, task);
+        // Claimed before waiting, so scrolling away and back can't start a second one.
+        const slot = { cancel: () => {} };
+        drawing.set(number, slot);
         try {
+            const page = await doc.getPage(number);
+            if (destroyed || !onScreen.has(number)) return;
+
+            const width = canvas.parentElement?.clientWidth || container.clientWidth;
+            const natural = page.getViewport({ scale: 1 });
+            const wanted = (width / natural.width) * Math.min(window.devicePixelRatio || 1, MAX_SCALE);
+            const viewport = page.getViewport({ scale: Math.min(wanted, Math.sqrt(MAX_CANVAS_PIXELS / (natural.width * natural.height))) });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            const task = page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport, annotationMode: 0 });
+            slot.cancel = () => task.cancel();
             await task.promise;
             canvas.dataset.drawn = '1';
         } catch {
@@ -72,6 +81,7 @@
             const loaded = await pdfjs.getDocument({
                 data: new Uint8Array(await blob.arrayBuffer()),
                 isEvalSupported: false,
+                maxImageSize: MAX_IMAGE_PIXELS,
                 enableXfa: false
             }).promise;
             if (destroyed) {
@@ -105,6 +115,8 @@
                 { root: container.parentElement, rootMargin: '100% 0px' }
             );
             pages = sizes;
+            position = `1 / ${total}`;
+            container.parentElement?.addEventListener('scroll', onScroll, { passive: true });
         } catch {
             failed = true;
         } finally {
@@ -112,8 +124,23 @@
         }
     });
 
+    let scrollFrame = 0;
+    const onScroll = () => {
+        scrollFrame ||= requestAnimationFrame(() => {
+            scrollFrame = 0;
+            const root = container.parentElement;
+            if (!root) return;
+            const { top, height } = root.getBoundingClientRect();
+            const middle = top + height / 2;
+            const shown = [...container.children].findIndex((el) => el.getBoundingClientRect().bottom > middle);
+            if (shown !== -1) position = `${shown + 1} / ${total}`;
+        });
+    };
+
     onDestroy(() => {
         destroyed = true;
+        cancelAnimationFrame(scrollFrame);
+        container?.parentElement?.removeEventListener('scroll', onScroll);
         observer?.disconnect();
         void doc?.destroy();
     });

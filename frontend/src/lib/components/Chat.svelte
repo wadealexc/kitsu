@@ -77,7 +77,7 @@
     import Messages from '$lib/components/chat/Messages.svelte';
     import Navbar from '$lib/components/Navbar.svelte';
     import SandboxDrawer from '$lib/components/chat/SandboxDrawer.svelte';
-    import { uploadSandboxFile } from '$lib/apis/sandbox';
+    import { addSandboxFiles, getSandboxStatus } from '$lib/apis/sandbox';
     import Spinner from './common/Spinner.svelte';
     import Tooltip from './common/Tooltip.svelte';
     import EyeSlash from './icons/EyeSlash.svelte';
@@ -151,6 +151,8 @@
     let sandboxEnabled = false;
     let sandboxActivated = false;
     let sandboxOpen = false;
+    /** The folder open in the file panel. */
+    let sandboxPath = '.';
     /** Opened by itself once per chat at most, the first time something happens in it. */
     let sandboxAutoOpened = false;
     let sandboxRefresh = 0;
@@ -169,6 +171,7 @@
         sandboxOpen = false;
         sandboxAutoOpened = sandboxActivated;
         sandboxUploads = [];
+        sandboxPath = '.';
         chatIdWithoutMessages = false;
     };
 
@@ -197,27 +200,41 @@
     /** With the sandbox on, files added from the input bar go to its workspace. */
     const addFilesToSandbox = async (list: File[]) => {
         const nonEmpty = list.filter((file) => file.size > 0);
+        if (nonEmpty.length < list.length) toast.error('File is empty, skipping.');
         if (nonEmpty.length === 0) return;
 
         const id = ensureChatIdForSandbox();
+        const folder = sandboxOpen ? sandboxPath : '.';
         if (!$mobile) sandboxOpen = true;
-        const added: string[] = [];
-        await Promise.all(
-            nonEmpty.map(async (file) => {
-                try {
-                    await uploadSandboxFile(localStorage.token, id, file.name, file);
-                    added.push(file.name);
-                } catch (err) {
-                    toast.error(`${file.name}: ${err}`);
-                }
-            })
-        );
+        const { added, errors } = await addSandboxFiles(localStorage.token, id, folder, nonEmpty);
+        errors.forEach((error) => toast.error(error));
         if (added.length === 0) return;
         sandboxUploads = [...sandboxUploads, ...added];
         sandboxActivated = true;
         sandboxAutoOpened = true;
         sandboxRefresh += 1;
         if ($mobile) toast.success(added.length === 1 ? `Added ${added[0]} to Files` : `Added ${added.length} files to Files`);
+    };
+
+    /** Saved as soon as it's switched, so a reload doesn't undo it. */
+    const saveSandboxToggle = (enabled: boolean) => {
+        if (!$chatId || chatIdWithoutMessages || $temporaryChatEnabled) return;
+        updateChatById(localStorage.token, $chatId, { sandboxEnabled: enabled }).catch(() => {});
+    };
+
+    /** A chat with files but no messages isn't saved yet: a reload comes back to it here. */
+    const reopenUnsavedSandbox = async (): Promise<boolean> => {
+        const id = $chatId;
+        if (!id) return false;
+        const status = await getSandboxStatus(localStorage.token, id).catch(() => null);
+        if (!status?.exists) return false;
+
+        await initNewChat();
+        chatId.set(id);
+        resetSandbox({ sandboxEnabled: true, sandboxActivated: true });
+        chatIdWithoutMessages = true;
+        sandboxOpen = !$mobile;
+        return true;
     };
 
     /** Files can be added before the first message, and they need a chat to belong to. */
@@ -516,13 +533,16 @@
             temporaryChatEnabled.set(false);
         }
 
-        chat = await getChatById(localStorage.token, $chatId).catch(async (error) => {
+        chat = await getChatById(localStorage.token, $chatId).catch((error) => {
             console.error(`loadChat: error fetching chat ${$chatId}: ${error}`);
-            await goto('/');
             return null;
         });
 
-        if (!chat) return false;
+        if (!chat) {
+            if (await reopenUnsavedSandbox()) return true;
+            await goto('/');
+            return false;
+        }
 
         const chatContent = chat.chat;
 
@@ -1660,6 +1680,7 @@
                             bind:sandboxOpen
                             {sandboxVisible}
                             onSandboxFiles={addFilesToSandbox}
+                            onSandboxToggle={saveSandboxToggle}
                             bind:systemPromptVisible
                             {generating}
                             {stopResponse}
@@ -1688,6 +1709,7 @@
         </div>
         {#if sandboxOpen}
             <SandboxDrawer
+                bind:path={sandboxPath}
                 chatId={$chatId}
                 refresh={sandboxRefresh}
                 onClose={() => (sandboxOpen = false)}

@@ -62,6 +62,11 @@
     export let sandboxOpen = false;
     /** Takes files added here instead of the message, while the sandbox is on. */
     export let onSandboxFiles: (files: File[]) => void = () => {};
+    export let onSandboxToggle: (enabled: boolean) => void = () => {};
+
+    // Icons only when the open file panel leaves too little room for labels.
+    let windowWidth = 1200;
+    $: compact = $mobile || (sandboxOpen && windowWidth < 1100);
 
     // Servers that offer tools, each with its own switch. A temporary chat isn't kept, so it can't have a sandbox.
     $: switchableServers = $toolServers
@@ -72,6 +77,7 @@
     const toggleServer = (server: ToolServer) => {
         if (server.sandbox) {
             sandboxEnabled = !sandboxEnabled;
+            onSandboxToggle(sandboxEnabled);
             return;
         }
         disabledToolServers = disabledToolServers.includes(server.id)
@@ -284,6 +290,8 @@
         }
     });
 </script>
+
+<svelte:window bind:innerWidth={windowWidth} />
 
 <FilesOverlay show={dragged} />
 
@@ -584,14 +592,14 @@
                                                 type="button"
                                                 aria-pressed={on}
                                                 aria-label={`${server.name} tools ${on ? 'on' : 'off'}`}
-                                                class="rounded-md flex items-center {$mobile
+                                                class="rounded-md flex items-center {compact
                                                     ? 'p-1.5'
-                                                    : 'gap-1.5 pl-2 pr-2.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {on
+                                                    : 'whitespace-nowrap gap-1.5 pl-2 pr-2.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {on
                                                     ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
                                                     : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
                                             >
                                                 <ToolServerIcon icon={server.icon} />
-                                                {#if !$mobile}
+                                                {#if !compact}
                                                     <span>{server.name}</span>
                                                 {/if}
                                             </button>
@@ -627,13 +635,13 @@
                                         type="button"
                                         aria-pressed={sandboxOpen}
                                         aria-label="Files"
-                                        class="rounded-md flex items-center {$mobile
+                                        class="rounded-md flex items-center {compact
                                             ? 'p-1.5'
-                                            : 'gap-1.5 pl-2 pr-1.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {sandboxOpen
+                                            : 'whitespace-nowrap gap-1.5 pl-2 pr-1.5 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {sandboxOpen
                                             ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
                                             : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
                                     >
-                                        {#if !$mobile}
+                                        {#if !compact}
                                             <span>{'Files'}</span>
                                         {/if}
                                         <Folder className="size-4.5" strokeWidth="1.5" />
@@ -643,13 +651,13 @@
                                     on:click|preventDefault={() =>
                                         (systemPromptVisible = !systemPromptVisible)}
                                     type="button"
-                                    class="rounded-md flex items-center {$mobile
+                                    class="rounded-md flex items-center {compact
                                         ? 'p-1.5'
-                                        : 'gap-1.5 pl-1.5 pr-1 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {systemPromptVisible
+                                        : 'whitespace-nowrap gap-1.5 pl-1.5 pr-1 py-1.5'} text-xs font-medium outline-hidden focus:outline-hidden transition-colors border {systemPromptVisible
                                         ? 'text-sky-500 dark:text-sky-300 bg-sky-50 hover:bg-sky-100 dark:bg-sky-400/10 dark:hover:bg-sky-600/10 border-sky-200/40 dark:border-sky-500/20'
                                         : 'text-gray-500 dark:text-gray-400 bg-transparent md:hover:bg-gray-900 md:hover:text-white border-transparent'}"
                                 >
-                                    {#if !$mobile}
+                                    {#if !compact}
                                         <span>{'System'}</span>
                                     {/if}
                                     <AdjustmentsHorizontal className="size-4.5" strokeWidth="1.5" />
